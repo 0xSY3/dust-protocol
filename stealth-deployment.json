@@ -1,8 +1,8 @@
 {
   "chainId": 111551119090,
-  "announcer": "0xfE55B104f6A200cbD17D0Be5a90D17a2A2a0d223",
-  "registry": "0x0e4cF377fc18E46BB1184e4274367Bc0dB958573",
-  "nameRegistry": "0x75BD499f7CA8E361b7930e2881b2B3c99Aa1eea1",
+  "announcer": "0x5ac18d5AdaC9b65E1Be9291A7C2cDbf33b584a3b",
+  "registry": "0x77c3d8c2B0bb27c9A8ACCa39F2398aaa021eb776",
+  "nameRegistry": "0xC3c8Fa75910FED41D30221615d6875D2079179b8",
   "deployer": "0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496",
-  "timestamp": "2026-02-05T09:31:26.721Z"
+  "timestamp": "2026-02-06T09:29:56.357Z"
 }
