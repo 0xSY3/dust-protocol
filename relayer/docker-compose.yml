@@ -1,0 +1,15 @@
+# Docker Compose for local development
+version: '3.8'
+
+services:
+  relayer:
+    build:
+      context: ..
+      dockerfile: relayer/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - RELAYER_PORT=3001
+      - RPC_URL=https://rpc.thanos-sepolia.tokamak.network
+      - RELAYER_PRIVATE_KEY=${RELAYER_PRIVATE_KEY}
+    restart: unless-stopped

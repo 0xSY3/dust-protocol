@@ -1,0 +1,15 @@
+# Render.com deployment config
+services:
+  - type: web
+    name: stealth-relayer
+    env: node
+    buildCommand: npm install express cors ethers@5
+    startCommand: node relayer/index.js
+    envVars:
+      - key: RELAYER_PORT
+        value: 3001
+      - key: RPC_URL
+        value: https://rpc.thanos-sepolia.tokamak.network
+      - key: RELAYER_PRIVATE_KEY
+        sync: false  # Must be set manually in dashboard
+    healthCheckPath: /health
