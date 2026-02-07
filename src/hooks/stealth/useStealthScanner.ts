@@ -127,7 +127,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       if (autoClaimingRef.current.has(txHash)) return false;
       // 30-second cooldown after a failed attempt
       const lastAttempt = autoClaimCooldownRef.current.get(txHash);
-      if (lastAttempt && now - lastAttempt < 30000) return false;
+      if (lastAttempt && now - lastAttempt < 3000) return false;
       return true;
     });
 
@@ -308,7 +308,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         isBgScanningRef.current = true;
         scanRef.current(undefined, true).finally(() => { isBgScanningRef.current = false; });
       }
-    }, 30000);
+    }, 3000);
   }, []);
 
   const stopBackgroundScan = useCallback(() => {

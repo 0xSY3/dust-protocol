@@ -19,6 +19,7 @@ export function SendForm() {
   const [amount, setAmount] = useState("");
   const [sendStep, setSendStep] = useState<"input" | "confirm" | "success">("input");
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+  const [resolvedLinkSlug, setResolvedLinkSlug] = useState<string | undefined>(undefined);
   const [isResolving, setIsResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [sendTxHash, setSendTxHash] = useState<string | null>(null);
@@ -26,6 +27,7 @@ export function SendForm() {
   useEffect(() => {
     const resolve = async () => {
       setResolveError(null);
+      setResolvedLinkSlug(undefined);
       if (!recipient) { setResolvedAddress(null); return; }
       if (recipient.startsWith("st:")) { setResolvedAddress(recipient); return; }
       if (nameRegistryConfigured && isStealthName(recipient)) {
@@ -37,6 +39,7 @@ export function SendForm() {
           const parts = withoutSuffix.split(".");
           if (parts.length > 1) {
             nameToResolve = parts[parts.length - 1] + NAME_SUFFIX;
+            setResolvedLinkSlug(parts[0]);
           }
         }
         const resolved = await resolveName(nameToResolve);
@@ -45,6 +48,7 @@ export function SendForm() {
           setResolvedAddress(`st:thanos:${resolved}`);
         } else {
           setResolvedAddress(null);
+          setResolvedLinkSlug(undefined);
           setResolveError(`Name "${nameToResolve.replace(NAME_SUFFIX, "")}" not found`);
         }
         return;
@@ -62,13 +66,13 @@ export function SendForm() {
   };
 
   const handleSend = async () => {
-    const hash = await sendEthToStealth(resolvedAddress || recipient, amount);
+    const hash = await sendEthToStealth(resolvedAddress || recipient, amount, resolvedLinkSlug);
     if (hash) { setSendTxHash(hash); setSendStep("success"); }
   };
 
   const reset = () => {
     setRecipient(""); setAmount(""); setSendStep("input");
-    setSendTxHash(null); setResolvedAddress(null); setResolveError(null);
+    setSendTxHash(null); setResolvedAddress(null); setResolvedLinkSlug(undefined); setResolveError(null);
   };
 
   return (

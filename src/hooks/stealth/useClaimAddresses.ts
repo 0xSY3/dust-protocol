@@ -123,7 +123,7 @@ export function useClaimAddresses() {
 
   useEffect(() => {
     if (!isInitialized || !claimAddresses.length) return;
-    const interval = setInterval(refreshBalances, 30000);
+    const interval = setInterval(refreshBalances, 3000);
     return () => clearInterval(interval);
   }, [isInitialized, claimAddresses.length, refreshBalances]);
 

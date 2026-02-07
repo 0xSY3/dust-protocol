@@ -16,7 +16,7 @@ export { deriveClaimAddresses, deriveClaimAddressesWithPin, deriveClaimAddressAt
 
 export { validatePin, encryptPin, decryptPin, deriveSpendingSeed, deriveViewingSeed, deriveClaimSeed, hasPinStored, getStoredPin, storeEncryptedPin, clearStoredPin } from './pin';
 
-export { registerStealthName, resolveStealthName, isNameAvailable, getNameOwner, getNamesOwnedBy, updateNameMetaAddress, transferStealthName, setNameRegistryAddress, getNameRegistryAddress, isNameRegistryConfigured, normalizeName, stripNameSuffix, formatNameWithSuffix, isValidName, isStealthName, NAME_SUFFIX } from './names';
+export { registerStealthName, resolveStealthName, isNameAvailable, getNameOwner, getNamesOwnedBy, updateNameMetaAddress, transferStealthName, discoverNameByMetaAddress, setNameRegistryAddress, getNameRegistryAddress, isNameRegistryConfigured, normalizeName, stripNameSuffix, formatNameWithSuffix, isValidName, isStealthName, NAME_SUFFIX } from './names';
 
 export type { RelayerInfo, FeeCalculation, WithdrawResponse, JobStatus } from './relayer';
 export { checkRelayerHealth, getRelayerInfo, calculateRelayerFee, submitRelayerWithdraw, getJobStatus, waitForJobCompletion, getRelayerUrl } from './relayer';

@@ -48,7 +48,7 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { address, isConnected } = useAccount();
   const stealthAddr = useStealthAddress();
-  const nameHook = useStealthName();
+  const nameHook = useStealthName(stealthAddr.metaAddress);
   const pinHook = usePin();
 
   // User is onboarded if they have stealth keys + claim addresses, OR if they have a PIN stored

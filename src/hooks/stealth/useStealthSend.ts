@@ -42,33 +42,30 @@ async function estimateEthTransferGasCost(provider: ethers.providers.Provider): 
   return baseCost.add(buffer);
 }
 
-// Estimate gas cost for announce transaction (~100k gas)
-async function estimateAnnounceGasCost(provider: ethers.providers.Provider): Promise<ethers.BigNumber> {
-  const feeData = await provider.getFeeData();
-  const block = await provider.getBlock('latest');
-
-  const baseFee = block.baseFeePerGas || feeData.gasPrice || ethers.utils.parseUnits('1', 'gwei');
-  const priorityFee = feeData.maxPriorityFeePerGas || ethers.utils.parseUnits('1.5', 'gwei');
-
-  const twoXBaseFee = baseFee.mul(2);
-  const basePlusPriority = baseFee.add(priorityFee).mul(12).div(10);
-  const maxFeePerGas = twoXBaseFee.gt(basePlusPriority) ? twoXBaseFee : basePlusPriority;
-
-  // Announce uses ~80-100k gas, use 120k to be safe
-  const gasLimit = ethers.BigNumber.from(120000);
-  return gasLimit.mul(maxFeePerGas);
+// Sponsor the announcement via deployer API (sender doesn't pay gas for this)
+async function sponsorAnnounce(
+  stealthAddress: string,
+  ephemeralPubKey: string,
+  metadata: string,
+): Promise<string> {
+  const res = await fetch('/api/sponsor-announce', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stealthAddress, ephemeralPubKey, metadata }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Sponsored announcement failed');
+  return data.txHash;
 }
 
-// Calculate maximum sendable amount (balance - gas costs for both send + announce)
+// Calculate maximum sendable amount (balance - gas for ETH transfer only; announcement is sponsored)
 async function calculateMaxSendable(
   provider: ethers.providers.Provider,
   address: string
 ): Promise<{ maxAmount: ethers.BigNumber; gasCost: ethers.BigNumber; balance: ethers.BigNumber }> {
   const balance = await provider.getBalance(address);
-  // Need gas for both ETH transfer AND announce transaction
-  const ethGas = await estimateEthTransferGasCost(provider);
-  const announceGas = await estimateAnnounceGasCost(provider);
-  const gasCost = ethGas.add(announceGas);
+  // Only need gas for ETH transfer — announcement is sponsored by deployer
+  const gasCost = await estimateEthTransferGasCost(provider);
   const maxAmount = balance.sub(gasCost);
   return { maxAmount: maxAmount.gt(0) ? maxAmount : ethers.BigNumber.from(0), gasCost, balance };
 }
@@ -115,33 +112,6 @@ function validateSendAmount(
   }
 }
 
-// Retry logic for announcements
-async function announceWithRetry(
-  signer: ethers.Signer,
-  announcer: ethers.Contract,
-  stealthAddress: string,
-  ephPubKey: string,
-  metadata: string,
-  maxRetries = 3
-): Promise<void> {
-  let lastError: Error | null = null;
-
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const tx = await announcer.announce(SCHEME_ID.SECP256K1, stealthAddress, ephPubKey, metadata);
-      await tx.wait();
-      return;
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error('Announce failed');
-      if (i < maxRetries - 1) {
-        // Wait before retry with exponential backoff
-        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-      }
-    }
-  }
-
-  throw lastError || new Error('Announce failed after retries');
-}
 
 export function useStealthSend() {
   const { isConnected } = useAccount();
@@ -250,21 +220,18 @@ export function useStealthSend() {
       const receipt = await tx.wait();
       const sendTxHash = receipt.transactionHash;
 
-      // Announce with retry logic (don't fail if announce fails - funds are safe)
+      // Announce via sponsored API (deployer pays gas, not sender)
       try {
-        const announcer = new ethers.Contract(CANONICAL_ADDRESSES.announcer, ANNOUNCER_ABI, signer);
         const ephPubKey = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
-        // Metadata: viewTag + optional link slug (hex-encoded UTF-8)
         let metadata = '0x' + generated.viewTag;
         if (linkSlug) {
           const slugBytes = new TextEncoder().encode(linkSlug);
           const slugHex = Array.from(slugBytes).map(b => b.toString(16).padStart(2, '0')).join('');
           metadata += slugHex;
         }
-        await announceWithRetry(signer, announcer, generated.stealthAddress, ephPubKey, metadata);
+        await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata);
       } catch (announceErr) {
-        // Log but don't fail - funds are sent, recipient can scan manually
-        console.warn('Announcement failed but ETH sent:', announceErr);
+        console.warn('Sponsored announcement failed but ETH sent:', announceErr);
         setError(`Sent successfully but announcement failed. Recipient may need to scan manually.`);
       }
 
@@ -289,12 +256,10 @@ export function useStealthSend() {
       const signer = provider.getSigner();
       const signerAddress = await signer.getAddress();
 
-      // Check ETH balance for gas first (need gas for token transfer + announce)
+      // Check ETH balance for gas (only token transfer gas; announcement is sponsored)
       const thanosProvider = getThanosProvider();
       const ethBalance = await thanosProvider.getBalance(signerAddress);
-      const tokenTransferGas = await estimateAnnounceGasCost(thanosProvider); // Token transfer ~= announce gas
-      const announceGas = await estimateAnnounceGasCost(thanosProvider);
-      const gasCost = tokenTransferGas.add(announceGas);
+      const gasCost = await estimateEthTransferGasCost(thanosProvider);
 
       if (ethBalance.lt(gasCost)) {
         throw new Error(`Insufficient ETH for gas. Need ~${ethers.utils.formatEther(gasCost)} TON`);
@@ -322,14 +287,13 @@ export function useStealthSend() {
       const receipt = await tx.wait();
       const sendTxHash = receipt.transactionHash;
 
-      // Announce with retry logic
+      // Announce via sponsored API (deployer pays gas)
       try {
-        const announcer = new ethers.Contract(CANONICAL_ADDRESSES.announcer, ANNOUNCER_ABI, signer);
         const ephPubKey = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
         const metadata = '0x' + generated.viewTag;
-        await announceWithRetry(signer, announcer, generated.stealthAddress, ephPubKey, metadata);
+        await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata);
       } catch (announceErr) {
-        console.warn('Announcement failed but token sent:', announceErr);
+        console.warn('Sponsored announcement failed but token sent:', announceErr);
         setError(`Sent successfully but announcement failed. Recipient may need to scan manually.`);
       }
 

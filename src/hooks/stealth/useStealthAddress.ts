@@ -3,8 +3,9 @@ import { useAccount, useWalletClient } from 'wagmi';
 import { ethers } from 'ethers';
 import {
   generateStealthKeyPair, deriveStealthKeyPairFromSignature, deriveStealthKeyPairFromSignatureAndPin,
-  formatStealthMetaAddress, parseStealthMetaAddress, registerStealthMetaAddress, lookupStealthMetaAddress,
-  isRegistered as checkIsRegistered, STEALTH_KEY_DERIVATION_MESSAGE,
+  formatStealthMetaAddress, parseStealthMetaAddress, lookupStealthMetaAddress,
+  isRegistered as checkIsRegistered, getRegistryNonce, signRegistration,
+  STEALTH_KEY_DERIVATION_MESSAGE,
   type StealthKeyPair, type StealthMetaAddress,
   deriveClaimAddresses, deriveClaimAddressesWithPin, saveClaimAddressesToStorage, loadClaimAddressesFromStorage,
   type DerivedClaimAddress,
@@ -187,22 +188,34 @@ export function useStealthAddress() {
   const exportKeys = useCallback(() => stealthKeys, [stealthKeys]);
 
   const registerMetaAddress = useCallback(async (): Promise<string | null> => {
-    if (!metaAddress || !isConnected) { setError('No keys or wallet not connected'); return null; }
+    if (!metaAddress || !isConnected || !address) { setError('No keys or wallet not connected'); return null; }
     setError(null);
     setIsLoading(true);
     try {
       const provider = await getProviderWithAccounts();
       if (!provider) throw new Error('No wallet provider');
-      const txHash = await registerStealthMetaAddress(provider.getSigner(), metaAddress);
+
+      // Sponsored flow: user signs EIP-712 typed data (gasless), deployer submits on-chain
+      const nonce = await getRegistryNonce(provider, address);
+      const signature = await signRegistration(provider.getSigner(), metaAddress, nonce, 111551119090);
+
+      const res = await fetch('/api/sponsor-register-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ registrant: address, metaAddress, signature }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sponsored registration failed');
+
       setIsRegistered(true);
-      return txHash;
+      return data.txHash;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to register');
       return null;
     } finally {
       setIsLoading(false);
     }
-  }, [metaAddress, isConnected]);
+  }, [metaAddress, isConnected, address]);
 
   const checkRegistration = useCallback(async (): Promise<boolean> => {
     if (!address || !isConnected) return false;

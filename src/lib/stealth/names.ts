@@ -32,7 +32,8 @@ export function getNameRegistryAddress(): string {
     if (windowEnv) return windowEnv;
   }
 
-  return registryAddress;
+  // Hardcoded fallback (Thanos Sepolia, deployed 2026-02-07)
+  return registryAddress || '0x0129DE641192920AB78eBca2eF4591E2Ac48BA59';
 }
 
 export function isNameRegistryConfigured(): boolean {
@@ -166,4 +167,46 @@ export async function transferStealthName(signer: ethers.Signer, name: string, n
   const registry = getRegistry(signer);
   const tx = await registry.transferName(stripNameSuffix(name), newOwner);
   return (await tx.wait()).transactionHash;
+}
+
+/**
+ * Discover which name maps to a given meta-address.
+ * Checks names owned by the deployer/sponsor (who may have registered on user's behalf).
+ */
+export async function discoverNameByMetaAddress(
+  _provider: ethers.providers.Provider,
+  metaAddressHex: string
+): Promise<string | null> {
+  const addr = getNameRegistryAddress();
+  if (!addr) return null;
+
+  // Normalize meta-address to raw hex for comparison
+  const targetHex = metaAddressHex.startsWith('st:')
+    ? '0x' + (metaAddressHex.match(/st:[a-z]+:0x([0-9a-fA-F]+)/)?.[1] || '')
+    : metaAddressHex.startsWith('0x') ? metaAddressHex : '0x' + metaAddressHex;
+
+  if (!targetHex || targetHex === '0x') return null;
+
+  try {
+    const rpcProvider = getReadOnlyProvider();
+    const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
+
+    // Check names owned by deployer/sponsor — they register on behalf of users
+    const DEPLOYER = '0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496';
+    const deployerNames: string[] = await registry.getNamesOwnedBy(DEPLOYER);
+
+    for (const name of deployerNames) {
+      try {
+        const resolved: string = await registry.resolveName(name);
+        if (resolved && resolved.toLowerCase() === targetHex.toLowerCase()) {
+          return name;
+        }
+      } catch { continue; }
+    }
+
+    return null;
+  } catch (e) {
+    console.error('[names] discoverNameByMetaAddress error:', e);
+    return null;
+  }
 }

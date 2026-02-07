@@ -21,7 +21,7 @@ try {
   const deployment = JSON.parse(fs.readFileSync(deploymentPath, 'utf8'));
   ANNOUNCER_ADDRESS = deployment.announcer;
 } catch {
-  ANNOUNCER_ADDRESS = '0x5ac18d5AdaC9b65E1Be9291A7C2cDbf33b584a3b';
+  ANNOUNCER_ADDRESS = '0x2C2a59E9e71F2D1A8A2D447E73813B9F89CBb125';
 }
 const AMOUNT_TO_SEND = process.argv[3] || '0.01';
 const LINK_SLUG = process.argv[4] || '';

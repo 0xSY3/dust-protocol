@@ -1,32 +1,37 @@
-import { useState, useCallback, useEffect } from 'react';
-import { useAccount, useSwitchChain } from 'wagmi';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
 import {
-  registerStealthName, resolveStealthName, isNameAvailable, getNamesOwnedBy,
-  updateNameMetaAddress, isNameRegistryConfigured, stripNameSuffix,
-  formatNameWithSuffix, isValidName,
+  resolveStealthName, isNameAvailable, getNamesOwnedBy,
+  isNameRegistryConfigured, stripNameSuffix,
+  formatNameWithSuffix, isValidName, getNameOwner, discoverNameByMetaAddress,
 } from '@/lib/stealth';
-import { l2Chain } from '@/config/network';
 
 interface OwnedName {
   name: string;
   fullName: string;
 }
 
-function getProvider() {
-  if (typeof window === 'undefined' || !window.ethereum) return null;
-  return new ethers.providers.Web3Provider(window.ethereum as ethers.providers.ExternalProvider);
+const USERNAME_KEY = 'dust_username_';
+
+function getStoredUsername(addr: string): string | null {
+  try { return localStorage.getItem(USERNAME_KEY + addr.toLowerCase()); } catch { return null; }
 }
 
-export function useStealthName() {
-  const { address, isConnected, chainId } = useAccount();
-  const { switchChainAsync } = useSwitchChain();
+function storeUsername(addr: string, name: string): void {
+  try { localStorage.setItem(USERNAME_KEY + addr.toLowerCase(), name); } catch {}
+}
+
+export function useStealthName(userMetaAddress?: string | null) {
+  const { address, isConnected } = useAccount();
   const [ownedNames, setOwnedNames] = useState<OwnedName[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const recoveryAttempted = useRef(false);
+  const metaRef = useRef(userMetaAddress);
+  metaRef.current = userMetaAddress;
 
   const isConfigured = isNameRegistryConfigured();
-  const isOnCorrectNetwork = chainId === l2Chain.id;
 
   const validateName = useCallback((name: string): { valid: boolean; error?: string } => {
     const stripped = stripNameSuffix(name);
@@ -36,29 +41,99 @@ export function useStealthName() {
     return { valid: true };
   }, []);
 
+  // Core name loading — queries on-chain, falls back to localStorage
   const loadOwnedNames = useCallback(async () => {
     if (!isConnected || !address || !isConfigured) {
       setOwnedNames([]);
       return;
     }
 
-    // No wallet provider needed - uses direct Thanos RPC for read-only calls
     setIsLoading(true);
     setError(null);
 
     try {
       const names = await getNamesOwnedBy(null as unknown as ethers.providers.Provider, address);
-      setOwnedNames(names.map(name => ({ name, fullName: formatNameWithSuffix(name) })));
+
+      if (names.length > 0) {
+        setOwnedNames(names.reverse().map(name => ({ name, fullName: formatNameWithSuffix(name) })));
+        // Also persist to localStorage for future resilience
+        storeUsername(address, names[0]);
+        return;
+      }
+
+      // On-chain empty — check localStorage
+      const storedName = getStoredUsername(address);
+      if (storedName) {
+        setOwnedNames([{ name: storedName, fullName: formatNameWithSuffix(storedName) }]);
+        // Try background recovery
+        if (!recoveryAttempted.current) {
+          recoveryAttempted.current = true;
+          tryRecoverName(storedName, address);
+        }
+      }
     } catch (e) {
+      const storedName = address ? getStoredUsername(address) : null;
+      if (storedName) {
+        setOwnedNames([{ name: storedName, fullName: formatNameWithSuffix(storedName) }]);
+      }
       setError(e instanceof Error ? e.message : 'Failed to load names');
     } finally {
       setIsLoading(false);
     }
   }, [address, isConnected, isConfigured]);
 
+  // Initial load
   useEffect(() => {
     if (isConnected && isConfigured) loadOwnedNames();
   }, [isConnected, isConfigured, loadOwnedNames]);
+
+  // Discovery: when metaAddress becomes available and we still have no names, try event-based discovery
+  useEffect(() => {
+    if (!userMetaAddress || !address || !isConfigured || ownedNames.length > 0) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const discovered = await discoverNameByMetaAddress(
+          null as unknown as ethers.providers.Provider,
+          userMetaAddress
+        );
+        if (cancelled || !discovered) return;
+        storeUsername(address, discovered);
+        setOwnedNames([{ name: discovered, fullName: formatNameWithSuffix(discovered) }]);
+        // Try to recover ownership
+        if (!recoveryAttempted.current) {
+          recoveryAttempted.current = true;
+          tryRecoverName(discovered, address);
+        }
+      } catch {
+        // Silent — discovery is best-effort
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userMetaAddress, address, isConfigured, ownedNames.length]);
+
+  // Background recovery: transfer name from deployer to user if needed
+  const tryRecoverName = useCallback(async (name: string, userAddress: string) => {
+    try {
+      const owner = await getNameOwner(null as unknown as ethers.providers.Provider, name);
+      if (!owner || owner.toLowerCase() === userAddress.toLowerCase()) return; // already owned or free
+      // Try sponsored transfer from deployer
+      const res = await fetch('/api/sponsor-name-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, newOwner: userAddress }),
+      });
+      if (res.ok) {
+        const refreshedNames = await getNamesOwnedBy(null as unknown as ethers.providers.Provider, userAddress);
+        if (refreshedNames.length > 0) {
+          setOwnedNames(refreshedNames.reverse().map(n => ({ name: n, fullName: formatNameWithSuffix(n) })));
+        }
+      }
+    } catch {
+      // Silent — recovery is best-effort
+    }
+  }, []);
 
   const registerName = useCallback(async (name: string, metaAddress: string): Promise<string | null> => {
     if (!isConnected || !isConfigured) {
@@ -76,104 +151,47 @@ export function useStealthName() {
     setError(null);
 
     try {
-      // Auto-switch to Thanos Sepolia if on wrong network
-      if (!isOnCorrectNetwork) {
-        try {
-          await switchChainAsync({ chainId: l2Chain.id });
-          // Wait for network switch to complete
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch {
-          setError(`Please switch to ${l2Chain.name} network`);
-          setIsLoading(false);
-          return null;
-        }
-      }
+      // Sponsored: deployer registers name on-chain (user pays no gas)
+      const res = await fetch('/api/sponsor-name-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: stripNameSuffix(name), metaAddress }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Name registration failed');
 
-      const provider = getProvider();
-      if (!provider) {
-        setError('No wallet provider');
-        setIsLoading(false);
-        return null;
-      }
-
-      const txHash = await registerStealthName(provider.getSigner(), name, metaAddress);
+      if (address) storeUsername(address, stripNameSuffix(name));
       await loadOwnedNames();
-      return txHash;
+      return data.txHash;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to register name';
-      // Make error more user-friendly
-      if (msg.includes('execution reverted')) {
-        setError('Transaction failed. Please ensure you are on Thanos Sepolia network.');
-      } else {
-        setError(msg);
-      }
+      setError(msg);
       return null;
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, isConfigured, isOnCorrectNetwork, validateName, loadOwnedNames, switchChainAsync]);
+  }, [address, isConnected, isConfigured, validateName, loadOwnedNames]);
 
   const checkAvailability = useCallback(async (name: string): Promise<boolean | null> => {
-    if (!isConfigured) {
-      console.warn('[useStealthName] Name registry not configured');
-      return null;
-    }
-    // No wallet provider needed - uses direct Thanos RPC for read-only calls
+    if (!isConfigured) return null;
     try {
       return await isNameAvailable(null as unknown as ethers.providers.Provider, name);
-    } catch (e) {
-      console.error('[useStealthName] checkAvailability error:', e);
-      return null;
-    }
+    } catch { return null; }
   }, [isConfigured]);
 
   const resolveName = useCallback(async (name: string): Promise<string | null> => {
     if (!isConfigured) return null;
-    // No wallet provider needed - uses direct Thanos RPC for read-only calls
     try {
       return await resolveStealthName(null as unknown as ethers.providers.Provider, name);
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }, [isConfigured]);
 
-  const updateMetaAddress = useCallback(async (name: string, newMetaAddress: string): Promise<string | null> => {
-    if (!isConnected || !isConfigured) {
-      setError('Not connected or registry not configured');
-      return null;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Auto-switch to Thanos Sepolia if on wrong network
-      if (!isOnCorrectNetwork) {
-        try {
-          await switchChainAsync({ chainId: l2Chain.id });
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } catch {
-          setError(`Please switch to ${l2Chain.name} network`);
-          setIsLoading(false);
-          return null;
-        }
-      }
-
-      const provider = getProvider();
-      if (!provider) {
-        setError('No wallet provider');
-        setIsLoading(false);
-        return null;
-      }
-
-      return await updateNameMetaAddress(provider.getSigner(), name, newMetaAddress);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update meta-address');
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isConnected, isConfigured, isOnCorrectNetwork, switchChainAsync]);
+  const updateMetaAddress = useCallback(async (_name: string, _newMetaAddress: string): Promise<string | null> => {
+    // Name meta-address updates are handled by the deployer (name owner)
+    // Not exposed to users currently
+    setError('Not supported — contact admin');
+    return null;
+  }, []);
 
   return {
     ownedNames, loadOwnedNames, registerName, checkAvailability, resolveName, updateMetaAddress,

@@ -24,15 +24,16 @@ export default function LinksPage() {
     }
   }, [stealthKeys, scanInBackground, stopBackgroundScan]);
 
-  // Compute per-link payment counts and totals from scanned data
+  // Compute per-link payment counts — only payments tagged with that link's slug
   const linkStats = useMemo(() => {
     const stats: Record<string, { count: number; total: number }> = {};
     for (const p of payments) {
       const slug = p.announcement.linkSlug;
       if (!slug) continue;
+      const amount = parseFloat(p.originalAmount || p.balance || "0");
       if (!stats[slug]) stats[slug] = { count: 0, total: 0 };
       stats[slug].count++;
-      stats[slug].total += parseFloat(p.originalAmount || p.balance || "0");
+      stats[slug].total += amount;
     }
     return stats;
   }, [payments]);

@@ -99,6 +99,7 @@ export const PrivateWallet = () => {
   const [amount, setAmount] = useState("");
   const [sendStep, setSendStep] = useState<"input" | "confirm" | "success">("input");
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+  const [resolvedLinkSlug, setResolvedLinkSlug] = useState<string | undefined>(undefined);
   const [isResolving, setIsResolving] = useState(false);
   const [sendTxHash, setSendTxHash] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
@@ -113,13 +114,29 @@ export const PrivateWallet = () => {
 
   useEffect(() => {
     const resolve = async () => {
+      setResolvedLinkSlug(undefined);
       if (!recipient) { setResolvedAddress(null); return; }
       if (recipient.startsWith("st:")) { setResolvedAddress(recipient); return; }
       if (nameRegistryConfigured && isStealthName(recipient)) {
         setIsResolving(true);
-        const resolved = await resolveName(recipient);
+        let nameToResolve = recipient;
+        const normalized = recipient.toLowerCase().trim();
+        if (normalized.endsWith('.tok')) {
+          const withoutSuffix = normalized.slice(0, -4);
+          const parts = withoutSuffix.split(".");
+          if (parts.length > 1) {
+            nameToResolve = parts[parts.length - 1] + '.tok';
+            setResolvedLinkSlug(parts[0]);
+          }
+        }
+        const resolved = await resolveName(nameToResolve);
         setIsResolving(false);
-        setResolvedAddress(resolved ? `st:thanos:${resolved}` : null);
+        if (resolved) {
+          setResolvedAddress(`st:thanos:${resolved}`);
+        } else {
+          setResolvedAddress(null);
+          setResolvedLinkSlug(undefined);
+        }
         return;
       }
       setResolvedAddress(null);
@@ -161,7 +178,7 @@ export const PrivateWallet = () => {
 
   const handleSend = async () => {
     try {
-      const hash = await sendEthToStealth(resolvedAddress || recipient, amount);
+      const hash = await sendEthToStealth(resolvedAddress || recipient, amount, resolvedLinkSlug);
       if (hash) { setSendTxHash(hash); setSendStep("success"); }
     } catch {
       // Error state already set by sendEthToStealth

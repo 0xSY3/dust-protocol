@@ -23,6 +23,7 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
   const [amount, setAmount] = useState("");
   const [sendStep, setSendStep] = useState<"input" | "confirm" | "success">("input");
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+  const [resolvedLinkSlug, setResolvedLinkSlug] = useState<string | undefined>(undefined);
   const [isResolving, setIsResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [sendTxHash, setSendTxHash] = useState<string | null>(null);
@@ -30,20 +31,21 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
   useEffect(() => {
     const resolve = async () => {
       setResolveError(null);
+      setResolvedLinkSlug(undefined);
       if (!recipient) { setResolvedAddress(null); return; }
       if (recipient.startsWith("st:")) { setResolvedAddress(recipient); return; }
       if (nameRegistryConfigured && isStealthName(recipient)) {
         setIsResolving(true);
-        // Handle multi-part .tok names: "link.username.tok" → resolve "username"
+        // Handle multi-part .tok names: "link.username.tok" → resolve "username", extract linkSlug
         // Single part: "username.tok" → resolve "username"
         let nameToResolve = recipient;
         const normalized = recipient.toLowerCase().trim();
         if (normalized.endsWith(NAME_SUFFIX)) {
           const withoutSuffix = normalized.slice(0, -NAME_SUFFIX.length);
           const parts = withoutSuffix.split(".");
-          // If multi-part (e.g. "link.username"), use the last part as the username
           if (parts.length > 1) {
             nameToResolve = parts[parts.length - 1] + NAME_SUFFIX;
+            setResolvedLinkSlug(parts[0]);
           }
         }
         const resolved = await resolveName(nameToResolve);
@@ -52,6 +54,7 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
           setResolvedAddress(`st:thanos:${resolved}`);
         } else {
           setResolvedAddress(null);
+          setResolvedLinkSlug(undefined);
           setResolveError(`Name "${nameToResolve.replace(NAME_SUFFIX, "")}" not found`);
         }
         return;
@@ -69,13 +72,13 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
   };
 
   const handleSend = async () => {
-    const hash = await sendEthToStealth(resolvedAddress || recipient, amount);
+    const hash = await sendEthToStealth(resolvedAddress || recipient, amount, resolvedLinkSlug);
     if (hash) { setSendTxHash(hash); setSendStep("success"); }
   };
 
   const reset = () => {
     setRecipient(""); setAmount(""); setSendStep("input");
-    setSendTxHash(null); setResolvedAddress(null); setResolveError(null);
+    setSendTxHash(null); setResolvedAddress(null); setResolvedLinkSlug(undefined); setResolveError(null);
   };
 
   const handleClose = () => { reset(); onClose(); };

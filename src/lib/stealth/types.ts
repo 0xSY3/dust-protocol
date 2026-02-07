@@ -62,14 +62,14 @@ function getContractAddresses(): StealthContractAddresses {
 
   if (announcer && registry) return { announcer, registry };
 
-  // Thanos Sepolia defaults (deployed 2026-02-06)
+  // Thanos Sepolia defaults (redeployed 2026-02-07)
   return {
-    announcer: '0x5ac18d5AdaC9b65E1Be9291A7C2cDbf33b584a3b',
-    registry: '0x77c3d8c2B0bb27c9A8ACCa39F2398aaa021eb776',
+    announcer: '0x2C2a59E9e71F2D1A8A2D447E73813B9F89CBb125',
+    registry: '0x9C527Cc8CB3F7C73346EFd48179e564358847296',
   };
 }
 
 export const CANONICAL_ADDRESSES = getContractAddresses();
 
 // Block number when contracts were deployed — scanner should never start after this
-export const DEPLOYMENT_BLOCK = 6254440;
+export const DEPLOYMENT_BLOCK = 6272527;
