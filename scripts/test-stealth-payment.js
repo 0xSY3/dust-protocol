@@ -23,7 +23,8 @@ try {
 } catch {
   ANNOUNCER_ADDRESS = '0x5ac18d5AdaC9b65E1Be9291A7C2cDbf33b584a3b';
 }
-const AMOUNT_TO_SEND = '0.01'; // 0.01 TOKAMAK
+const AMOUNT_TO_SEND = process.argv[3] || '0.01';
+const LINK_SLUG = process.argv[4] || '';
 
 const ANNOUNCER_ABI = [
   'function announce(uint256 schemeId, address stealthAddress, bytes calldata ephemeralPubKey, bytes calldata metadata) external',
@@ -131,7 +132,7 @@ async function main() {
     1, // schemeId = secp256k1
     stealthAddress,
     '0x' + ephemeralPublicKey,
-    '0x' + viewTag
+    '0x' + viewTag + (LINK_SLUG ? Buffer.from(LINK_SLUG, 'utf8').toString('hex') : '')
   );
   console.log(`Announce TX: ${announceTx.hash}`);
   await announceTx.wait();
