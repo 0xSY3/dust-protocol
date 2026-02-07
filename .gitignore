@@ -34,6 +34,10 @@ Thumbs.db
 # Testing
 coverage/
 
+# Scripts (contain private keys / deployment utilities)
+scripts/
+stealth-deployment.json
+
 # Misc
 *.log
 *.tsbuildinfo
