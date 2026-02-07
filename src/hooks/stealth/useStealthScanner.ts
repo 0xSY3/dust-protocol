@@ -3,7 +3,8 @@ import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
 import {
   scanAnnouncements, setLastScannedBlock as saveLastScannedBlock,
-  getAnnouncementCount, getAddressFromPrivateKey, type StealthKeyPair, type ScanResult,
+  getLastScannedBlock, getAnnouncementCount, getAddressFromPrivateKey,
+  type StealthKeyPair, type ScanResult,
   DEPLOYMENT_BLOCK,
 } from '@/lib/stealth';
 
@@ -29,6 +30,11 @@ function getProvider() {
 // Direct RPC provider for accurate fee data (bypasses MetaMask network issues)
 function getThanosProvider() {
   return new ethers.providers.JsonRpcProvider(THANOS_RPC);
+}
+
+// Batch provider for parallel balance queries — batches multiple JSON-RPC calls into single HTTP request
+function getThanosBatchProvider() {
+  return new ethers.providers.JsonRpcBatchProvider(THANOS_RPC);
 }
 
 function loadPaymentsFromStorage(address: string): StealthPayment[] {
@@ -181,9 +187,10 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       return;
     }
 
-    // Use direct RPC provider for scanning — more reliable than MetaMask
-    // Scanning is read-only (events + balances), no signer needed
+    // Use direct RPC provider for event scanning — more reliable than MetaMask
     const provider = getThanosProvider();
+    // Use batch provider for balance queries — batches 2N calls into fewer HTTP requests
+    const batchProvider = getThanosBatchProvider();
 
     if (!silent) {
       setError(null);
@@ -192,9 +199,24 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     }
 
     try {
-      const startBlock = fromBlock ?? DEPLOYMENT_BLOCK;
+      // Incremental scanning: use lastScannedBlock for silent/background scans
+      let startBlock: number;
+      if (fromBlock !== undefined) {
+        startBlock = fromBlock;
+      } else if (silent && address) {
+        // Background scan: only scan new blocks since last scan
+        startBlock = getLastScannedBlock(address) ?? DEPLOYMENT_BLOCK;
+      } else {
+        // Full scan (manual trigger): always from deployment
+        startBlock = DEPLOYMENT_BLOCK;
+      }
+
       const latestBlock = await provider.getBlockNumber();
-      console.log(`[useStealthScanner] scan() called. silent=${silent}, stealthKeys present=${!!stealthKeys}, fromBlock=${startBlock}, latestBlock=${latestBlock}`);
+
+      // Skip if we're already up to date (background scan optimization)
+      if (silent && startBlock >= latestBlock) return;
+
+      console.log(`[useStealthScanner] scan() silent=${silent}, from=${startBlock}, latest=${latestBlock}`);
 
       if (!silent) {
         const total = await getAnnouncementCount(provider, startBlock, latestBlock);
@@ -202,15 +224,14 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       }
 
       const results = await scanAnnouncements(provider, stealthKeys, startBlock, latestBlock);
-      console.log(`[useStealthScanner] scanAnnouncements returned ${results.length} results`);
 
+      // Batch all balance queries via JsonRpcBatchProvider
       const enriched: StealthPayment[] = await Promise.all(
         results.map(async (r) => {
           try {
-            // Query current balance AND balance at announcement block (original amount)
             const [bal, historicalBal] = await Promise.all([
-              provider.getBalance(r.announcement.stealthAddress),
-              provider.getBalance(r.announcement.stealthAddress, r.announcement.blockNumber),
+              batchProvider.getBalance(r.announcement.stealthAddress),
+              batchProvider.getBalance(r.announcement.stealthAddress, r.announcement.blockNumber),
             ]);
             const balance = ethers.utils.formatEther(bal);
             const originalAmount = ethers.utils.formatEther(historicalBal);
@@ -232,9 +253,6 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         })
       );
 
-      // Track which payments are new (for auto-claim)
-      const newUnclaimed: StealthPayment[] = [];
-
       setPayments((prev) => {
         const existingMap = new Map(prev.map(p => [p.announcement.txHash, p]));
 
@@ -244,23 +262,18 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
             existingMap.set(p.announcement.txHash, {
               ...existing,
               balance: p.balance,
-              // Keep original amount from first discovery (before claim drained it)
               originalAmount: existing.originalAmount || p.originalAmount,
               claimed: existing.claimed || p.claimed,
             });
           } else {
             existingMap.set(p.announcement.txHash, p);
-            // New unclaimed payment — candidate for auto-claim
-            if (!p.claimed && !p.keyMismatch && parseFloat(p.balance || '0') > 0) {
-              newUnclaimed.push(p);
-            }
           }
         });
 
         return Array.from(existingMap.values());
       });
 
-      // Also check existing unclaimed (e.g., ones that failed auto-claim before)
+      // Auto-claim any unclaimed payments
       const allUnclaimed = enriched.filter(p =>
         !p.claimed && !p.keyMismatch && parseFloat(p.balance || '0') > 0
       );
@@ -273,8 +286,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       }
 
       if (!silent) {
-        const total = await getAnnouncementCount(provider, startBlock, latestBlock);
-        setProgress({ current: total, total });
+        setProgress({ current: results.length, total: results.length });
       }
     } catch (e) {
       console.error('[useStealthScanner] Scan error:', e);
@@ -289,14 +301,14 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
 
   const scanInBackground = useCallback(() => {
     if (scanIntervalRef.current) return;
-    // First scan is visible, subsequent ones are silent
+    // First scan is visible (full scan), subsequent ones are silent (incremental)
     scanRef.current();
     scanIntervalRef.current = setInterval(() => {
       if (!isBgScanningRef.current) {
         isBgScanningRef.current = true;
         scanRef.current(undefined, true).finally(() => { isBgScanningRef.current = false; });
       }
-    }, 3000);
+    }, 30000);
   }, []);
 
   const stopBackgroundScan = useCallback(() => {
