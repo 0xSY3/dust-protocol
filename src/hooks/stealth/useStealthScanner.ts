@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import {
   scanAnnouncements, setLastScannedBlock as saveLastScannedBlock,
   getLastScannedBlock, getAnnouncementCount, getAddressFromPrivateKey,
+  signWalletDrain,
   type StealthKeyPair, type ScanResult,
   DEPLOYMENT_BLOCK,
 } from '@/lib/stealth';
@@ -56,27 +57,54 @@ function savePaymentsToStorage(address: string, payments: StealthPayment[]): voi
   } catch { /* quota exceeded etc */ }
 }
 
+const THANOS_CHAIN_ID = 111551119090;
+
 // Auto-claim a single payment via sponsor-claim API
 async function autoClaimPayment(
-  stealthAddress: string,
-  stealthPrivateKey: string,
+  payment: ScanResult,
   recipient: string,
 ): Promise<{ txHash: string; amount: string; gasFunded: string } | null> {
   try {
+    let body: Record<string, string>;
+
+    if (payment.walletType === 'create2') {
+      // CREATE2 wallet: sign drain client-side, send signature (private key stays in browser)
+      const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
+      const signature = await signWalletDrain(
+        payment.stealthPrivateKey,
+        payment.announcement.stealthAddress,
+        recipient,
+        THANOS_CHAIN_ID,
+      );
+      body = {
+        stealthAddress: payment.announcement.stealthAddress,
+        owner: ownerEOA,
+        recipient,
+        signature,
+      };
+    } else {
+      // Legacy EOA: send private key to server (backward compat)
+      body = {
+        stealthAddress: payment.announcement.stealthAddress,
+        stealthPrivateKey: payment.stealthPrivateKey,
+        recipient,
+      };
+    }
+
     const res = await fetch('/api/sponsor-claim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stealthAddress, stealthPrivateKey, recipient }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (!res.ok) {
-      console.warn('[AutoClaim] Failed for', stealthAddress, ':', data.error);
+      console.warn('[AutoClaim] Failed for', payment.announcement.stealthAddress, ':', data.error);
       return null;
     }
-    console.log('[AutoClaim] Success:', stealthAddress, '→', recipient, 'amount:', data.amount, 'TON');
+    console.log('[AutoClaim] Success:', payment.announcement.stealthAddress, '→', recipient, 'amount:', data.amount, 'TON', 'type:', payment.walletType);
     return data;
   } catch (e) {
-    console.warn('[AutoClaim] Error for', stealthAddress, ':', e);
+    console.warn('[AutoClaim] Error for', payment.announcement.stealthAddress, ':', e);
     return null;
   }
 }
@@ -142,27 +170,19 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         p.announcement.txHash === txHash ? { ...p, autoClaiming: true } : p
       ));
 
-      // Verify key matches
+      // Verify key is valid (for CREATE2, key derives the owner not the wallet address)
       try {
-        const derived = getAddressFromPrivateKey(payment.stealthPrivateKey);
-        if (derived.toLowerCase() !== payment.announcement.stealthAddress.toLowerCase()) {
-          console.warn('[AutoClaim] Key mismatch, skipping:', txHash);
-          autoClaimingRef.current.delete(txHash);
-          setPayments(prev => prev.map(p =>
-            p.announcement.txHash === txHash ? { ...p, autoClaiming: false, keyMismatch: true } : p
-          ));
-          continue;
-        }
+        getAddressFromPrivateKey(payment.stealthPrivateKey);
       } catch {
+        console.warn('[AutoClaim] Invalid key, skipping:', txHash);
         autoClaimingRef.current.delete(txHash);
+        setPayments(prev => prev.map(p =>
+          p.announcement.txHash === txHash ? { ...p, autoClaiming: false, keyMismatch: true } : p
+        ));
         continue;
       }
 
-      const result = await autoClaimPayment(
-        payment.announcement.stealthAddress,
-        payment.stealthPrivateKey,
-        recipient,
-      );
+      const result = await autoClaimPayment(payment, recipient);
 
       if (result) {
         setPayments(prev => prev.map(p =>
@@ -330,21 +350,40 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     setError(null);
 
     try {
-      const derived = getAddressFromPrivateKey(payment.stealthPrivateKey);
-      if (derived.toLowerCase() !== payment.announcement.stealthAddress.toLowerCase()) {
-        throw new Error('Key mismatch - cannot claim this payment');
-      }
+      console.log('[Claim] Requesting sponsored withdrawal, type:', payment.walletType || 'eoa');
 
-      console.log('[Claim] Requesting sponsored withdrawal...');
+      let body: Record<string, string>;
+
+      if (payment.walletType === 'create2') {
+        const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
+        const signature = await signWalletDrain(
+          payment.stealthPrivateKey,
+          payment.announcement.stealthAddress,
+          recipient,
+          THANOS_CHAIN_ID,
+        );
+        body = {
+          stealthAddress: payment.announcement.stealthAddress,
+          owner: ownerEOA,
+          recipient,
+          signature,
+        };
+      } else {
+        const derived = getAddressFromPrivateKey(payment.stealthPrivateKey);
+        if (derived.toLowerCase() !== payment.announcement.stealthAddress.toLowerCase()) {
+          throw new Error('Key mismatch - cannot claim this payment');
+        }
+        body = {
+          stealthAddress: payment.announcement.stealthAddress,
+          stealthPrivateKey: payment.stealthPrivateKey,
+          recipient,
+        };
+      }
 
       const res = await fetch('/api/sponsor-claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stealthAddress: payment.announcement.stealthAddress,
-          stealthPrivateKey: payment.stealthPrivateKey,
-          recipient,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
