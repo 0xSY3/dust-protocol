@@ -1,20 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Box, Text, VStack, HStack } from "@chakra-ui/react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useStealthScanner } from "@/hooks/stealth";
+import { useStealthScanner, useRailgun } from "@/hooks/stealth";
 import { colors, radius } from "@/lib/design/tokens";
 import { StealthBalanceCard } from "@/components/dashboard/StealthBalanceCard";
+import { ShieldedBalanceCard } from "@/components/dashboard/ShieldedBalanceCard";
 import { PersonalLinkCard } from "@/components/dashboard/PersonalLinkCard";
 import { RecentActivityCard } from "@/components/dashboard/RecentActivityCard";
 import { SendModal } from "@/components/send/SendModal";
 import { SendIcon, ArrowDownLeftIcon } from "@/components/stealth/icons";
+import { signMessage } from "@/lib/providers";
 
 export default function DashboardPage() {
   const { stealthKeys, metaAddress, ownedNames } = useAuth();
   const { payments, scan, scanInBackground, stopBackgroundScan, isScanning } = useStealthScanner(stealthKeys);
+  const railgun = useRailgun();
   const [showSendModal, setShowSendModal] = useState(false);
+
+  const handleInitRailgun = useCallback(async () => {
+    const sig = await signMessage("Activate Dust Privacy Pool");
+    await railgun.init(sig);
+  }, [railgun.init]);
 
   // Auto-refresh: scan every 30s while dashboard is mounted
   useEffect(() => {
@@ -34,6 +42,23 @@ export default function DashboardPage() {
 
         {/* Balance card */}
         <StealthBalanceCard payments={payments} isScanning={isScanning} scan={scan} />
+
+        {/* Privacy Pool */}
+        <ShieldedBalanceCard
+          isInitialized={railgun.isInitialized}
+          isInitializing={railgun.isInitializing}
+          initError={railgun.initError}
+          shieldedBalance={railgun.shieldedBalance}
+          isShielding={railgun.isShielding}
+          shieldError={railgun.shieldError}
+          isUnshielding={railgun.isUnshielding}
+          unshieldError={railgun.unshieldError}
+          unshieldProgress={railgun.unshieldProgress}
+          payments={payments}
+          onInit={handleInitRailgun}
+          onShieldPayments={railgun.shieldPayments}
+          onUnshield={railgun.unshield}
+        />
 
         {/* Quick actions */}
         <HStack gap="12px">

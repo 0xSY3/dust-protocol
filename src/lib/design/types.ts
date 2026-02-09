@@ -21,6 +21,14 @@ export interface StealthPayment extends ScanResult {
   autoClaiming?: boolean;
 }
 
+export interface OutgoingPayment {
+  txHash: string;
+  to: string; // recipient name or address
+  amount: string;
+  timestamp: number;
+  stealthAddress: string;
+}
+
 export interface PaymentLink {
   id: string;
   name: string;

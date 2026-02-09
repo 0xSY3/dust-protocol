@@ -44,6 +44,13 @@ contracts/wallet/cache/
 contracts/wallet/broadcast/
 contracts/wallet/lib/
 
+# Railgun contracts
+contracts/railgun/node_modules/
+contracts/railgun/cache/
+contracts/railgun/artifacts/
+contracts/railgun/typechain-types/
+contracts/railgun/sdk-forks/**/node_modules/
+
 # Misc
 *.log
 *.tsbuildinfo

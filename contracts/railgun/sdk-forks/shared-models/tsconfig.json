@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "inlineSources": true,
+    "declaration": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "outDir": "dist",
+    "strict": true,
+    "types": ["node", "mocha"]
+  },
+  "ts-node": { "files": true },
+  "include": ["./src/**/*.ts"],
+  "exclude": ["src/**/__tests__", "src/tests", "dist"]
+}
