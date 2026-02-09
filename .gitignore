@@ -38,6 +38,12 @@ coverage/
 scripts/
 stealth-deployment.json
 
+# Foundry
+contracts/wallet/out/
+contracts/wallet/cache/
+contracts/wallet/broadcast/
+contracts/wallet/lib/
+
 # Misc
 *.log
 *.tsbuildinfo
