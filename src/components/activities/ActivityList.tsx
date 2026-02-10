@@ -3,16 +3,21 @@
 import { useState } from "react";
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
 import { colors, radius, EXPLORER_BASE } from "@/lib/design/tokens";
-import type { StealthPayment, ClaimAddress } from "@/lib/design/types";
+import type { StealthPayment, ClaimAddress, OutgoingPayment } from "@/lib/design/types";
 import {
   ArrowDownLeftIcon, CheckCircleIcon, AlertCircleIcon,
-  RefreshIcon, ZapIcon, ArrowUpRightIcon, FileTextIcon,
+  RefreshIcon, ZapIcon, ArrowUpRightIcon, FileTextIcon, SendIcon,
 } from "@/components/stealth/icons";
 
 type Filter = "all" | "incoming" | "outgoing";
 
+type ActivityItem =
+  | { type: "incoming"; payment: StealthPayment; index: number; timestamp: number }
+  | { type: "outgoing"; payment: OutgoingPayment; timestamp: number };
+
 interface ActivityListProps {
   payments: StealthPayment[];
+  outgoingPayments?: OutgoingPayment[];
   isScanning: boolean;
   scan: () => void;
   claimAddressesInitialized: boolean;
@@ -26,14 +31,46 @@ interface ActivityListProps {
 }
 
 export function ActivityList({
-  payments, isScanning, scan,
+  payments, outgoingPayments, isScanning, scan,
   claimAddressesInitialized, claimAddresses, selectedIndex, selectAddress,
   handleClaim, claimingIndex, claimedTx, scanError,
 }: ActivityListProps) {
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
 
-  const filtered = filter === "outgoing" ? [] : payments;
+  // Build unified activity list sorted by time (newest first)
+  const allActivities: ActivityItem[] = [];
+
+  payments.forEach((p, i) => {
+    allActivities.push({
+      type: "incoming",
+      payment: p,
+      index: i,
+      // Use block number as rough timestamp proxy (higher = newer)
+      timestamp: p.announcement.blockNumber,
+    });
+  });
+
+  (outgoingPayments || []).forEach((p) => {
+    allActivities.push({
+      type: "outgoing",
+      payment: p,
+      timestamp: p.timestamp,
+    });
+  });
+
+  // Sort: outgoing by timestamp (ms), incoming by blockNumber — normalize to comparable values
+  // For display, just interleave with outgoing on top if recent
+  allActivities.sort((a, b) => {
+    const tA = a.type === "outgoing" ? a.timestamp : a.timestamp * 1000000; // block numbers are ~6M range
+    const tB = b.type === "outgoing" ? b.timestamp : b.timestamp * 1000000;
+    return tB - tA;
+  });
+
+  const filtered = allActivities.filter((item) => {
+    if (filter === "all") return true;
+    return item.type === filter;
+  });
 
   return (
     <VStack gap="24px" align="stretch">
@@ -84,17 +121,21 @@ export function ActivityList({
             _hover={{ bgColor: colors.bg.input }}
             display="flex" alignItems="center" gap="6px"
             onClick={() => {
-              if (payments.length === 0) return;
+              if (filtered.length === 0) return;
               const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-              const header = "Status,From,Amount (TON),Block,Stealth Address,Tx Hash\n";
-              const rows = payments.map(p => {
-                const status = p.keyMismatch ? "Key Mismatch" : "Received";
-                const from = p.announcement.caller || "unknown";
-                const amount = parseFloat(p.originalAmount || p.balance || "0").toFixed(6);
-                const block = String(p.announcement.blockNumber);
-                const stealth = p.announcement.stealthAddress;
-                const tx = p.announcement.txHash;
-                return [status, from, amount, block, stealth, tx].map(esc).join(",");
+              const header = "Type,Status,From/To,Amount (TON),Tx Hash\n";
+              const rows = filtered.map(item => {
+                if (item.type === "incoming") {
+                  const p = item.payment;
+                  const status = p.keyMismatch ? "Key Mismatch" : "Received";
+                  const from = p.announcement.caller || "unknown";
+                  const amount = parseFloat(p.originalAmount || p.balance || "0").toFixed(6);
+                  const tx = p.announcement.txHash;
+                  return ["Incoming", status, from, amount, tx].map(esc).join(",");
+                } else {
+                  const p = item.payment;
+                  return ["Outgoing", "Sent", p.to, p.amount, p.txHash].map(esc).join(",");
+                }
               }).join("\n");
               const blob = new Blob([header + rows], { type: "text/csv" });
               const url = URL.createObjectURL(blob);
@@ -187,107 +228,24 @@ export function ActivityList({
         </HStack>
       )}
 
-      {/* TODAY date header */}
-      {filtered.length > 0 && (
-        <Text fontSize="12px" fontWeight={600} color={colors.text.muted} letterSpacing="0.05em">TODAY</Text>
-      )}
-
-      {/* Payment list */}
+      {/* Activity list */}
       {filtered.length === 0 ? (
         <Box p="48px" textAlign="center" bgColor={colors.bg.card} borderRadius={radius.lg} border={`2px solid ${colors.border.default}`}>
           <VStack gap="12px">
             <Text fontSize="15px" fontWeight={500} color={colors.text.primary}>No transactions yet</Text>
             <Text fontSize="13px" color={colors.text.muted}>
-              {filter === "outgoing" ? "Sent payments will appear here" : "Received payments will appear here"}
+              {filter === "outgoing" ? "Sent payments will appear here" : filter === "incoming" ? "Received payments will appear here" : "Your payment history will appear here"}
             </Text>
           </VStack>
         </Box>
       ) : (
         <VStack gap="8px" align="stretch">
-          {filtered.map((payment) => {
-            const index = payments.indexOf(payment);
-            const balance = parseFloat(payment.balance || "0");
-            const displayAmount = parseFloat(payment.originalAmount || payment.balance || "0");
-            const canClaim = !payment.claimed && !payment.keyMismatch && balance > 0;
-            const isExpanded = expandedTx === payment.announcement.txHash;
-
-            return (
-              <Box key={payment.announcement.txHash}>
-                <HStack
-                  p="16px 20px"
-                  bgColor={colors.bg.card}
-                  borderRadius={isExpanded ? `${radius.md} ${radius.md} 0 0` : radius.md}
-                  border={`2px solid ${colors.border.default}`}
-                  borderBottom={isExpanded ? "none" : `2px solid ${colors.border.default}`}
-                  justify="space-between"
-                  cursor="pointer"
-                  _hover={{ borderColor: colors.border.light }}
-                  transition="all 0.15s ease"
-                  opacity={1}
-                  onClick={() => setExpandedTx(isExpanded ? null : payment.announcement.txHash)}
-                >
-                  <HStack gap="14px">
-                    <Box
-                      w="42px" h="42px"
-                      borderRadius={radius.full}
-                      bgColor="rgba(43, 90, 226, 0.08)"
-                      display="flex" alignItems="center" justifyContent="center"
-                      flexShrink={0}
-                    >
-                      <ArrowDownLeftIcon size={20} color={colors.accent.indigo} />
-                    </Box>
-                    <VStack align="flex-start" gap="2px">
-                      <Text fontSize="14px" fontWeight={500} color={colors.text.primary}>
-                        Received from {payment.announcement.caller?.slice(0, 6)}...{payment.announcement.caller?.slice(-4) || "unknown"}
-                      </Text>
-                      <Text fontSize="12px" color={colors.text.muted}>
-                        TON &middot; Block #{payment.announcement.blockNumber.toLocaleString()}
-                      </Text>
-                    </VStack>
-                  </HStack>
-
-                  <HStack gap="12px">
-                    <Text fontSize="15px" fontWeight={600} color={colors.accent.indigo}>
-                      +{displayAmount.toFixed(4)} TON
-                    </Text>
-                  </HStack>
-                </HStack>
-
-                {/* Expanded details */}
-                {isExpanded && (
-                  <Box p="16px 20px" bgColor={colors.bg.card} borderRadius={`0 0 ${radius.md} ${radius.md}`}
-                    border={`2px solid ${colors.border.default}`} borderTop="none">
-                    <VStack gap="10px" align="stretch">
-                      <HStack justify="space-between">
-                        <Text fontSize="12px" color={colors.text.muted}>Tx Hash</Text>
-                        <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
-                          {payment.announcement.txHash.slice(0, 18)}...{payment.announcement.txHash.slice(-10)}
-                        </Text>
-                      </HStack>
-                      <HStack justify="space-between">
-                        <Text fontSize="12px" color={colors.text.muted}>Stealth Address</Text>
-                        <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
-                          {payment.announcement.stealthAddress.slice(0, 10)}...{payment.announcement.stealthAddress.slice(-8)}
-                        </Text>
-                      </HStack>
-                      <HStack justify="space-between">
-                        <Text fontSize="12px" color={colors.text.muted}>Gas</Text>
-                        <HStack gap="4px">
-                          <ZapIcon size={11} color={colors.accent.indigo} />
-                          <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>Sponsored</Text>
-                        </HStack>
-                      </HStack>
-                      <a href={`${EXPLORER_BASE}/tx/${payment.announcement.txHash}`} target="_blank" rel="noopener noreferrer">
-                        <HStack gap="5px" mt="4px">
-                          <ArrowUpRightIcon size={12} color={colors.accent.indigo} />
-                          <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>View on Explorer</Text>
-                        </HStack>
-                      </a>
-                    </VStack>
-                  </Box>
-                )}
-              </Box>
-            );
+          {filtered.map((item) => {
+            if (item.type === "incoming") {
+              return <IncomingRow key={item.payment.announcement.txHash} item={item} payments={payments} expandedTx={expandedTx} setExpandedTx={setExpandedTx} handleClaim={handleClaim} claimingIndex={claimingIndex} />;
+            } else {
+              return <OutgoingRow key={item.payment.txHash} item={item} expandedTx={expandedTx} setExpandedTx={setExpandedTx} />;
+            }
           })}
         </VStack>
       )}
@@ -299,5 +257,182 @@ export function ActivityList({
         </HStack>
       )}
     </VStack>
+  );
+}
+
+function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, claimingIndex }: {
+  item: ActivityItem & { type: "incoming" };
+  payments: StealthPayment[];
+  expandedTx: string | null;
+  setExpandedTx: (tx: string | null) => void;
+  handleClaim: (idx: number) => Promise<void>;
+  claimingIndex: number | null;
+}) {
+  const payment = item.payment;
+  const index = item.index;
+  const displayAmount = parseFloat(payment.originalAmount || payment.balance || "0");
+  const isExpanded = expandedTx === payment.announcement.txHash;
+
+  return (
+    <Box>
+      <HStack
+        p="16px 20px"
+        bgColor={colors.bg.card}
+        borderRadius={isExpanded ? `${radius.md} ${radius.md} 0 0` : radius.md}
+        border={`2px solid ${colors.border.default}`}
+        borderBottom={isExpanded ? "none" : `2px solid ${colors.border.default}`}
+        justify="space-between"
+        cursor="pointer"
+        _hover={{ borderColor: colors.border.light }}
+        transition="all 0.15s ease"
+        onClick={() => setExpandedTx(isExpanded ? null : payment.announcement.txHash)}
+      >
+        <HStack gap="14px">
+          <Box
+            w="42px" h="42px"
+            borderRadius={radius.full}
+            bgColor="rgba(43, 90, 226, 0.08)"
+            display="flex" alignItems="center" justifyContent="center"
+            flexShrink={0}
+          >
+            <ArrowDownLeftIcon size={20} color={colors.accent.indigo} />
+          </Box>
+          <VStack align="flex-start" gap="2px">
+            <Text fontSize="14px" fontWeight={500} color={colors.text.primary}>
+              Received from {payment.announcement.caller?.slice(0, 6)}...{payment.announcement.caller?.slice(-4) || "unknown"}
+            </Text>
+            <Text fontSize="12px" color={colors.text.muted}>
+              TON &middot; Block #{payment.announcement.blockNumber.toLocaleString()}
+            </Text>
+          </VStack>
+        </HStack>
+
+        <HStack gap="12px">
+          <Text fontSize="15px" fontWeight={600} color={colors.accent.indigo}>
+            +{displayAmount.toFixed(4)} TON
+          </Text>
+        </HStack>
+      </HStack>
+
+      {isExpanded && (
+        <Box p="16px 20px" bgColor={colors.bg.card} borderRadius={`0 0 ${radius.md} ${radius.md}`}
+          border={`2px solid ${colors.border.default}`} borderTop="none">
+          <VStack gap="10px" align="stretch">
+            <HStack justify="space-between">
+              <Text fontSize="12px" color={colors.text.muted}>Tx Hash</Text>
+              <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
+                {payment.announcement.txHash.slice(0, 18)}...{payment.announcement.txHash.slice(-10)}
+              </Text>
+            </HStack>
+            <HStack justify="space-between">
+              <Text fontSize="12px" color={colors.text.muted}>Stealth Address</Text>
+              <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
+                {payment.announcement.stealthAddress.slice(0, 10)}...{payment.announcement.stealthAddress.slice(-8)}
+              </Text>
+            </HStack>
+            <HStack justify="space-between">
+              <Text fontSize="12px" color={colors.text.muted}>Gas</Text>
+              <HStack gap="4px">
+                <ZapIcon size={11} color={colors.accent.indigo} />
+                <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>Sponsored</Text>
+              </HStack>
+            </HStack>
+            <a href={`${EXPLORER_BASE}/tx/${payment.announcement.txHash}`} target="_blank" rel="noopener noreferrer">
+              <HStack gap="5px" mt="4px">
+                <ArrowUpRightIcon size={12} color={colors.accent.indigo} />
+                <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>View on Explorer</Text>
+              </HStack>
+            </a>
+          </VStack>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function OutgoingRow({ item, expandedTx, setExpandedTx }: {
+  item: ActivityItem & { type: "outgoing" };
+  expandedTx: string | null;
+  setExpandedTx: (tx: string | null) => void;
+}) {
+  const payment = item.payment;
+  const isExpanded = expandedTx === payment.txHash;
+  const displayAmount = parseFloat(payment.amount);
+  const timeStr = new Date(payment.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <Box>
+      <HStack
+        p="16px 20px"
+        bgColor={colors.bg.card}
+        borderRadius={isExpanded ? `${radius.md} ${radius.md} 0 0` : radius.md}
+        border={`2px solid ${colors.border.default}`}
+        borderBottom={isExpanded ? "none" : `2px solid ${colors.border.default}`}
+        justify="space-between"
+        cursor="pointer"
+        _hover={{ borderColor: colors.border.light }}
+        transition="all 0.15s ease"
+        onClick={() => setExpandedTx(isExpanded ? null : payment.txHash)}
+      >
+        <HStack gap="14px">
+          <Box
+            w="42px" h="42px"
+            borderRadius={radius.full}
+            bgColor="rgba(229, 62, 62, 0.08)"
+            display="flex" alignItems="center" justifyContent="center"
+            flexShrink={0}
+          >
+            <SendIcon size={20} color={colors.accent.red} />
+          </Box>
+          <VStack align="flex-start" gap="2px">
+            <Text fontSize="14px" fontWeight={500} color={colors.text.primary}>
+              Sent to {payment.to.includes(".tok") ? payment.to : `${payment.to.slice(0, 10)}...`}
+            </Text>
+            <Text fontSize="12px" color={colors.text.muted}>
+              TON &middot; {timeStr}
+            </Text>
+          </VStack>
+        </HStack>
+
+        <HStack gap="12px">
+          <Text fontSize="15px" fontWeight={600} color={colors.accent.red}>
+            -{displayAmount.toFixed(4)} TON
+          </Text>
+        </HStack>
+      </HStack>
+
+      {isExpanded && (
+        <Box p="16px 20px" bgColor={colors.bg.card} borderRadius={`0 0 ${radius.md} ${radius.md}`}
+          border={`2px solid ${colors.border.default}`} borderTop="none">
+          <VStack gap="10px" align="stretch">
+            <HStack justify="space-between">
+              <Text fontSize="12px" color={colors.text.muted}>Tx Hash</Text>
+              <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
+                {payment.txHash.slice(0, 18)}...{payment.txHash.slice(-10)}
+              </Text>
+            </HStack>
+            <HStack justify="space-between">
+              <Text fontSize="12px" color={colors.text.muted}>Stealth Address</Text>
+              <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
+                {payment.stealthAddress.slice(0, 10)}...{payment.stealthAddress.slice(-8)}
+              </Text>
+            </HStack>
+            <HStack justify="space-between">
+              <Text fontSize="12px" color={colors.text.muted}>Gas</Text>
+              <HStack gap="4px">
+                <ZapIcon size={11} color={colors.accent.indigo} />
+                <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>Sponsored announcement</Text>
+              </HStack>
+            </HStack>
+            <a href={`${EXPLORER_BASE}/tx/${payment.txHash}`} target="_blank" rel="noopener noreferrer">
+              <HStack gap="5px" mt="4px">
+                <ArrowUpRightIcon size={12} color={colors.accent.indigo} />
+                <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>View on Explorer</Text>
+              </HStack>
+            </a>
+          </VStack>
+        </Box>
+      )}
+    </Box>
   );
 }

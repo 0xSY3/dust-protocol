@@ -1,13 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
 import { colors, radius } from "@/lib/design/tokens";
-import {
-  generateStealthAddress,
-  parseStealthMetaAddress,
-  type GeneratedStealthAddress,
-} from "@/lib/stealth";
 import { useBalancePoller } from "@/hooks/stealth/useBalancePoller";
 import { AddressDisplay } from "./AddressDisplay";
 import {
@@ -16,190 +11,85 @@ import {
   ShieldIcon,
 } from "@/components/stealth/icons";
 
-type Status = "generating" | "waiting" | "announcing" | "confirmed" | "announce_failed" | "error";
+type Status = "resolving" | "ready" | "deposit_detected" | "error";
 
 interface NoOptInPaymentProps {
-  resolvedMeta: string;
   recipientName: string;
   displayName: string;
   linkSlug?: string;
 }
 
-interface PendingSession {
-  stealthAddress: string;
-  ephemeralPublicKey: string;
-  viewTag: string;
-  timestamp: number;
-}
-
-function getPendingKey(recipientName: string, linkSlug?: string): string {
-  return `dust_pending_${recipientName}_${linkSlug || "personal"}`;
-}
-
-function savePendingSession(
-  recipientName: string,
-  linkSlug: string | undefined,
-  generated: GeneratedStealthAddress
-): void {
-  try {
-    const session: PendingSession = {
-      stealthAddress: generated.stealthAddress,
-      ephemeralPublicKey: generated.ephemeralPublicKey,
-      viewTag: generated.viewTag,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(getPendingKey(recipientName, linkSlug), JSON.stringify(session));
-  } catch {}
-}
-
-function loadPendingSession(
-  recipientName: string,
-  linkSlug?: string
-): PendingSession | null {
-  try {
-    const raw = localStorage.getItem(getPendingKey(recipientName, linkSlug));
-    if (!raw) return null;
-    const session: PendingSession = JSON.parse(raw);
-    // Expire after 24 hours (long window so shared QR codes remain valid)
-    if (Date.now() - session.timestamp > 24 * 60 * 60 * 1000) {
-      localStorage.removeItem(getPendingKey(recipientName, linkSlug));
-      return null;
-    }
-    return session;
-  } catch {
-    return null;
-  }
-}
-
-function clearPendingSession(recipientName: string, linkSlug?: string): void {
-  try {
-    localStorage.removeItem(getPendingKey(recipientName, linkSlug));
-  } catch {}
-}
-
 export function NoOptInPayment({
-  resolvedMeta,
   recipientName,
   displayName,
   linkSlug,
 }: NoOptInPaymentProps) {
-  const [status, setStatus] = useState<Status>("generating");
+  const [status, setStatus] = useState<Status>("resolving");
   const [stealthAddress, setStealthAddress] = useState<string | null>(null);
-  const [ephemeralPublicKey, setEphemeralPublicKey] = useState<string>("");
-  const [viewTag, setViewTag] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const announcingRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const { hasDeposit, depositAmount, isPolling } = useBalancePoller(
-    status === "waiting" ? stealthAddress : null
+  const { hasDeposit, depositAmount } = useBalancePoller(
+    status === "ready" ? stealthAddress : null
   );
 
-  // Generate or recover stealth address on mount
-  useEffect(() => {
+  const buildUrl = useCallback(() => {
+    const params = new URLSearchParams();
+    if (linkSlug) params.set("link", linkSlug);
+    const qs = params.toString();
+    return `/api/resolve/${encodeURIComponent(recipientName)}${qs ? `?${qs}` : ""}`;
+  }, [recipientName, linkSlug]);
+
+  const doResolve = useCallback(async (signal?: AbortSignal) => {
+    setStatus("resolving");
+    setError(null);
+
     try {
-      // Check for pending session recovery
-      const pending = loadPendingSession(recipientName, linkSlug);
-      if (pending) {
-        setStealthAddress(pending.stealthAddress);
-        setEphemeralPublicKey(pending.ephemeralPublicKey);
-        setViewTag(pending.viewTag);
-        setStatus("waiting");
+      const res = await fetch(buildUrl(), { signal });
+      const data = await res.json();
+
+      if (signal?.aborted) return;
+
+      if (!res.ok) {
+        setError(data.error || "Failed to resolve address");
+        setStatus("error");
         return;
       }
 
-      // Generate new stealth address
-      const meta = parseStealthMetaAddress(resolvedMeta);
-      const generated = generateStealthAddress(meta);
-
-      setStealthAddress(generated.stealthAddress);
-      setEphemeralPublicKey(generated.ephemeralPublicKey);
-      setViewTag(generated.viewTag);
-
-      savePendingSession(recipientName, linkSlug, generated);
-      setStatus("waiting");
+      setStealthAddress(data.stealthAddress);
+      setStatus("ready");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to generate address");
+      if (signal?.aborted) return;
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setError(e instanceof Error ? e.message : "Failed to resolve address");
       setStatus("error");
     }
-  }, [resolvedMeta, recipientName, linkSlug]);
+  }, [buildUrl]);
 
-  // Announce helper — retries up to 3 times with exponential backoff
-  const doAnnounce = useCallback(async (signal: { cancelled: boolean }) => {
-    const ephPubKey = "0x" + ephemeralPublicKey.replace(/^0x/, "");
-    let metadata = "0x" + viewTag;
-    if (linkSlug) {
-      const slugBytes = new TextEncoder().encode(linkSlug);
-      const slugHex = Array.from(slugBytes)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-      metadata += slugHex;
-    }
-
-    const MAX_RETRIES = 3;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      if (signal.cancelled) return;
-      try {
-        const res = await fetch("/api/sponsor-announce", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ stealthAddress, ephemeralPubKey: ephPubKey, metadata }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Announcement failed");
-
-        if (signal.cancelled) return;
-        clearPendingSession(recipientName, linkSlug);
-        setStatus("confirmed");
-        setError(null);
-        return;
-      } catch (e) {
-        console.warn(`[NoOptInPayment] Announce attempt ${attempt + 1}/${MAX_RETRIES} failed:`, e);
-        if (attempt < MAX_RETRIES - 1 && !signal.cancelled) {
-          // API has 5s rate limit per address — wait 6s minimum between attempts
-          await new Promise((r) => setTimeout(r, 6000 * (attempt + 1)));
-        }
-      }
-    }
-
-    // All retries exhausted — keep pending session so user can retry
-    if (signal.cancelled) return;
-    setStatus("announce_failed");
-    setError("Could not register payment on-chain. Your funds are safe — tap Retry.");
-  }, [stealthAddress, ephemeralPublicKey, viewTag, linkSlug, recipientName]);
-
-  // Auto-announce when deposit detected
+  // Resolve on mount — AbortController cancels on cleanup (handles React StrictMode)
   useEffect(() => {
-    if (!hasDeposit || !stealthAddress || announcingRef.current) return;
-    announcingRef.current = true;
-    const signal = { cancelled: false };
-    setStatus("announcing");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    doResolve(controller.signal);
+    return () => { controller.abort(); };
+  }, [doResolve]);
 
-    doAnnounce(signal);
+  // Retry handler (user-initiated, no abort needed)
+  const handleRetry = useCallback(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    doResolve(controller.signal);
+  }, [doResolve]);
 
-    return () => {
-      signal.cancelled = true;
-      announcingRef.current = false;
-    };
-  }, [hasDeposit, stealthAddress, doAnnounce]);
-
-  // Manual retry handler
-  const handleRetryAnnounce = useCallback(() => {
-    setStatus("announcing");
-    setError(null);
-    doAnnounce({ cancelled: false });
-  }, [doAnnounce]);
-
-  // Warn on page close while waiting or if announce failed (session data still needed)
+  // Transition to deposit_detected when balance appears
   useEffect(() => {
-    if (status !== "waiting" && status !== "announce_failed") return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [status]);
+    if (hasDeposit && status === "ready") {
+      setStatus("deposit_detected");
+    }
+  }, [hasDeposit, status]);
 
-  if (status === "generating") {
+  if (status === "resolving") {
     return (
       <VStack gap="16px" py="24px">
         <Spinner size="md" color={colors.accent.indigo} />
@@ -210,18 +100,33 @@ export function NoOptInPayment({
     );
   }
 
-  if (status === "error" && !stealthAddress) {
+  if (status === "error") {
     return (
-      <VStack gap="12px" py="24px">
+      <VStack gap="16px" py="24px">
         <AlertCircleIcon size={32} color={colors.accent.red} />
-        <Text fontSize="14px" color={colors.accent.red}>
+        <Text fontSize="14px" color={colors.accent.red} textAlign="center" px="8px">
           {error || "Something went wrong"}
         </Text>
+        <Box
+          as="button"
+          px="24px"
+          py="10px"
+          bgColor={colors.accent.indigo}
+          color="white"
+          borderRadius={radius.sm}
+          fontSize="14px"
+          fontWeight={600}
+          cursor="pointer"
+          onClick={handleRetry}
+          _hover={{ opacity: 0.9 }}
+        >
+          Retry
+        </Box>
       </VStack>
     );
   }
 
-  if (status === "confirmed") {
+  if (status === "deposit_detected") {
     return (
       <VStack gap="20px" py="24px">
         <Box p="16px" bgColor="rgba(43, 90, 226, 0.08)" borderRadius="50%">
@@ -238,81 +143,11 @@ export function NoOptInPayment({
             Sent to {displayName}
           </Text>
         </VStack>
-        {error && (
-          <HStack
-            gap="6px"
-            p="10px 14px"
-            bgColor="rgba(217, 119, 6, 0.06)"
-            borderRadius={radius.xs}
-          >
-            <AlertCircleIcon size={14} color={colors.accent.amber} />
-            <Text fontSize="12px" color={colors.accent.amber}>
-              {error}
-            </Text>
-          </HStack>
-        )}
       </VStack>
     );
   }
 
-  if (status === "announcing") {
-    return (
-      <VStack gap="16px" py="24px">
-        <Spinner size="md" color={colors.accent.indigo} />
-        <VStack gap="4px">
-          <Text fontSize="15px" fontWeight={600} color={colors.text.primary}>
-            Payment detected!
-          </Text>
-          <Text fontSize="13px" color={colors.text.muted}>
-            Registering on-chain...
-          </Text>
-        </VStack>
-      </VStack>
-    );
-  }
-
-  if (status === "announce_failed") {
-    return (
-      <VStack gap="20px" py="24px">
-        <Box p="16px" bgColor="rgba(217, 119, 6, 0.08)" borderRadius="50%">
-          <AlertCircleIcon size={36} color={colors.accent.amber} />
-        </Box>
-        <VStack gap="6px">
-          <Text fontSize="17px" fontWeight={700} color={colors.text.primary}>
-            Payment Received
-          </Text>
-          {depositAmount && (
-            <Text fontSize="15px" color={colors.text.secondary} fontFamily="'JetBrains Mono', monospace">
-              {depositAmount} TON
-            </Text>
-          )}
-          <Text fontSize="13px" color={colors.accent.amber} textAlign="center" px="8px">
-            {error || "On-chain registration failed. Tap retry to try again."}
-          </Text>
-        </VStack>
-        <Box
-          as="button"
-          px="24px"
-          py="10px"
-          bgColor={colors.accent.indigo}
-          color="white"
-          borderRadius={radius.sm}
-          fontSize="14px"
-          fontWeight={600}
-          cursor="pointer"
-          onClick={handleRetryAnnounce}
-          _hover={{ opacity: 0.9 }}
-        >
-          Retry Registration
-        </Box>
-        <Text fontSize="11px" color={colors.text.muted} textAlign="center">
-          Your funds are safe. Do not close this page.
-        </Text>
-      </VStack>
-    );
-  }
-
-  // status === "waiting"
+  // status === "ready"
   return (
     <VStack gap="20px">
       <style>{`@keyframes dust-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
@@ -364,7 +199,7 @@ export function NoOptInPayment({
         </HStack>
 
         <Text fontSize="11px" color={colors.text.muted} textAlign="center">
-          Keep this page open until payment is confirmed
+          You can close this page — the address is ready to receive
         </Text>
       </VStack>
     </VStack>

@@ -13,6 +13,10 @@ const MAX_GAS_PRICE = ethers.utils.parseUnits('100', 'gwei'); // Gas price cap
 const STEALTH_WALLET_FACTORY = '0x85e7Fe33F594AC819213e63EEEc928Cb53A166Cd';
 const FACTORY_ABI = [
   'function deployAndDrain(address _owner, address _to, bytes _sig)',
+  'function deploy(address _owner) returns (address)',
+];
+const STEALTH_WALLET_ABI = [
+  'function drain(address to, bytes sig)',
 ];
 
 function isValidAddress(addr: string): boolean {
@@ -138,17 +142,33 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
   }
 
   console.log('[Sponsor/CREATE2] Balance:', ethers.utils.formatEther(balance), 'TON');
-  console.log('[Sponsor/CREATE2] Calling deployAndDrain for owner:', owner, '→', recipient);
 
-  const factory = new ethers.Contract(STEALTH_WALLET_FACTORY, FACTORY_ABI, sponsor);
-  const gasLimit = ethers.BigNumber.from(300_000); // CREATE2 deploy + drain needs more gas
+  const gasLimit = ethers.BigNumber.from(300_000);
 
-  const tx = await factory.deployAndDrain(owner, recipient, signature, {
-    gasLimit,
-    type: 2,
-    maxFeePerGas,
-    maxPriorityFeePerGas: maxPriorityFee,
-  });
+  // Check if wallet is already deployed (e.g. from a previous partial claim)
+  const existingCode = await provider.getCode(stealthAddress);
+  const alreadyDeployed = existingCode !== '0x';
+
+  let tx;
+  if (alreadyDeployed) {
+    console.log('[Sponsor/CREATE2] Wallet already deployed, calling drain directly →', recipient);
+    const wallet = new ethers.Contract(stealthAddress, STEALTH_WALLET_ABI, sponsor);
+    tx = await wallet.drain(recipient, signature, {
+      gasLimit,
+      type: 2,
+      maxFeePerGas,
+      maxPriorityFeePerGas: maxPriorityFee,
+    });
+  } else {
+    console.log('[Sponsor/CREATE2] Calling deployAndDrain for owner:', owner, '→', recipient);
+    const factory = new ethers.Contract(STEALTH_WALLET_FACTORY, FACTORY_ABI, sponsor);
+    tx = await factory.deployAndDrain(owner, recipient, signature, {
+      gasLimit,
+      type: 2,
+      maxFeePerGas,
+      maxPriorityFeePerGas: maxPriorityFee,
+    });
+  }
   const receipt = await tx.wait();
 
   console.log('[Sponsor/CREATE2] deployAndDrain complete, tx:', receipt.transactionHash);

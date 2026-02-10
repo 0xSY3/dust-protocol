@@ -5,6 +5,27 @@ import {
   generateStealthAddress, parseStealthMetaAddress, lookupStealthMetaAddress,
   CANONICAL_ADDRESSES, SCHEME_ID, type GeneratedStealthAddress,
 } from '@/lib/stealth';
+import type { OutgoingPayment } from '@/lib/design/types';
+
+const OUTGOING_STORAGE_KEY = 'dust_outgoing_payments_';
+
+function saveOutgoingPayment(senderAddress: string, payment: OutgoingPayment) {
+  const key = OUTGOING_STORAGE_KEY + senderAddress.toLowerCase();
+  const existing: OutgoingPayment[] = JSON.parse(localStorage.getItem(key) || '[]');
+  existing.unshift(payment);
+  // Keep last 100
+  localStorage.setItem(key, JSON.stringify(existing.slice(0, 100)));
+}
+
+export function loadOutgoingPayments(senderAddress: string): OutgoingPayment[] {
+  if (typeof window === 'undefined') return [];
+  const key = OUTGOING_STORAGE_KEY + senderAddress.toLowerCase();
+  try {
+    return JSON.parse(localStorage.getItem(key) || '[]');
+  } catch {
+    return [];
+  }
+}
 
 const ANNOUNCER_ABI = [
   'function announce(uint256 schemeId, address stealthAddress, bytes calldata ephemeralPubKey, bytes calldata metadata) external',
@@ -12,10 +33,39 @@ const ANNOUNCER_ABI = [
 
 // Direct RPC for reliable gas estimation
 const THANOS_RPC = 'https://rpc.thanos-sepolia.tokamak.network';
+const THANOS_CHAIN_ID = 111551119090;
+const THANOS_CHAIN_ID_HEX = '0x' + THANOS_CHAIN_ID.toString(16);
 
 function getProvider() {
   if (typeof window === 'undefined' || !window.ethereum) return null;
   return new ethers.providers.Web3Provider(window.ethereum as ethers.providers.ExternalProvider);
+}
+
+/** Switch MetaMask to Thanos Sepolia, adding the chain if needed */
+async function ensureThanosSepolia(): Promise<void> {
+  if (typeof window === 'undefined' || !window.ethereum) return;
+  try {
+    await window.ethereum.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: THANOS_CHAIN_ID_HEX }],
+    });
+  } catch (err: unknown) {
+    // 4902 = chain not added yet
+    if (err && typeof err === 'object' && 'code' in err && (err as { code: number }).code === 4902) {
+      await window.ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: THANOS_CHAIN_ID_HEX,
+          chainName: 'Thanos Sepolia',
+          nativeCurrency: { name: 'TON', symbol: 'TON', decimals: 18 },
+          rpcUrls: [THANOS_RPC],
+          blockExplorerUrls: ['https://explorer.thanos-sepolia.tokamak.network'],
+        }],
+      });
+    } else {
+      throw err;
+    }
+  }
 }
 
 function getThanosProvider() {
@@ -181,6 +231,7 @@ export function useStealthSend() {
     setIsLoading(true);
 
     try {
+      await ensureThanosSepolia();
       const provider = getProvider();
       if (!provider) throw new Error('No wallet provider');
       const signer = provider.getSigner();
@@ -235,6 +286,15 @@ export function useStealthSend() {
         setError(`Sent successfully but announcement failed. Recipient may need to scan manually.`);
       }
 
+      // Persist outgoing payment for Activities
+      saveOutgoingPayment(signerAddress, {
+        txHash: sendTxHash,
+        to: linkSlug || metaAddress.slice(0, 20),
+        amount,
+        timestamp: Date.now(),
+        stealthAddress: generated.stealthAddress,
+      });
+
       return sendTxHash;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to send';
@@ -251,6 +311,7 @@ export function useStealthSend() {
     setIsLoading(true);
 
     try {
+      await ensureThanosSepolia();
       const provider = getProvider();
       if (!provider) throw new Error('No wallet provider');
       const signer = provider.getSigner();
