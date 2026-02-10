@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
 import { ec as EC } from 'elliptic';
 import type { StealthAnnouncement, ScanResult, StealthKeyPair } from './types';
 import { SCHEME_ID, CANONICAL_ADDRESSES } from './types';
-import { computeViewTag, verifyStealthAddress, computeStealthPrivateKey, getAddressFromPrivateKey, computeStealthWalletAddress } from './address';
+import { computeViewTag, verifyStealthAddress, computeStealthPrivateKey, getAddressFromPrivateKey, computeStealthWalletAddress, computeStealthAccountAddress } from './address';
 
 const secp256k1 = new EC('secp256k1');
 
@@ -91,15 +91,21 @@ export async function scanAnnouncements(
     );
     const derivedEOA = getAddressFromPrivateKey(stealthPrivateKey);
 
-    // Check both EOA match (legacy) and CREATE2 match (new)
-    const eoaMatch = derivedEOA.toLowerCase() === announcement.stealthAddress.toLowerCase();
+    // Check EOA match (legacy), CREATE2 wallet match, and ERC-4337 account match
+    const announcedAddr = announcement.stealthAddress.toLowerCase();
+    const eoaMatch = derivedEOA.toLowerCase() === announcedAddr;
     let create2Match = false;
+    let accountMatch = false;
     if (!eoaMatch) {
       const create2Addr = computeStealthWalletAddress(derivedEOA);
-      create2Match = create2Addr.toLowerCase() === announcement.stealthAddress.toLowerCase();
+      create2Match = create2Addr.toLowerCase() === announcedAddr;
+    }
+    if (!eoaMatch && !create2Match) {
+      const accountAddr = computeStealthAccountAddress(derivedEOA);
+      accountMatch = accountAddr.toLowerCase() === announcedAddr;
     }
 
-    const isMatch = eoaMatch || create2Match;
+    const isMatch = eoaMatch || create2Match || accountMatch;
 
     if (!isMatch) {
       ecdhFiltered++;
@@ -111,7 +117,7 @@ export async function scanAnnouncements(
         stealthPrivateKey,
         isMatch: true,
         privateKeyVerified: true,
-        walletType: create2Match ? 'create2' : 'eoa',
+        walletType: accountMatch ? 'account' : create2Match ? 'create2' : 'eoa',
       });
     }
   }
@@ -167,6 +173,11 @@ export async function scanAnnouncementsViewOnly(
     if (eoaAddr) {
       const create2Addr = computeStealthWalletAddress(eoaAddr);
       if (create2Addr.toLowerCase() === announcement.stealthAddress.toLowerCase()) {
+        matches.push(announcement);
+        continue;
+      }
+      const accountAddr = computeStealthAccountAddress(eoaAddr);
+      if (accountAddr.toLowerCase() === announcement.stealthAddress.toLowerCase()) {
         matches.push(announcement);
       }
     }

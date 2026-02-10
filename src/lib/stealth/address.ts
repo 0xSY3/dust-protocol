@@ -4,7 +4,7 @@ import { ec as EC } from 'elliptic';
 import BN from 'bn.js';
 import { ethers } from 'ethers';
 import type { StealthMetaAddress, GeneratedStealthAddress } from './types';
-import { STEALTH_WALLET_FACTORY, STEALTH_WALLET_CREATION_CODE } from './types';
+import { STEALTH_WALLET_FACTORY, STEALTH_WALLET_CREATION_CODE, STEALTH_ACCOUNT_FACTORY, STEALTH_ACCOUNT_CREATION_CODE, ENTRY_POINT_ADDRESS } from './types';
 
 const secp256k1 = new EC('secp256k1');
 
@@ -31,6 +31,14 @@ export function computeStealthWalletAddress(ownerEOA: string): string {
     [STEALTH_WALLET_CREATION_CODE, ethers.utils.defaultAbiCoder.encode(['address'], [ownerEOA])]
   );
   return ethers.utils.getCreate2Address(STEALTH_WALLET_FACTORY, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
+}
+
+export function computeStealthAccountAddress(ownerEOA: string): string {
+  const initCode = ethers.utils.solidityPack(
+    ['bytes', 'bytes'],
+    [STEALTH_ACCOUNT_CREATION_CODE, ethers.utils.defaultAbiCoder.encode(['address', 'address'], [ENTRY_POINT_ADDRESS, ownerEOA])]
+  );
+  return ethers.utils.getCreate2Address(STEALTH_ACCOUNT_FACTORY, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
 }
 
 export async function signWalletDrain(
@@ -64,7 +72,7 @@ export function generateStealthAddress(meta: StealthMetaAddress): GeneratedSteal
   const stealthPubPoint = spendingKey.getPublic().add(hashKey.getPublic());
 
   const stealthEOAAddress = pubKeyToAddress(stealthPubPoint);
-  const stealthAddress = computeStealthWalletAddress(stealthEOAAddress);
+  const stealthAddress = computeStealthAccountAddress(stealthEOAAddress);
 
   return {
     stealthAddress,
@@ -122,4 +130,9 @@ export function computeViewTag(viewingPrivateKey: string, ephemeralPublicKey: st
 
 export function getAddressFromPrivateKey(privateKey: string): string {
   return new ethers.Wallet(privateKey).address;
+}
+
+export async function signUserOp(userOpHash: string, stealthPrivateKey: string): Promise<string> {
+  const wallet = new ethers.Wallet(stealthPrivateKey);
+  return wallet.signMessage(ethers.utils.arrayify(userOpHash));
 }

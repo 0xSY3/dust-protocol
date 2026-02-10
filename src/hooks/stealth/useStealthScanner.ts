@@ -4,9 +4,10 @@ import { ethers } from 'ethers';
 import {
   scanAnnouncements, setLastScannedBlock as saveLastScannedBlock,
   getLastScannedBlock, getAnnouncementCount, getAddressFromPrivateKey,
-  signWalletDrain,
+  signWalletDrain, signUserOp,
   type StealthKeyPair, type ScanResult,
   DEPLOYMENT_BLOCK,
+  STEALTH_ACCOUNT_FACTORY, STEALTH_ACCOUNT_FACTORY_ABI,
 } from '@/lib/stealth';
 
 interface StealthPayment extends ScanResult {
@@ -59,8 +60,79 @@ function savePaymentsToStorage(address: string, payments: StealthPayment[]): voi
 
 const THANOS_CHAIN_ID = 111551119090;
 
-// Auto-claim a single payment via sponsor-claim API
-async function autoClaimPayment(
+// StealthAccount.drain(address to) selector
+const DRAIN_SELECTOR = '0xece53132';
+
+// Auto-claim an ERC-4337 account payment via bundle API
+async function autoClaimAccount(
+  payment: ScanResult,
+  recipient: string,
+): Promise<{ txHash: string } | null> {
+  try {
+    const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
+    const accountAddress = payment.announcement.stealthAddress;
+
+    // Check if account is already deployed
+    const provider = getThanosProvider();
+    const code = await provider.getCode(accountAddress);
+    const isDeployed = code !== '0x';
+
+    // Build initCode if not deployed
+    let initCode = '0x';
+    if (!isDeployed) {
+      const iface = new ethers.utils.Interface(STEALTH_ACCOUNT_FACTORY_ABI);
+      const createData = iface.encodeFunctionData('createAccount', [ownerEOA, 0]);
+      initCode = ethers.utils.hexConcat([STEALTH_ACCOUNT_FACTORY, createData]);
+    }
+
+    // Build callData: drain(recipient)
+    const callData = ethers.utils.hexConcat([
+      DRAIN_SELECTOR,
+      ethers.utils.defaultAbiCoder.encode(['address'], [recipient]),
+    ]);
+
+    // Step 1: Get completed UserOp from server
+    const prepRes = await fetch('/api/bundle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sender: accountAddress,
+        initCode,
+        callData,
+      }),
+    });
+    const prepData = await prepRes.json();
+    if (!prepRes.ok) {
+      console.warn('[AutoClaim/Account] Prep failed:', prepData.error);
+      return null;
+    }
+
+    // Step 2: Sign userOpHash locally (private key never leaves browser)
+    const { userOp, userOpHash } = prepData;
+    userOp.signature = await signUserOp(userOpHash, payment.stealthPrivateKey);
+
+    // Step 3: Submit signed UserOp
+    const submitRes = await fetch('/api/bundle/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userOp }),
+    });
+    const submitData = await submitRes.json();
+    if (!submitRes.ok) {
+      console.warn('[AutoClaim/Account] Submit failed:', submitData.error);
+      return null;
+    }
+
+    console.log('[AutoClaim/Account] Success:', accountAddress, '→', recipient, 'tx:', submitData.txHash);
+    return submitData;
+  } catch (e) {
+    console.warn('[AutoClaim/Account] Error for', payment.announcement.stealthAddress, ':', e);
+    return null;
+  }
+}
+
+// Auto-claim a single payment via sponsor-claim API (legacy CREATE2 + EOA)
+async function autoClaimLegacy(
   payment: ScanResult,
   recipient: string,
 ): Promise<{ txHash: string; amount: string; gasFunded: string } | null> {
@@ -68,7 +140,6 @@ async function autoClaimPayment(
     let body: Record<string, string>;
 
     if (payment.walletType === 'create2') {
-      // CREATE2 wallet: sign drain client-side, send signature (private key stays in browser)
       const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
       const signature = await signWalletDrain(
         payment.stealthPrivateKey,
@@ -83,7 +154,6 @@ async function autoClaimPayment(
         signature,
       };
     } else {
-      // Legacy EOA: send private key to server (backward compat)
       body = {
         stealthAddress: payment.announcement.stealthAddress,
         stealthPrivateKey: payment.stealthPrivateKey,
@@ -107,6 +177,17 @@ async function autoClaimPayment(
     console.warn('[AutoClaim] Error for', payment.announcement.stealthAddress, ':', e);
     return null;
   }
+}
+
+// Route claim by wallet type
+async function autoClaimPayment(
+  payment: ScanResult,
+  recipient: string,
+): Promise<{ txHash: string } | null> {
+  if (payment.walletType === 'account') {
+    return autoClaimAccount(payment, recipient);
+  }
+  return autoClaimLegacy(payment, recipient);
 }
 
 interface UseStealthScannerOptions {
@@ -352,54 +433,18 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     try {
       console.log('[Claim] Requesting sponsored withdrawal, type:', payment.walletType || 'eoa');
 
-      let body: Record<string, string>;
-
-      if (payment.walletType === 'create2') {
-        const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
-        const signature = await signWalletDrain(
-          payment.stealthPrivateKey,
-          payment.announcement.stealthAddress,
-          recipient,
-          THANOS_CHAIN_ID,
-        );
-        body = {
-          stealthAddress: payment.announcement.stealthAddress,
-          owner: ownerEOA,
-          recipient,
-          signature,
-        };
-      } else {
-        const derived = getAddressFromPrivateKey(payment.stealthPrivateKey);
-        if (derived.toLowerCase() !== payment.announcement.stealthAddress.toLowerCase()) {
-          throw new Error('Key mismatch - cannot claim this payment');
-        }
-        body = {
-          stealthAddress: payment.announcement.stealthAddress,
-          stealthPrivateKey: payment.stealthPrivateKey,
-          recipient,
-        };
+      const result = await autoClaimPayment(payment, recipient);
+      if (!result) {
+        throw new Error('Claim failed');
       }
 
-      const res = await fetch('/api/sponsor-claim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Withdrawal failed');
-      }
-
-      console.log('[Claim] Sponsored withdrawal complete:', data.txHash);
-      console.log('[Claim] Amount:', data.amount, 'TON, Gas funded:', data.gasFunded, 'TON');
+      console.log('[Claim] Sponsored withdrawal complete:', result.txHash);
 
       setPayments(prev => prev.map(p =>
         p.announcement.txHash === payment.announcement.txHash ? { ...p, claimed: true, balance: '0' } : p
       ));
 
-      return data.txHash;
+      return result.txHash;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Claim failed';
       setError(msg);
