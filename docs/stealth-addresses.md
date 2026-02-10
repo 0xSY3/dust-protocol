@@ -69,6 +69,10 @@ Thanos Sepolia (chain ID: 111551119090):
 | ERC5564Announcer | `0x2C2a59E9e71F2D1A8A2D447E73813B9F89CBb125` | Emits Announcement events when payments are made |
 | ERC6538Registry | `0x9C527Cc8CB3F7C73346EFd48179e564358847296` | Stores stealth meta-addresses (public keys) |
 | StealthNameRegistry | `0x0129DE641192920AB78eBca2eF4591E2Ac48BA59` | Maps `.tok` names to meta-addresses |
+| EntryPoint (v0.6) | `0x5c058Eb93CDee95d72398E5441d989ef6453D038` | ERC-4337 UserOperation execution |
+| StealthAccountFactory | `0x0D93df03e6CF09745A24Ee78A4Cab032781E7aa6` | CREATE2 deployment of stealth smart accounts |
+| DustPaymaster | `0x9e2eb36F7161C066351DC9E418E7a0620EE5d095` | Gas sponsorship for stealth claims |
+| StealthWalletFactory | `0x85e7Fe33F594AC819213e63EEEc928Cb53A166Cd` | Legacy CREATE2 wallet deployment |
 
 Deployment block: `6272527` (scanner never starts before this)
 
@@ -78,7 +82,7 @@ Deployment block: `6272527` (scanner never starts before this)
 |------|---------|
 | `/` | Landing page |
 | `/onboarding` | New user setup: connect wallet → set PIN → register name |
-| `/dashboard` | Balance overview, recent payments |
+| `/dashboard` | Unified balance (stealth + claim wallets), address breakdown |
 | `/activities` | Full payment history (incoming stealth payments) |
 | `/links` | Manage payment links (coffee.alice.tok, etc.) |
 | `/links/create` | Create a new payment link |
@@ -89,13 +93,15 @@ Deployment block: `6272527` (scanner never starts before this)
 
 ## Sponsored Gas (API Routes)
 
-All protocol operations are gasless for users. The deployer wallet pays gas via server-side API routes:
+All protocol operations are gasless for users. Gas is sponsored via ERC-4337 (primary) or legacy relayer routes:
 
 | Endpoint | What it does |
 |----------|-------------|
 | `/api/resolve/{name}` | Resolves .tok name → generates fresh stealth address → announces on-chain. Returns address for sender to pay. |
+| `/api/bundle` | Builds ERC-4337 UserOp with paymaster signature for stealth account claims |
+| `/api/bundle/submit` | Receives client-signed UserOp, calls `entryPoint.handleOps()` |
+| `/api/sponsor-claim` | Legacy: sweeps funds from CREATE2/EOA stealth addresses |
 | `/api/sponsor-announce` | Legacy: registers a payment on-chain (Announcement event) |
-| `/api/sponsor-claim` | Sweeps funds from a stealth address to the user's claim address |
 | `/api/sponsor-register-keys` | Registers stealth meta-address on ERC-6538 Registry |
 | `/api/sponsor-name-register` | Registers a .tok name |
 | `/api/sponsor-name-transfer` | Transfers .tok name ownership |
@@ -108,7 +114,7 @@ Each API route has rate limiting and input validation.
 
 Server-side stealth address resolution with eager pre-announcement. Each call:
 1. Resolves the `.tok` name to a stealth meta-address via the StealthNameRegistry contract
-2. Generates a fresh stealth address using a random ephemeral key (ECDH + CREATE2)
+2. Generates a fresh stealth address using a random ephemeral key (ECDH + ERC-4337 account)
 3. Announces the stealth address on-chain immediately (deployer pays gas)
 4. Returns `{ stealthAddress, network, chainId, announceTxHash }`
 

@@ -81,7 +81,22 @@ When someone wants to pay Alice:
 7. Stealth address: last 20 bytes of keccak256(uncompressed P_stealth)
 ```
 
-The stealth address is a normal Ethereum address. Anyone can send ETH/TON to it.
+The stealth address is derived as an ERC-4337 smart account via CREATE2 from the `StealthAccountFactory`. The constructor args encode the `EntryPoint` address and the stealth EOA (owner). Anyone can send ETH/TON to the predicted address before the account is deployed.
+
+### ERC-4337 Account Address
+
+```
+ownerEOA = last 20 bytes of keccak256(uncompressed P_stealth)
+constructorArgs = abi.encode(entryPointAddress, ownerEOA)
+initCode = accountCreationCode + constructorArgs
+salt = keccak256(constructorArgs)
+stealthAddress = CREATE2(StealthAccountFactory, salt, initCode)
+```
+
+The scanner checks three address types for each announcement:
+- **EOA** — direct `ownerEOA` match (legacy)
+- **CREATE2 wallet** — `StealthWalletFactory` derived address (legacy)
+- **ERC-4337 account** — `StealthAccountFactory` derived address (current)
 
 ### Why Only Alice Can Spend
 
@@ -141,9 +156,11 @@ The receiver's app scans all Announcement events from the deployment block:
    a. Extract view tag from metadata (first byte)
    b. Compute expected view tag: keccak256(viewingPrivKey * ephemeralPubKey).slice(0,1)
    c. If tags don't match → skip (filters out ~99.6% of events)
-   d. Full ECDH verification: derive stealth address and compare
-   e. If match → derive stealth private key → verify it controls the address
-   f. Store as found payment
+   d. Full ECDH verification: derive stealth EOA and check triple-match:
+      - EOA match: derivedEOA == announcedAddress (legacy)
+      - CREATE2 match: computeStealthWalletAddress(derivedEOA) == announcedAddress (legacy)
+      - Account match: computeStealthAccountAddress(derivedEOA) == announcedAddress (current)
+   e. If any match → derive stealth private key → store with walletType (eoa/create2/account)
 ```
 
 View tags make scanning fast: only 1/256 events need full verification.
@@ -204,6 +221,37 @@ No session recovery needed — the announcement is already on-chain. If the send
 - Stops polling when balance > 0
 - Protected against state updates after unmount (stoppedRef checked before AND after async getBalance)
 
+## ERC-4337 Claim Flow
+
+New stealth payments use ERC-4337 smart accounts. The claim is completely gasless:
+
+```
+1. Scanner detects payment via Announcement event (triple-match: EOA → CREATE2 → account)
+2. Browser derives stealth private key via ECDH (key never leaves browser)
+3. POST /api/bundle → server builds UserOp with paymaster signature
+4. Browser signs the userOpHash locally
+5. POST /api/bundle/submit → server calls entryPoint.handleOps()
+6. EntryPoint deploys account + drains funds to claim address in one tx
+7. DustPaymaster sponsors all gas — zero cost for the user
+```
+
+Legacy CREATE2 and EOA payments are still claimable via `/api/sponsor-claim`.
+
+## Unified Balance
+
+The dashboard aggregates current holdings across all addresses:
+
+```
+total = stealthTotal + claimTotal
+
+stealthTotal = sum of balance for unclaimed stealth payments
+               (where balance > 0, not claimed, not keyMismatch)
+
+claimTotal   = sum of balances across 3 HD-derived claim wallets
+```
+
+The `useUnifiedBalance` hook handles aggregation, auto-refreshes claim balances every 30s, and exposes per-address breakdown data. The `UnifiedBalanceCard` shows the aggregated total with a segmented bar (stealth vs wallets). The `AddressBreakdownCard` is a collapsible card showing each claim wallet and unclaimed stealth address with wallet type badges (EOA/CREATE2/4337).
+
 ## Contract Interactions
 
 ### ERC-5564 Announcer
@@ -253,8 +301,10 @@ src/
 │   ├── settings/page.tsx         # Account settings
 │   └── api/                      # Sponsored gas API routes
 │       ├── resolve/[name]/       # Server-side stealth address resolve + announce
+│       ├── bundle/               # ERC-4337 UserOp builder (paymaster sig)
+│       ├── bundle/submit/        # ERC-4337 UserOp submission (handleOps)
+│       ├── sponsor-claim/        # Legacy fund claiming (CREATE2 + EOA)
 │       ├── sponsor-announce/     # Legacy payment announcement
-│       ├── sponsor-claim/        # Fund claiming (CREATE2 + legacy EOA)
 │       ├── sponsor-register-keys/ # Meta-address registration
 │       ├── sponsor-name-register/ # Name registration
 │       └── sponsor-name-transfer/ # Name transfer
@@ -263,7 +313,7 @@ src/
 │   ├── stealth/                  # Core cryptographic library
 │   │   ├── address.ts            # Stealth address math (generate, verify, compute private key)
 │   │   ├── keys.ts               # Key derivation (from signature, from signature+PIN)
-│   │   ├── scanner.ts            # Scan Announcement events, filter by view tag, ECDH verify
+│   │   ├── scanner.ts            # Scan Announcement events, filter by view tag, triple-match verify
 │   │   ├── registry.ts           # ERC-6538 Registry interactions
 │   │   ├── names.ts              # StealthNameRegistry interactions (.tok names)
 │   │   ├── hdWallet.ts           # Claim address derivation (deterministic, unlinkable)
@@ -279,8 +329,9 @@ src/
 │   ├── useBalancePoller.ts       # Poll stealth address balance (no-opt-in flow)
 │   ├── useStealthAddress.ts      # Key derivation + registration state
 │   ├── useStealthSend.ts         # Generate address + send payment (wallet flow)
-│   ├── useStealthScanner.ts      # Scan + claim incoming payments
+│   ├── useStealthScanner.ts      # Scan + claim incoming payments (triple-match + auto-claim)
 │   ├── useStealthName.ts         # Name resolution + registration
+│   ├── useUnifiedBalance.ts      # Aggregate stealth + claim wallet balances
 │   ├── usePaymentLinks.ts        # Payment link CRUD
 │   ├── useClaimAddresses.ts      # Claim address management
 │   ├── usePin.ts                 # PIN verification state
@@ -293,7 +344,7 @@ src/
 │   │   └── AddressDisplay.tsx    # Address card with copy button + inline QR code
 │   ├── stealth/
 │   │   └── icons.tsx             # SVG icon components
-│   ├── dashboard/                # Dashboard components
+│   ├── dashboard/                # Dashboard components (UnifiedBalanceCard, AddressBreakdownCard)
 │   ├── activities/               # Activity list components
 │   ├── links/                    # Payment link components
 │   ├── onboarding/               # Onboarding step components
@@ -343,5 +394,6 @@ It cannot:
 |----------|--------------------|
 | [ERC-5564](https://eips.ethereum.org/EIPS/eip-5564) | Stealth address generation, Announcement events, view tags |
 | [ERC-6538](https://ethereum-magicians.org/t/stealth-meta-address-registry/12888) | Stealth meta-address registry (spending + viewing key publication) |
+| [ERC-4337](https://eips.ethereum.org/EIPS/eip-4337) | Account abstraction — stealth smart accounts, gasless claims via DustPaymaster |
 | ECDH (secp256k1) | Shared secret computation between sender and receiver |
 | EIP-712 | Typed signatures for sponsored key registration |
