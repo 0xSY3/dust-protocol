@@ -22,6 +22,8 @@ contract StealthAccount is IAccount {
     }
 
     constructor(IEntryPoint _entryPoint, address _owner) {
+        require(address(_entryPoint) != address(0), "Zero entryPoint");
+        require(_owner != address(0), "Zero owner");
         entryPoint = _entryPoint;
         owner = _owner;
     }
@@ -70,11 +72,16 @@ contract StealthAccount is IAccount {
         }
     }
 
+    /// @dev EIP-2 compliant signature recovery. Rejects malleable signatures.
     function _recover(bytes32 ethHash, bytes calldata sig) internal pure returns (address) {
         if (sig.length != 65) return address(0);
         bytes32 r = bytes32(sig[0:32]);
         bytes32 s = bytes32(sig[32:64]);
         uint8 v = uint8(sig[64]);
+        // EIP-2: reject malleable signatures (s must be in lower half of curve order)
+        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) {
+            return address(0);
+        }
         if (v < 27) v += 27;
         return ecrecover(ethHash, v, r, s);
     }

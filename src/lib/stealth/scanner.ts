@@ -8,6 +8,16 @@ import { computeViewTag, verifyStealthAddress, computeStealthPrivateKey, getAddr
 
 const secp256k1 = new EC('secp256k1');
 
+// Constant-time string comparison to prevent timing side-channels on view tags
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
+
 const ANNOUNCER_ABI = [
   'event Announcement(uint256 indexed schemeId, address indexed stealthAddress, address indexed caller, bytes ephemeralPubKey, bytes metadata)',
 ];
@@ -68,7 +78,7 @@ export async function scanAnnouncements(
 
   const results: ScanResult[] = [];
 
-  console.log(`[Scanner] Found ${events.length} announcements from block ${fromBlock} to ${toBlock ?? 'latest'}`);
+  if (process.env.NODE_ENV === 'development') console.log(`[Scanner] Found ${events.length} announcements from ${fromBlock}`);
 
   let viewTagFiltered = 0;
   let ecdhFiltered = 0;
@@ -78,7 +88,7 @@ export async function scanAnnouncements(
     if (!announcement) continue;
 
     const expectedTag = computeViewTag(keys.viewingPrivateKey, announcement.ephemeralPublicKey);
-    if (announcement.viewTag && announcement.viewTag !== expectedTag) {
+    if (announcement.viewTag && !constantTimeEqual(announcement.viewTag, expectedTag)) {
       viewTagFiltered++;
       continue;
     }
@@ -122,7 +132,7 @@ export async function scanAnnouncements(
     }
   }
 
-  console.log(`[Scanner] Results: ${results.length} matches, ${viewTagFiltered} view-tag filtered, ${ecdhFiltered} ECDH filtered`);
+  if (process.env.NODE_ENV === 'development') console.log(`[Scanner] ${results.length} matches, ${viewTagFiltered} tag-filtered, ${ecdhFiltered} ECDH-filtered`);
   return results;
 }
 

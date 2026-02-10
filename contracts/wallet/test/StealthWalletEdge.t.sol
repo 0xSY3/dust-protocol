@@ -105,16 +105,12 @@ contract StealthWalletEdgeTest is Test {
         // Set up the attacker to try drain with nonce=1 sig on callback
         attacker.setAttack(wallet, address(attacker), sig1);
 
-        // First drain goes through; reentry attempt uses nonce=1 sig which is valid
-        // but the attacker's callback will try to drain again
+        // First drain goes through; reentry guard blocks the callback attempt
         wallet.drain(address(attacker), sig0);
 
-        // After first drain, all ETH is sent to attacker. The reentry drain
-        // executes but wallet balance is 0 by then, so no additional theft.
-        // Nonce should be 2 (incremented twice: once by legit drain, once by reentry)
-        assertEq(wallet.nonce(), 2);
+        // Reentrancy guard prevents the second drain — nonce only incremented once
+        assertEq(wallet.nonce(), 1);
         assertEq(walletAddr.balance, 0);
-        // All 2 ether went to attacker (1st drain sent all, 2nd sent 0)
         assertEq(address(attacker).balance, 2 ether);
     }
 

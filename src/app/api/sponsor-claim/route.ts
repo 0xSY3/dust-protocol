@@ -5,10 +5,43 @@ const RPC_URL = 'https://rpc.thanos-sepolia.tokamak.network';
 const CHAIN_ID = 111551119090;
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
-// Rate limiting: per-address cooldown
+// Rate limiting: per-address cooldown + global request counter
 const claimCooldowns = new Map<string, number>();
 const CLAIM_COOLDOWN_MS = 10_000; // 10 seconds between claims per stealth address
 const MAX_GAS_PRICE = ethers.utils.parseUnits('100', 'gwei'); // Gas price cap
+
+// Global rate limiting: max claims per time window across all addresses
+const GLOBAL_WINDOW_MS = 60_000; // 1 minute window
+const GLOBAL_MAX_CLAIMS = 10; // max 10 claims per minute globally
+let globalClaimTimestamps: number[] = [];
+
+// Sponsor balance monitoring
+const MIN_SPONSOR_BALANCE = ethers.utils.parseEther('0.1'); // Emergency pause threshold
+let lastBalanceCheck = 0;
+let sponsorBalancePaused = false;
+const BALANCE_CHECK_INTERVAL_MS = 30_000; // Check every 30s
+
+function checkGlobalRateLimit(): boolean {
+  const now = Date.now();
+  globalClaimTimestamps = globalClaimTimestamps.filter(t => now - t < GLOBAL_WINDOW_MS);
+  if (globalClaimTimestamps.length >= GLOBAL_MAX_CLAIMS) return false;
+  globalClaimTimestamps.push(now);
+  return true;
+}
+
+async function checkSponsorBalance(provider: ethers.providers.Provider, sponsorAddress: string): Promise<boolean> {
+  const now = Date.now();
+  if (now - lastBalanceCheck < BALANCE_CHECK_INTERVAL_MS) return !sponsorBalancePaused;
+  lastBalanceCheck = now;
+  try {
+    const balance = await provider.getBalance(sponsorAddress);
+    sponsorBalancePaused = balance.lt(MIN_SPONSOR_BALANCE);
+    if (sponsorBalancePaused) console.error('[Sponsor] Balance below threshold — pausing claims');
+    return !sponsorBalancePaused;
+  } catch {
+    return !sponsorBalancePaused; // Don't block on check failure
+  }
+}
 
 const STEALTH_WALLET_FACTORY = '0x85e7Fe33F594AC819213e63EEEc928Cb53A166Cd';
 const FACTORY_ABI = [
@@ -87,12 +120,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Sponsor not configured' }, { status: 500 });
     }
 
+    // Global rate limiting
+    if (!checkGlobalRateLimit()) {
+      return NextResponse.json({ error: 'Service busy, please try again shortly' }, { status: 429 });
+    }
+
+    // Sponsor balance monitoring
+    const provider = getProvider();
+    const sponsor = new ethers.Wallet(SPONSOR_KEY!, provider);
+    if (!(await checkSponsorBalance(provider, sponsor.address))) {
+      return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 503 });
+    }
+
     const body = await req.json();
 
     // Detect claim mode: signature-based (CREATE2) vs private-key-based (legacy EOA)
     if (body.signature && body.owner) {
       return handleCreate2Claim(body);
     }
+    // DEPRECATED: Legacy EOA claim — private key should not be sent to server
+    console.warn('[Sponsor] DEPRECATED: Legacy EOA claim used — migrate to CREATE2/ERC-4337');
     return handleLegacyEOAClaim(body);
   } catch (e) {
     console.error('[Sponsor] Error:', e);
@@ -141,7 +188,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
     return NextResponse.json({ error: 'Gas price too high, try again later' }, { status: 503 });
   }
 
-  console.log('[Sponsor/CREATE2] Balance:', ethers.utils.formatEther(balance), 'TON');
+  console.log('[Sponsor/CREATE2] Processing claim');
 
   const gasLimit = ethers.BigNumber.from(300_000);
 
@@ -151,7 +198,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
 
   let tx;
   if (alreadyDeployed) {
-    console.log('[Sponsor/CREATE2] Wallet already deployed, calling drain directly →', recipient);
+    console.log('[Sponsor/CREATE2] Wallet already deployed, calling drain directly');
     const wallet = new ethers.Contract(stealthAddress, STEALTH_WALLET_ABI, sponsor);
     tx = await wallet.drain(recipient, signature, {
       gasLimit,
@@ -160,7 +207,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
       maxPriorityFeePerGas: maxPriorityFee,
     });
   } else {
-    console.log('[Sponsor/CREATE2] Calling deployAndDrain for owner:', owner, '→', recipient);
+    console.log('[Sponsor/CREATE2] Calling deployAndDrain');
     const factory = new ethers.Contract(STEALTH_WALLET_FACTORY, FACTORY_ABI, sponsor);
     tx = await factory.deployAndDrain(owner, recipient, signature, {
       gasLimit,
@@ -171,7 +218,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
   }
   const receipt = await tx.wait();
 
-  console.log('[Sponsor/CREATE2] deployAndDrain complete, tx:', receipt.transactionHash);
+  console.log('[Sponsor/CREATE2] Claim complete');
 
   return NextResponse.json({
     success: true,
@@ -242,8 +289,7 @@ async function handleLegacyEOAClaim(body: { stealthAddress: string; stealthPriva
   const gasNeeded = gasLimit.mul(maxFeePerGas);
   const gasWithBuffer = gasNeeded.mul(150).div(100); // 50% buffer
 
-  console.log('[Sponsor/EOA] Balance:', ethers.utils.formatEther(balance), 'TON');
-  console.log('[Sponsor/EOA] Gas to fund:', ethers.utils.formatEther(gasWithBuffer), 'TON');
+  console.log('[Sponsor/EOA] Processing legacy claim');
 
   // Step 1: Sponsor sends gas to stealth address (simple transfer = 21000 gas)
   const gasTx = await sponsor.sendTransaction({
@@ -255,7 +301,7 @@ async function handleLegacyEOAClaim(body: { stealthAddress: string; stealthPriva
     maxPriorityFeePerGas: maxPriorityFee,
   });
   await gasTx.wait();
-  console.log('[Sponsor/EOA] Gas funded, tx:', gasTx.hash);
+  console.log('[Sponsor/EOA] Gas funded');
 
   // Step 2: Stealth wallet sends full balance to recipient
   const newBalance = await provider.getBalance(stealthAddress);
@@ -267,7 +313,7 @@ async function handleLegacyEOAClaim(body: { stealthAddress: string; stealthPriva
     return NextResponse.json({ error: 'Balance too low after gas calculation' }, { status: 400 });
   }
 
-  console.log('[Sponsor/EOA] Sending', ethers.utils.formatEther(sendAmount), 'TON to', recipient);
+  console.log('[Sponsor/EOA] Sending withdrawal');
 
   const withdrawTx = await stealthWallet.sendTransaction({
     to: recipient,
@@ -279,7 +325,7 @@ async function handleLegacyEOAClaim(body: { stealthAddress: string; stealthPriva
   });
   const receipt = await withdrawTx.wait();
 
-  console.log('[Sponsor/EOA] Withdraw complete, tx:', receipt.transactionHash);
+  console.log('[Sponsor/EOA] Withdraw complete');
 
   return NextResponse.json({
     success: true,

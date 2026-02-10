@@ -103,7 +103,7 @@ async function autoClaimAccount(
     });
     const prepData = await prepRes.json();
     if (!prepRes.ok) {
-      console.warn('[AutoClaim/Account] Prep failed:', prepData.error);
+      if (process.env.NODE_ENV === 'development') console.warn('[AutoClaim/Account] Prep failed:', prepData.error);
       return null;
     }
 
@@ -119,14 +119,14 @@ async function autoClaimAccount(
     });
     const submitData = await submitRes.json();
     if (!submitRes.ok) {
-      console.warn('[AutoClaim/Account] Submit failed:', submitData.error);
+      if (process.env.NODE_ENV === 'development') console.warn('[AutoClaim/Account] Submit failed:', submitData.error);
       return null;
     }
 
-    console.log('[AutoClaim/Account] Success:', accountAddress, '→', recipient, 'tx:', submitData.txHash);
+    if (process.env.NODE_ENV === 'development') console.log('[AutoClaim/Account] Success:', submitData.txHash);
     return submitData;
   } catch (e) {
-    console.warn('[AutoClaim/Account] Error for', payment.announcement.stealthAddress, ':', e);
+    if (process.env.NODE_ENV === 'development') console.warn('[AutoClaim/Account] Error:', e);
     return null;
   }
 }
@@ -168,13 +168,13 @@ async function autoClaimLegacy(
     });
     const data = await res.json();
     if (!res.ok) {
-      console.warn('[AutoClaim] Failed for', payment.announcement.stealthAddress, ':', data.error);
+      if (process.env.NODE_ENV === 'development') console.warn('[AutoClaim] Failed:', data.error);
       return null;
     }
-    console.log('[AutoClaim] Success:', payment.announcement.stealthAddress, '→', recipient, 'amount:', data.amount, 'TON', 'type:', payment.walletType);
+    if (process.env.NODE_ENV === 'development') console.log('[AutoClaim] Success, type:', payment.walletType);
     return data;
   } catch (e) {
-    console.warn('[AutoClaim] Error for', payment.announcement.stealthAddress, ':', e);
+    if (process.env.NODE_ENV === 'development') console.warn('[AutoClaim] Error:', e);
     return null;
   }
 }
@@ -203,24 +203,47 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const autoClaimingRef = useRef<Set<string>>(new Set());
   const autoClaimCooldownRef = useRef<Map<string, number>>(new Map());
+  // Private keys stored in ref (NOT in React state) to avoid DevTools exposure
+  const privateKeysRef = useRef<Map<string, string>>(new Map());
 
   const autoClaimRecipientRef = useRef(options?.autoClaimRecipient);
   autoClaimRecipientRef.current = options?.autoClaimRecipient;
+
+  // Helper: strip private key from payment before putting in state
+  function stripKey(p: StealthPayment): StealthPayment {
+    const { stealthPrivateKey: _key, ...rest } = p;
+    return { ...rest, stealthPrivateKey: '' } as StealthPayment;
+  }
+
+  // Helper: get private key for a payment (from ref, fallback to storage)
+  function getKeyForPayment(txHash: string): string {
+    return privateKeysRef.current.get(txHash) || '';
+  }
 
   // Load persisted payments on mount / address change
   useEffect(() => {
     if (address) {
       const stored = loadPaymentsFromStorage(address);
       if (stored.length > 0) {
-        setPayments(stored);
+        // Extract keys to ref, strip from state
+        stored.forEach(p => {
+          if (p.stealthPrivateKey) {
+            privateKeysRef.current.set(p.announcement.txHash, p.stealthPrivateKey);
+          }
+        });
+        setPayments(stored.map(stripKey));
       }
     }
   }, [address]);
 
-  // Persist payments whenever they change
+  // Persist payments whenever they change — re-inject keys for storage only
   useEffect(() => {
     if (address && payments.length > 0) {
-      savePaymentsToStorage(address, payments);
+      const withKeys = payments.map(p => ({
+        ...p,
+        stealthPrivateKey: getKeyForPayment(p.announcement.txHash),
+      }));
+      savePaymentsToStorage(address, withKeys);
     }
   }, [address, payments]);
 
@@ -251,11 +274,21 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         p.announcement.txHash === txHash ? { ...p, autoClaiming: true } : p
       ));
 
+      // Inject private key from ref for claiming
+      const key = getKeyForPayment(txHash);
+      if (!key) {
+        autoClaimingRef.current.delete(txHash);
+        setPayments(prev => prev.map(p =>
+          p.announcement.txHash === txHash ? { ...p, autoClaiming: false, keyMismatch: true } : p
+        ));
+        continue;
+      }
+      const paymentWithKey = { ...payment, stealthPrivateKey: key };
+
       // Verify key is valid (for CREATE2, key derives the owner not the wallet address)
       try {
-        getAddressFromPrivateKey(payment.stealthPrivateKey);
+        getAddressFromPrivateKey(key);
       } catch {
-        console.warn('[AutoClaim] Invalid key, skipping:', txHash);
         autoClaimingRef.current.delete(txHash);
         setPayments(prev => prev.map(p =>
           p.announcement.txHash === txHash ? { ...p, autoClaiming: false, keyMismatch: true } : p
@@ -263,7 +296,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         continue;
       }
 
-      const result = await autoClaimPayment(payment, recipient);
+      const result = await autoClaimPayment(paymentWithKey, recipient);
 
       if (result) {
         setPayments(prev => prev.map(p =>
@@ -317,7 +350,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       // Skip if we're already up to date (background scan optimization)
       if (silent && startBlock >= latestBlock) return;
 
-      console.log(`[useStealthScanner] scan() silent=${silent}, from=${startBlock}, latest=${latestBlock}`);
+      if (process.env.NODE_ENV === 'development') console.log(`[Scanner] from=${startBlock}, latest=${latestBlock}`);
 
       if (!silent) {
         const total = await getAnnouncementCount(provider, startBlock, latestBlock);
@@ -354,6 +387,13 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         })
       );
 
+      // Store keys in ref, strip from state
+      enriched.forEach(p => {
+        if (p.stealthPrivateKey) {
+          privateKeysRef.current.set(p.announcement.txHash, p.stealthPrivateKey);
+        }
+      });
+
       setPayments((prev) => {
         const existingMap = new Map(prev.map(p => [p.announcement.txHash, p]));
 
@@ -367,7 +407,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
               claimed: existing.claimed || p.claimed,
             });
           } else {
-            existingMap.set(p.announcement.txHash, p);
+            existingMap.set(p.announcement.txHash, stripKey(p));
           }
         });
 
@@ -390,7 +430,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         setProgress({ current: results.length, total: results.length });
       }
     } catch (e) {
-      console.error('[useStealthScanner] Scan error:', e);
+      if (process.env.NODE_ENV === 'development') console.error('[Scanner] Scan error:', e);
       if (!silent) setError(e instanceof Error ? e.message : 'Scan failed');
     } finally {
       if (!silent) setIsScanning(false);
@@ -431,14 +471,17 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     setError(null);
 
     try {
-      console.log('[Claim] Requesting sponsored withdrawal, type:', payment.walletType || 'eoa');
+      // Inject key from ref
+      const key = getKeyForPayment(payment.announcement.txHash);
+      if (!key) {
+        throw new Error('Private key not found for this payment');
+      }
+      const paymentWithKey = { ...payment, stealthPrivateKey: key };
 
-      const result = await autoClaimPayment(payment, recipient);
+      const result = await autoClaimPayment(paymentWithKey, recipient);
       if (!result) {
         throw new Error('Claim failed');
       }
-
-      console.log('[Claim] Sponsored withdrawal complete:', result.txHash);
 
       setPayments(prev => prev.map(p =>
         p.announcement.txHash === payment.announcement.txHash ? { ...p, claimed: true, balance: '0' } : p

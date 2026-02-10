@@ -95,6 +95,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing sender or callData' }, { status: 400, headers: NO_STORE });
     }
 
+    // Whitelist callData: only allow drain(address) selector to prevent arbitrary contract calls
+    const ALLOWED_SELECTORS = ['0xece53132']; // drain(address)
+    const selector = callData.slice(0, 10).toLowerCase();
+    if (!ALLOWED_SELECTORS.includes(selector)) {
+      return NextResponse.json({ error: 'Unsupported operation' }, { status: 400, headers: NO_STORE });
+    }
+
     const provider = getProvider();
     const sponsor = new ethers.Wallet(SPONSOR_KEY, provider);
     const entryPoint = new ethers.Contract(ENTRY_POINT_ADDRESS, ENTRY_POINT_ABI, provider);
@@ -165,7 +172,7 @@ export async function POST(req: Request) {
     // Compute userOpHash via EntryPoint (view call)
     const userOpHash = await entryPoint.getUserOpHash(userOp);
 
-    console.log('[Bundle] Prepared UserOp for', sender, 'hash:', userOpHash);
+    console.log('[Bundle] Prepared UserOp');
 
     return NextResponse.json(
       { userOp, userOpHash },
