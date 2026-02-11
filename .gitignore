@@ -36,6 +36,7 @@ coverage/
 
 # Scripts (contain private keys / deployment utilities)
 scripts/
+!contracts/dustpool/scripts/
 stealth-deployment.json
 
 # Foundry
