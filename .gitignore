@@ -43,6 +43,11 @@ contracts/wallet/out/
 contracts/wallet/cache/
 contracts/wallet/broadcast/
 contracts/wallet/lib/
+contracts/dustpool/out/
+contracts/dustpool/cache/
+contracts/dustpool/build/
+contracts/dustpool/lib/
+contracts/dustpool/node_modules/
 
 # Misc
 *.log
