@@ -1,6 +1,6 @@
 # Dust Protocol
 
-Private payment infrastructure on Tokamak Network. Send and receive untraceable payments using stealth addresses, `.tok` names, and a ZK privacy pool for unlinkable fund consolidation.
+Private payment infrastructure on Tokamak Network. Send and receive untraceable payments using stealth addresses, `.tok` names, and a ZK privacy pool for unlinkable fund withdrawal.
 
 ## Features
 
@@ -12,7 +12,7 @@ Private payment infrastructure on Tokamak Network. Send and receive untraceable 
 - **Paymaster-Sponsored Gas** — All claims are gasless via DustPaymaster. The on-chain paymaster sponsors gas through ERC-4337, with auto-top-up when deposits run low
 - **Real-time Scanning** — Automatic detection of incoming payments (supports legacy EOA, CREATE2, and ERC-4337 account announcements)
 - **Unified Dashboard** — Single balance view aggregating unclaimed stealth payments + claim wallet holdings, with per-address breakdown
-- **DustPool (ZK Privacy Pool)** — Consolidate funds from multiple stealth wallets into a single fresh address with zero on-chain linkability via Groth16 ZK proofs
+- **DustPool (ZK Privacy Pool)** — Withdraw funds from multiple stealth wallets into a single fresh address with zero on-chain linkability via Groth16 ZK proofs
 
 ## Setup
 
@@ -152,7 +152,7 @@ WITHDRAW (unlinkable via ZK proof):
 5. Commitment is inserted into an on-chain Poseidon Merkle tree (depth 20, 1M capacity)
 6. Browser stores `{secret, nullifier, leafIndex}` in localStorage
 
-**Withdraw flow (consolidation):**
+**Withdraw flow (withdrawal):**
 1. Browser lazy-loads snarkjs + circuit artifacts (WASM 1.7MB + zkey 5.2MB)
 2. For each deposit: generates a Groth16 ZK proof proving:
    - "I know the secret behind one of the commitments in this Merkle tree"
@@ -189,7 +189,7 @@ The pool toggle on the dashboard controls the flow:
 
 - **Toggle OFF**: Payments are claimed directly to your claim address (standard flow)
 - **Toggle ON**: Eligible payments (CREATE2/ERC-4337) are held for manual pool deposit. User sees a "Deposit N payments to Pool" button and explicitly triggers the deposit. EOA payments are skipped (no smart contract wallet to drain).
-- **Consolidate**: When pool deposits exist, a balance card appears with a "Consolidate" button. Opens a modal where you enter a fresh recipient address. ZK proofs are generated in-browser (~1-2s each), then submitted on-chain.
+- **Withdraw**: When pool deposits exist, a balance card appears with a "Withdraw" button. Opens a modal where you enter a fresh recipient address. ZK proofs are generated in-browser (~1-2s each), then submitted on-chain.
 
 #### Gas Costs
 
@@ -230,12 +230,12 @@ src/
 │       ├── pool-deposit/  # Stealth wallet → DustPool deposit
 │       └── pool-withdraw/ # ZK-verified pool withdrawal
 ├── components/
-│   ├── dashboard/        # Balance cards, consolidate modal
+│   ├── dashboard/        # Balance cards, withdraw modal
 │   └── send/             # Send modal + recipient resolution
 ├── hooks/stealth/
 │   ├── useStealthScanner # Payment detection + auto-claim + pool deposit
 │   ├── useUnifiedBalance # Aggregated balance across all addresses
-│   └── useDustPool       # Pool deposit tracking + ZK consolidation
+│   └── useDustPool       # Pool deposit tracking + ZK withdrawal
 ├── lib/
 │   ├── stealth/          # Core stealth address cryptography
 │   ├── dustpool/         # Poseidon hashing, Merkle tree, proof generation
@@ -264,7 +264,7 @@ public/zk/               # Browser ZK assets (WASM + zkey)
 - **CREATE2 Stealth Wallets** — Smart contract wallets at stealth addresses with signature-based drain. 16 Foundry tests passing.
 - **ERC-4337 Stealth Accounts** — Full account abstraction with DustPaymaster sponsorship. Private key never leaves browser. 48 Foundry tests passing.
 - **Unified Dashboard** — Aggregated balance across unclaimed stealth payments + HD-derived claim wallets
-- **DustPool (ZK Privacy Pool)** — Groth16 ZK proofs for unlinkable fund consolidation. Poseidon Merkle tree (depth 20), browser proof generation via snarkjs, sponsored deposit + withdrawal. 10 Foundry tests passing.
+- **DustPool (ZK Privacy Pool)** — Groth16 ZK proofs for unlinkable fund withdrawal. Poseidon Merkle tree (depth 20), browser proof generation via snarkjs, sponsored deposit + withdrawal. 10 Foundry tests passing.
 
 ### Future
 
