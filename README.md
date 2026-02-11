@@ -1,6 +1,6 @@
 # Dust Protocol
 
-Private payment infrastructure on Tokamak Network. Send and receive untraceable payments using stealth addresses and `.tok` names.
+Private payment infrastructure on Tokamak Network. Send and receive untraceable payments using stealth addresses, `.tok` names, and a ZK privacy pool for unlinkable fund consolidation.
 
 ## Features
 
@@ -12,6 +12,7 @@ Private payment infrastructure on Tokamak Network. Send and receive untraceable 
 - **Paymaster-Sponsored Gas** — All claims are gasless via DustPaymaster. The on-chain paymaster sponsors gas through ERC-4337, with auto-top-up when deposits run low
 - **Real-time Scanning** — Automatic detection of incoming payments (supports legacy EOA, CREATE2, and ERC-4337 account announcements)
 - **Unified Dashboard** — Single balance view aggregating unclaimed stealth payments + claim wallet holdings, with per-address breakdown
+- **DustPool (ZK Privacy Pool)** — Consolidate funds from multiple stealth wallets into a single fresh address with zero on-chain linkability via Groth16 ZK proofs
 
 ## Setup
 
@@ -32,17 +33,42 @@ RELAYER_PRIVATE_KEY=<deployer-private-key>
 
 ## Smart Contracts
 
-| Contract | Address (Thanos Sepolia) | Purpose |
-|----------|--------------------------|---------|
+All contracts are deployed on Thanos Sepolia (chain ID: 111551119090).
+
+### Core Stealth Infrastructure
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
 | ERC5564Announcer | `0x2C2a59E9e71F2D1A8A2D447E73813B9F89CBb125` | On-chain stealth payment announcements |
 | ERC6538Registry | `0x9C527Cc8CB3F7C73346EFd48179e564358847296` | Stealth meta-address registry |
-| StealthNameRegistry | `0x0129DE641192920AB78eBca2eF4591E2Ac48BA59` | `.tok` name → meta-address mapping |
+| StealthNameRegistry | `0x0129DE641192920AB78eBca2eF4591E2Ac48BA59` | `.tok` name to meta-address mapping |
+
+### ERC-4337 Account Abstraction
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
 | EntryPoint (v0.6) | `0x5c058Eb93CDee95d72398E5441d989ef6453D038` | ERC-4337 UserOperation execution |
-| StealthAccountFactory | `0x0D93df03e6CF09745A24Ee78A4Cab032781E7aa6` | CREATE2 deployment of stealth accounts |
+| StealthAccountFactory | `0xfE89381ae27a102336074c90123A003e96512954` | CREATE2 deployment of stealth accounts |
 | DustPaymaster | `0x9e2eb36F7161C066351DC9E418E7a0620EE5d095` | Gas sponsorship for stealth claims |
-| StealthWalletFactory | `0x85e7Fe33F594AC819213e63EEEc928Cb53A166Cd` | Legacy CREATE2 wallet deployment |
+
+### Legacy (Backward Compatible)
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| StealthWalletFactory | `0xbc8e75a5374a6533cD3C4A427BF4FA19737675D3` | Legacy CREATE2 wallet deployment |
+| Legacy AccountFactory | `0x0D93df03e6CF09745A24Ee78A4Cab032781E7aa6` | Previous generation account factory |
+| Legacy WalletFactory | `0x85e7Fe33F594AC819213e63EEEc928Cb53A166Cd` | First generation wallet factory |
+
+### DustPool (ZK Privacy Pool)
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| Groth16Verifier | `0x3ff80Dc7F1D39155c6eac52f5c5Cf317524AF25C` | ZK proof verification (BN254 pairing) |
+| DustPool | `0x473e83478caB06F685C4536ebCfC6C21911F7852` | Privacy pool with Poseidon Merkle tree |
 
 ## How It Works
+
+### Stealth Payments
 
 1. **Connect wallet** and derive stealth keys from a signature + PIN
 2. **Register a `.tok` name** linked to your stealth meta-address
@@ -53,7 +79,6 @@ RELAYER_PRIVATE_KEY=<deployer-private-key>
 
 From [Interactive No-Opt-In Stealth Addresses](https://ethresear.ch/t/interactive-no-opt-in-stealth-addresses/23274) — the receiver's pay page pre-generates a one-time stealth address and shows it as a plain address + QR code. Any wallet (MetaMask, exchange, hardware wallet) can send to it without stealth-aware software.
 
-**Current flow:**
 ```
 Page loads → GET /api/resolve/{name} → server generates stealth address + announces on-chain
 Page shows address + QR → sender copies and sends from any wallet
@@ -63,7 +88,9 @@ Receiver's scanner discovers the payment automatically
 
 **How it preserves privacy:** Each name query generates a fresh ephemeral key pair server-side. The stealth address is an ERC-4337 smart account derived from the receiver's public spending key + the ephemeral key via ECDH. Only the receiver (with their viewing key) can identify the payment. The on-chain announcement happens *before* payment (eager pre-announcement), so the page can be closed at any time.
 
-## Architecture: ERC-4337 Stealth Accounts
+## Architecture
+
+### ERC-4337 Stealth Accounts
 
 Each stealth payment address is an ERC-4337 smart account deployed via CREATE2.
 
@@ -88,20 +115,163 @@ DustPaymaster pays all gas — claim is completely gasless for the user
 
 **Backward compatibility:** The scanner supports all three wallet types — legacy EOA, CREATE2 (`StealthWalletFactory`), and ERC-4337 accounts. Legacy payments are still claimable via `/api/sponsor-claim`.
 
+### DustPool: ZK Privacy Pool
+
+Without the pool, claiming stealth payments drains every wallet to the same claim address — linking them on-chain. DustPool breaks this link using zero-knowledge proofs.
+
+#### The Problem
+
+```
+Stealth Wallet A (5 TON) ──→ Claim Address 0xABC
+Stealth Wallet B (3 TON) ──→ Claim Address 0xABC  ← ALL LINKED
+Stealth Wallet C (7 TON) ──→ Claim Address 0xABC
+```
+
+An observer sees all stealth wallets drain to the same address. Privacy is destroyed.
+
+#### The Solution
+
+```
+DEPOSIT (all mixed into one pool):
+  Stealth Wallet A ──→ DustPool (commitment₁)
+  Stealth Wallet B ──→ DustPool (commitment₂)
+  Stealth Wallet C ──→ DustPool (commitment₃)
+
+WITHDRAW (unlinkable via ZK proof):
+  DustPool ──→ Fresh Address 0xNEW (15 TON)
+  Nobody can tell which deposits map to which withdrawal.
+```
+
+#### How It Works
+
+**Deposit flow:**
+1. Browser generates random `secret` + `nullifier`
+2. Computes `commitment = Poseidon(Poseidon(nullifier, secret), amount)`
+3. Stealth wallet drains to sponsor (via existing claim infrastructure)
+4. Sponsor calls `DustPool.deposit{value: amount}(commitment)`
+5. Commitment is inserted into an on-chain Poseidon Merkle tree (depth 20, 1M capacity)
+6. Browser stores `{secret, nullifier, leafIndex}` in localStorage
+
+**Withdraw flow (consolidation):**
+1. Browser lazy-loads snarkjs + circuit artifacts (WASM 1.7MB + zkey 5.2MB)
+2. For each deposit: generates a Groth16 ZK proof proving:
+   - "I know the secret behind one of the commitments in this Merkle tree"
+   - Without revealing **which** commitment is mine
+3. Submits proof to contract — verifier confirms the math, sends funds to fresh address
+4. `nullifierHash = Poseidon(nullifier, nullifier)` prevents double-spend without linking back to the commitment
+
+**Why it's untraceable:**
+- Commitments are hashes — nobody can reverse them to find the depositor
+- The ZK proof reveals zero information about which leaf/deposit is being withdrawn
+- The nullifier hash prevents double-spend but can't be linked to the original commitment without the private nullifier
+- Privacy grows with the anonymity set — more deposits = stronger privacy
+
+#### Circuit
+
+`DustPoolWithdraw.circom` — ~5,900 non-linear constraints, Groth16 on BN254.
+
+| Signal | Visibility | Purpose |
+|--------|-----------|---------|
+| `root` | Public | Merkle tree root (must match on-chain) |
+| `nullifierHash` | Public | Double-spend prevention |
+| `recipient` | Public | Where funds go |
+| `amount` | Public | Withdrawal amount |
+| `nullifier` | Private | Known only to depositor |
+| `secret` | Private | Known only to depositor |
+| `pathElements[20]` | Private | Merkle proof siblings |
+| `pathIndices[20]` | Private | Left/right path bits |
+
+Trusted setup: Hermez `powersOfTau28_hez_final_15.ptau` (2^15 = 32,768 constraints capacity).
+
+#### User Experience
+
+The pool toggle on the dashboard controls the flow:
+
+- **Toggle OFF**: Payments are claimed directly to your claim address (standard flow)
+- **Toggle ON**: Eligible payments (CREATE2/ERC-4337) are held for manual pool deposit. User sees a "Deposit N payments to Pool" button and explicitly triggers the deposit. EOA payments are skipped (no smart contract wallet to drain).
+- **Consolidate**: When pool deposits exist, a balance card appears with a "Consolidate" button. Opens a modal where you enter a fresh recipient address. ZK proofs are generated in-browser (~1-2s each), then submitted on-chain.
+
+#### Gas Costs
+
+All gas is sponsored by the relayer:
+
+| Operation | Gas | Notes |
+|-----------|-----|-------|
+| Deposit | ~6.8M | Poseidon Merkle insert across 20 depth levels |
+| Withdraw | ~350K | Groth16 pairing verification + ETH transfer |
+
+### Security Model
+
+| Layer | Mechanism |
+|-------|-----------|
+| **Stealth addresses** | ECDH key agreement — only the receiver can derive the private key |
+| **PIN-based keys** | SHA-512(signature + PIN) — stealth keys require both wallet + PIN |
+| **Private key isolation** | Stealth private keys stay in browser memory (React ref, not state) |
+| **CREATE2/4337 claims** | Client signs locally, sponsor relays — key never sent to server |
+| **DustPool privacy** | Groth16 ZK proofs — withdrawal is cryptographically unlinkable to deposit |
+| **Double-spend prevention** | Nullifier hash revealed on withdrawal — contract rejects reuse |
+| **Replay protection** | Chain-scoped signatures (EIP-712 domain includes chainId) |
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── dashboard/        # Main dashboard with pool UI
+│   ├── onboarding/       # PIN setup + name registration
+│   ├── activities/        # Transaction history
+│   ├── links/            # Payment link management
+│   ├── settings/         # Account settings
+│   ├── pay/[name]/       # Public pay page (no-opt-in)
+│   └── api/
+│       ├── bundle/       # ERC-4337 UserOp preparation + submission
+│       ├── resolve/      # Stealth address generation for .tok names
+│       ├── sponsor-claim/ # Legacy claim relay
+│       ├── pool-deposit/  # Stealth wallet → DustPool deposit
+│       └── pool-withdraw/ # ZK-verified pool withdrawal
+├── components/
+│   ├── dashboard/        # Balance cards, consolidate modal
+│   └── send/             # Send modal + recipient resolution
+├── hooks/stealth/
+│   ├── useStealthScanner # Payment detection + auto-claim + pool deposit
+│   ├── useUnifiedBalance # Aggregated balance across all addresses
+│   └── useDustPool       # Pool deposit tracking + ZK consolidation
+├── lib/
+│   ├── stealth/          # Core stealth address cryptography
+│   ├── dustpool/         # Poseidon hashing, Merkle tree, proof generation
+│   └── design/           # Design tokens (colors, radius, shadows)
+└── contexts/
+    └── AuthContext        # Wallet connection, stealth keys, PIN auth
+
+contracts/
+├── wallet/               # StealthWallet + StealthAccount (Foundry)
+│   └── src/              # 48 tests passing
+└── dustpool/             # DustPool ZK privacy pool (Foundry + circom)
+    ├── circuits/         # DustPoolWithdraw.circom
+    ├── src/              # DustPool.sol, MerkleTree.sol, Groth16Verifier.sol
+    └── test/             # 10 tests passing
+
+public/zk/               # Browser ZK assets (WASM + zkey)
+```
+
 ## Roadmap
 
 ### Done
-- **ERC-4337 Stealth Accounts** — Smart accounts deployed at stealth addresses via `StealthAccountFactory`. Claims go through EntryPoint + DustPaymaster — completely gasless for users. Private key never leaves the browser. 48 Foundry tests passing.
-- **CREATE2 Stealth Wallets** — Legacy smart contract wallets via `StealthWalletFactory`. Signature-based drain, replay protection, atomic `deployAndDrain`. Still supported for backward compatibility.
-- **Fresh Address per Name Query** — Server-side resolve API (`GET /api/resolve/{name}`) generates a fresh stealth address and announces it on-chain before payment. No two queries return the same address. Inspired by [Fluidkey](https://docs.fluidkey.com/readme/receiving-funds)'s off-chain resolver.
-- **Unified Multi-Address Dashboard** — Single balance view aggregating unclaimed stealth payments + 3 HD-derived claim wallets. Collapsible per-address breakdown with wallet type badges (EOA/CREATE2/4337). Auto-refreshes claim balances every 30s. Inspired by [Fluidkey](https://docs.fluidkey.com/readme/frequently-asked-questions)'s unified dashboard over separate smart accounts.
 
-### Next Up
+- **Stealth Addresses (ERC-5564 + ERC-6538)** — Core stealth payment protocol with view tag filtering
+- **`.tok` Names** — Human-readable stealth addresses with on-chain registry
+- **No-Opt-In Payments** — Pay pages that work with any wallet (MetaMask, exchanges, hardware wallets)
+- **CREATE2 Stealth Wallets** — Smart contract wallets at stealth addresses with signature-based drain. 16 Foundry tests passing.
+- **ERC-4337 Stealth Accounts** — Full account abstraction with DustPaymaster sponsorship. Private key never leaves browser. 48 Foundry tests passing.
+- **Unified Dashboard** — Aggregated balance across unclaimed stealth payments + HD-derived claim wallets
+- **DustPool (ZK Privacy Pool)** — Groth16 ZK proofs for unlinkable fund consolidation. Poseidon Merkle tree (depth 20), browser proof generation via snarkjs, sponsored deposit + withdrawal. 10 Foundry tests passing.
 
-#### 1. Privacy Pool Integration
-Auto-forward funds from stealth addresses into a privacy pool for forward secrecy — even if the stealth address is traced to the sender, the pool withdrawal breaks the link.
+### Future
 
-**Reference:** [Privacy Pools](https://hackmd.io/@pcaversaccio/ethereum-privacy-the-road-to-self-sovereignty) and the Ethereum Foundation's Kohaku effort.
+- **Merkle tree gas optimization** — Hardcode zero hashes in MerkleTree.sol to reduce deposit gas from 6.8M to ~700K
+- **Multi-asset pool** — Support ERC-20 token deposits alongside native TON
+- **Association sets** — Let users prove their deposit is not from a sanctioned address (0xBow-style inclusion proofs)
+- **Cross-chain stealth** — Extend stealth addresses to other Tokamak L2s
 
 ## Research Links
 
@@ -109,18 +279,20 @@ Auto-forward funds from stealth addresses into a privacy pool for forward secrec
 - [An Incomplete Guide to Stealth Addresses](https://vitalik.eth.limo/general/2023/01/20/stealth.html) — Vitalik's technical overview
 - [ERC-5564: Stealth Addresses](https://eips.ethereum.org/EIPS/eip-5564) — the standard we implement
 - [ERC-6538: Stealth Meta-Address Registry](https://ethereum-magicians.org/t/stealth-meta-address-registry/12888) — registry standard
+- [Privacy Pools](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4563364) — Buterin, Chainalysis, Fabian Schar — the framework behind DustPool's design
+- [0xBow Privacy Pools](https://docs.0xbow.io/) — production privacy pool with association sets
 - [Fluidkey Docs](https://docs.fluidkey.com/readme/receiving-funds) — stealth address wallet with ENS integration
 - [Umbra Protocol](https://github.com/ScopeLift/umbra-protocol) — reference ERC-5564 implementation by ScopeLift
 - [Ethereum Privacy Roadmap](https://hackmd.io/@pcaversaccio/ethereum-privacy-the-road-to-self-sovereignty) — comprehensive privacy analysis
-- [Kohaku: Ethereum Wallet Privacy](https://blog.quicknode.com/ethereum-kohaku-wallet-privacy-roadmap/) — Ethereum Foundation's privacy effort
-- [Post-Quantum Stealth Addresses](https://eprint.iacr.org/2025/112.pdf) — future-proofing research
 
 ## Tech Stack
 
-- Next.js 14, React 18, Chakra UI
-- ethers.js v5, wagmi, elliptic
-- Foundry (Solidity contracts + tests)
-- ERC-5564 (Stealth Addresses), ERC-6538 (Meta-Address Registry), ERC-4337 (Account Abstraction)
+- **Frontend**: Next.js 14, React 18, Chakra UI (Panda CSS)
+- **Blockchain**: ethers.js v5, wagmi, elliptic
+- **ZK Proving**: circom, snarkjs (Groth16 on BN254), circomlibjs (Poseidon)
+- **Smart Contracts**: Foundry (Solidity 0.8.x), poseidon-solidity
+- **Standards**: ERC-5564, ERC-6538, ERC-4337
+- **Network**: Thanos Sepolia (chain ID: 111551119090)
 
 ## License
 
