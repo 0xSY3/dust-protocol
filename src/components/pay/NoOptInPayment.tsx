@@ -17,12 +17,16 @@ interface NoOptInPaymentProps {
   recipientName: string;
   displayName: string;
   linkSlug?: string;
+  externalPaymentSent?: boolean;
+  externalPaymentAmount?: string;
 }
 
 export function NoOptInPayment({
   recipientName,
   displayName,
   linkSlug,
+  externalPaymentSent,
+  externalPaymentAmount,
 }: NoOptInPaymentProps) {
   const [status, setStatus] = useState<Status>("resolving");
   const [stealthAddress, setStealthAddress] = useState<string | null>(null);
@@ -82,12 +86,18 @@ export function NoOptInPayment({
     doResolve(controller.signal);
   }, [doResolve]);
 
-  // Transition to deposit_detected when balance appears
+  // Transition to deposit_detected when balance appears or wallet flow succeeds
   useEffect(() => {
     if (hasDeposit && status === "ready") {
       setStatus("deposit_detected");
     }
   }, [hasDeposit, status]);
+
+  useEffect(() => {
+    if (externalPaymentSent && (status === "ready" || status === "resolving")) {
+      setStatus("deposit_detected");
+    }
+  }, [externalPaymentSent, status]);
 
   if (status === "resolving") {
     return (
@@ -137,7 +147,7 @@ export function NoOptInPayment({
             Payment Received!
           </Text>
           <Text fontSize="15px" color={colors.text.secondary} fontFamily="'JetBrains Mono', monospace">
-            {depositAmount} TON
+            {depositAmount !== "0" ? depositAmount : externalPaymentAmount || ""} TON
           </Text>
           <Text fontSize="13px" color={colors.text.muted}>
             Sent to {displayName}
