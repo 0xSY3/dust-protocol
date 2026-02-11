@@ -117,8 +117,7 @@ export const DUST_PAYMASTER_ABI = [
   'function verifyingSigner() view returns (address)',
 ];
 
-// DustPool — ZK privacy pool for stealth payment consolidation (Thanos Sepolia)
-// Placeholder address — update after deployment
+// DustPool — ZK privacy pool for unlinkable stealth payment withdrawal (Thanos Sepolia)
 export const DUST_POOL_ADDRESS = '0x473e83478caB06F685C4536ebCfC6C21911F7852';
 export const DUST_POOL_DEPLOYMENT_BLOCK = 6327184;
 

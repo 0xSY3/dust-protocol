@@ -9,10 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
-    "test:watch": "vitest --watch",
-    "deploy:contracts": "node scripts/deploy-stealth.js",
-    "relayer": "node relayer/index.js",
-    "relayer:dev": "nodemon relayer/index.js"
+    "test:watch": "vitest --watch"
   },
   "dependencies": {
     "@chakra-ui/react": "^3.2.0",

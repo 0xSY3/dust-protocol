@@ -237,6 +237,76 @@ New stealth payments use ERC-4337 smart accounts. The claim is completely gasles
 
 Legacy CREATE2 and EOA payments are still claimable via `/api/sponsor-claim`.
 
+## DustPool: ZK Privacy Pool
+
+### Problem
+
+Without the pool, claiming stealth payments drains every wallet to the same claim address — linking them on-chain. An observer sees all stealth wallets go to one address.
+
+### Solution
+
+DustPool breaks this link using Groth16 zero-knowledge proofs:
+
+```
+DEPOSIT:
+  Stealth Wallet A ──→ DustPool (commitment₁)
+  Stealth Wallet B ──→ DustPool (commitment₂)
+  Stealth Wallet C ──→ DustPool (commitment₃)
+
+WITHDRAW (unlinkable via ZK proof):
+  DustPool ──→ Fresh Address (total amount)
+  Nobody can tell which deposits map to which withdrawal.
+```
+
+### Deposit Flow
+
+1. Browser generates random `secret` + `nullifier`
+2. Computes `commitment = Poseidon(Poseidon(nullifier, secret), amount)`
+3. Stealth wallet drains to sponsor (via existing claim infrastructure)
+4. Sponsor calls `DustPool.deposit{value: amount}(commitment)`
+5. Commitment inserted into on-chain Poseidon Merkle tree (depth 20, 1M capacity)
+6. Browser stores `{secret, nullifier, leafIndex}` in localStorage
+
+### Withdraw Flow
+
+1. Browser lazy-loads snarkjs + circuit artifacts (WASM 1.7MB + zkey 5.2MB)
+2. For each deposit: generates Groth16 proof proving Merkle membership without revealing which deposit
+3. Submits proof to `/api/pool-withdraw` → contract verifies → sends funds to fresh address
+4. `nullifierHash = Poseidon(nullifier, nullifier)` prevents double-spend without linking back to the commitment
+
+### Circuit
+
+`DustPoolWithdraw.circom` — ~5,900 non-linear constraints, Groth16 on BN254.
+
+| Signal | Visibility | Purpose |
+|--------|-----------|---------|
+| `root` | Public | Merkle tree root (must match on-chain) |
+| `nullifierHash` | Public | Double-spend prevention |
+| `recipient` | Public | Where funds go |
+| `amount` | Public | Withdrawal amount |
+| `nullifier` | Private | Known only to depositor |
+| `secret` | Private | Known only to depositor |
+| `pathElements[20]` | Private | Merkle proof siblings |
+| `pathIndices[20]` | Private | Left/right path bits |
+
+Trusted setup: Hermez `powersOfTau28_hez_final_15.ptau` (2^15 = 32,768 constraints capacity).
+
+### Contracts
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| Groth16Verifier | `0x3ff80Dc7F1D39155c6eac52f5c5Cf317524AF25C` | ZK proof verification (BN254 pairing) |
+| DustPool | `0x473e83478caB06F685C4536ebCfC6C21911F7852` | Privacy pool with Poseidon Merkle tree |
+
+Deployment block: `6327184`
+
+### Gas Costs (All Sponsored)
+
+| Operation | Gas | Notes |
+|-----------|-----|-------|
+| Deposit | ~6.8M | Poseidon Merkle insert across 20 depth levels |
+| Withdraw | ~350K | Groth16 pairing verification + ETH transfer |
+
 ## Unified Balance
 
 The dashboard aggregates current holdings across all addresses:
@@ -307,7 +377,9 @@ src/
 │       ├── sponsor-announce/     # Legacy payment announcement
 │       ├── sponsor-register-keys/ # Meta-address registration
 │       ├── sponsor-name-register/ # Name registration
-│       └── sponsor-name-transfer/ # Name transfer
+│       ├── sponsor-name-transfer/ # Name transfer
+│       ├── pool-deposit/         # Stealth wallet → DustPool deposit
+│       └── pool-withdraw/        # ZK-verified pool withdrawal
 │
 ├── lib/
 │   ├── stealth/                  # Core cryptographic library
@@ -321,6 +393,10 @@ src/
 │   │   ├── relayer.ts            # Relayer for sender privacy (future)
 │   │   ├── types.ts              # TypeScript types, constants, contract addresses
 │   │   └── index.ts              # Re-exports everything
+│   ├── dustpool/                  # ZK privacy pool client library
+│   │   ├── index.ts              # Proof generation, deposit storage, tree building
+│   │   ├── poseidon.ts           # Browser Poseidon hash wrapper (circomlibjs)
+│   │   └── merkle.ts             # Client-side incremental Merkle tree
 │   └── design/
 │       ├── tokens.ts             # Color, radius, and design tokens
 │       └── types.ts              # UI type definitions
@@ -332,6 +408,7 @@ src/
 │   ├── useStealthScanner.ts      # Scan + claim incoming payments (triple-match + auto-claim)
 │   ├── useStealthName.ts         # Name resolution + registration
 │   ├── useUnifiedBalance.ts      # Aggregate stealth + claim wallet balances
+│   ├── useDustPool.ts            # Pool deposit tracking + ZK withdrawal
 │   ├── usePaymentLinks.ts        # Payment link CRUD
 │   ├── useClaimAddresses.ts      # Claim address management
 │   ├── usePin.ts                 # PIN verification state
@@ -344,7 +421,7 @@ src/
 │   │   └── AddressDisplay.tsx    # Address card with copy button + inline QR code
 │   ├── stealth/
 │   │   └── icons.tsx             # SVG icon components
-│   ├── dashboard/                # Dashboard components (UnifiedBalanceCard, AddressBreakdownCard)
+│   ├── dashboard/                # Dashboard components (UnifiedBalanceCard, AddressBreakdownCard, ConsolidateModal)
 │   ├── activities/               # Activity list components
 │   ├── links/                    # Payment link components
 │   ├── onboarding/               # Onboarding step components
@@ -363,12 +440,14 @@ src/
 - Recipient identity: stealth addresses are unlinkable to the receiver's wallet
 - Payment amounts: each payment goes to a separate address
 - Link between payments: no on-chain connection between multiple payments to the same person
+- Withdrawal linkability (with DustPool): ZK proofs break the deposit→withdrawal link entirely
 
 ### What's NOT Private
 
 - Sender identity: the sender's address is visible on-chain (they sent from their wallet)
 - Payment timing: transaction timestamps are public
 - The fact that it's a stealth payment: Announcement events are public
+- DustPool deposit amounts: visible on-chain (but which deposit belongs to which withdrawal is hidden)
 
 ### Key Security
 

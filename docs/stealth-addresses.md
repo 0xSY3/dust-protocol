@@ -70,9 +70,11 @@ Thanos Sepolia (chain ID: 111551119090):
 | ERC6538Registry | `0x9C527Cc8CB3F7C73346EFd48179e564358847296` | Stores stealth meta-addresses (public keys) |
 | StealthNameRegistry | `0x0129DE641192920AB78eBca2eF4591E2Ac48BA59` | Maps `.tok` names to meta-addresses |
 | EntryPoint (v0.6) | `0x5c058Eb93CDee95d72398E5441d989ef6453D038` | ERC-4337 UserOperation execution |
-| StealthAccountFactory | `0x0D93df03e6CF09745A24Ee78A4Cab032781E7aa6` | CREATE2 deployment of stealth smart accounts |
+| StealthAccountFactory | `0xfE89381ae27a102336074c90123A003e96512954` | CREATE2 deployment of stealth smart accounts |
 | DustPaymaster | `0x9e2eb36F7161C066351DC9E418E7a0620EE5d095` | Gas sponsorship for stealth claims |
-| StealthWalletFactory | `0x85e7Fe33F594AC819213e63EEEc928Cb53A166Cd` | Legacy CREATE2 wallet deployment |
+| StealthWalletFactory | `0xbc8e75a5374a6533cD3C4A427BF4FA19737675D3` | Legacy CREATE2 wallet deployment |
+| Groth16Verifier | `0x3ff80Dc7F1D39155c6eac52f5c5Cf317524AF25C` | ZK proof verification for DustPool |
+| DustPool | `0x473e83478caB06F685C4536ebCfC6C21911F7852` | Privacy pool with Poseidon Merkle tree |
 
 Deployment block: `6272527` (scanner never starts before this)
 
@@ -105,6 +107,8 @@ All protocol operations are gasless for users. Gas is sponsored via ERC-4337 (pr
 | `/api/sponsor-register-keys` | Registers stealth meta-address on ERC-6538 Registry |
 | `/api/sponsor-name-register` | Registers a .tok name |
 | `/api/sponsor-name-transfer` | Transfers .tok name ownership |
+| `/api/pool-deposit` | Drains stealth wallet to sponsor, deposits into DustPool with Poseidon commitment |
+| `/api/pool-withdraw` | Verifies Groth16 ZK proof, sends funds from DustPool to fresh address |
 
 Each API route has rate limiting and input validation.
 
@@ -135,3 +139,5 @@ All user data lives in localStorage (no backend database). Storage version: v5.
 | `stealth_claim_signature_{address}` | Signature hash for claim key verification |
 | `stealth_last_scanned_{address}` | Last scanned block number |
 | `stealth_payments_{address}` | Cached scanned payments |
+| `dustpool_deposits_{address}` | DustPool deposit secrets (nullifier, secret, commitment, amount, leafIndex) |
+| `dust_claim_to_pool` | Privacy pool toggle state (true/false) |
