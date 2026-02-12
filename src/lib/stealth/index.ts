@@ -5,7 +5,7 @@ export { SCHEME_ID, CANONICAL_ADDRESSES, DEPLOYMENT_BLOCK, STEALTH_WALLET_FACTOR
 
 export { generateStealthKeyPair, deriveStealthKeyPairFromSignature, deriveStealthKeyPairFromSignatureAndPin, formatStealthMetaAddress, parseStealthMetaAddress, isValidCompressedPublicKey, getPublicKeyFromPrivate, decompressPublicKey, STEALTH_KEY_DERIVATION_MESSAGE } from './keys';
 
-export { generateStealthAddress, computeStealthPrivateKey, verifyStealthAddress, computeViewTag, getAddressFromPrivateKey, computeStealthWalletAddress, computeStealthAccountAddress, signWalletDrain, signUserOp } from './address';
+export { generateStealthAddress, computeStealthPrivateKey, verifyStealthAddress, computeViewTag, getAddressFromPrivateKey, computeStealthWalletAddress, computeStealthAccountAddress, signWalletDrain, signWalletExecute, signUserOp } from './address';
 
 export { scanAnnouncements, scanAnnouncementsViewOnly, getLastScannedBlock, setLastScannedBlock, getAnnouncementCount } from './scanner';
 

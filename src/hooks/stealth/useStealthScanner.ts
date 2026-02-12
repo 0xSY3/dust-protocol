@@ -4,9 +4,9 @@ import { ethers } from 'ethers';
 import {
   scanAnnouncements, setLastScannedBlock as saveLastScannedBlock,
   getLastScannedBlock, getAnnouncementCount, getAddressFromPrivateKey,
-  signWalletDrain, signUserOp,
+  signWalletDrain, signWalletExecute, signUserOp,
   type StealthKeyPair, type ScanResult,
-  DEPLOYMENT_BLOCK,
+  DEPLOYMENT_BLOCK, DUST_POOL_ADDRESS, DUST_POOL_ABI,
   STEALTH_ACCOUNT_FACTORY, STEALTH_ACCOUNT_FACTORY_ABI,
 } from '@/lib/stealth';
 import {
@@ -196,8 +196,10 @@ async function autoClaimPayment(
   return autoClaimLegacy(payment, recipient);
 }
 
-// Claim to DustPool: drain stealth wallet → sponsor → pool deposit with commitment
-// Supports CREATE2 (drain via factory) and ERC-4337 account (drain via bundle API)
+// Stealth wallet deposits DIRECTLY into DustPool (privacy-preserving).
+// Each deposit comes from the unique stealth address, not the sponsor wallet.
+// ERC-4337: UserOp with execute(DustPool, balance, deposit(commitment))
+// CREATE2: wallet.execute(DustPool, balance, deposit(commitment), sig) via API
 async function claimToPoolDeposit(
   payment: ScanResult,
   userAddress: string,
@@ -219,45 +221,98 @@ async function claimToPoolDeposit(
     // Generate deposit preimage using exact balance
     const deposit = await generateDeposit(balance.toBigInt());
 
-    let res: Response;
+    // Encode DustPool.deposit(commitment) calldata
+    const poolIface = new ethers.utils.Interface(DUST_POOL_ABI);
+    const depositCalldata = poolIface.encodeFunctionData('deposit', [deposit.commitmentHex]);
+
+    let txHash: string;
+    let leafIndex: number;
 
     if (wt === 'account') {
-      // ERC-4337: drain to sponsor first via bundle API, then deposit
-      const SPONSOR_ADDRESS = '0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496';
-      if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] Draining ERC-4337 account to sponsor...');
+      // ERC-4337: Build UserOp with execute(DustPool, balance, depositCalldata)
+      // The stealth account calls DustPool.deposit() directly — deposit from stealth address
+      if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] ERC-4337 direct pool deposit...');
 
-      const drainResult = await autoClaimAccount(payment, SPONSOR_ADDRESS);
-      if (!drainResult) {
-        if (process.env.NODE_ENV === 'development') console.warn('[PoolDeposit] ERC-4337 drain failed');
+      const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
+      const accountAddress = payment.announcement.stealthAddress;
+
+      // Check if account is already deployed
+      const code = await provider.getCode(accountAddress);
+      const isDeployed = code !== '0x';
+
+      let initCode = '0x';
+      if (!isDeployed) {
+        const iface = new ethers.utils.Interface(STEALTH_ACCOUNT_FACTORY_ABI);
+        const createData = iface.encodeFunctionData('createAccount', [ownerEOA, 0]);
+        initCode = ethers.utils.hexConcat([STEALTH_ACCOUNT_FACTORY, createData]);
+      }
+
+      // StealthAccount.execute(address dest, uint256 value, bytes func)
+      const EXECUTE_SELECTOR = '0xb61d27f6';
+      const callData = ethers.utils.hexConcat([
+        EXECUTE_SELECTOR,
+        ethers.utils.defaultAbiCoder.encode(
+          ['address', 'uint256', 'bytes'],
+          [DUST_POOL_ADDRESS, balance, depositCalldata]
+        ),
+      ]);
+
+      // Step 1: Get completed UserOp from server (with high gas for Poseidon tree)
+      const prepRes = await fetch('/api/bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sender: accountAddress, initCode, callData }),
+      });
+      const prepData = await prepRes.json();
+      if (!prepRes.ok) {
+        if (process.env.NODE_ENV === 'development') console.warn('[PoolDeposit] Bundle prep failed:', prepData.error);
         return null;
       }
 
-      // Wait for drain tx to confirm on-chain
-      await new Promise(r => setTimeout(r, 3000));
-      if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] Drain confirmed, depositing to pool...');
+      // Step 2: Sign userOpHash locally
+      const { userOp, userOpHash } = prepData;
+      userOp.signature = await signUserOp(userOpHash, payment.stealthPrivateKey);
 
-      res = await fetch('/api/pool-deposit', {
+      // Step 3: Submit signed UserOp
+      const submitRes = await fetch('/api/bundle/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stealthAddress: payment.announcement.stealthAddress,
-          commitment: deposit.commitmentHex,
-          walletType: 'account',
-          alreadyDrained: true,
-          amount: balance.toString(),
-        }),
+        body: JSON.stringify({ userOp }),
       });
+      const submitData = await submitRes.json();
+      if (!submitRes.ok) {
+        if (process.env.NODE_ENV === 'development') console.warn('[PoolDeposit] Bundle submit failed:', submitData.error);
+        return null;
+      }
+
+      txHash = submitData.txHash;
+
+      // Parse leafIndex from tx receipt
+      const receipt = await provider.getTransactionReceipt(txHash);
+      const poolContract = new ethers.Contract(DUST_POOL_ADDRESS, DUST_POOL_ABI, provider);
+      const depositEvent = receipt.logs.find((log: ethers.providers.Log) => {
+        try { return poolContract.interface.parseLog(log).name === 'Deposit'; }
+        catch { return false; }
+      });
+      leafIndex = depositEvent
+        ? poolContract.interface.parseLog(depositEvent).args.leafIndex.toNumber()
+        : 0;
+
     } else {
-      // CREATE2: drain + deposit in single API call
+      // CREATE2: sign execute(DustPool, balance, depositCalldata) → API relays
+      if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] CREATE2 direct pool deposit...');
+
       const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
-      const signature = await signWalletDrain(
+      const signature = await signWalletExecute(
         payment.stealthPrivateKey,
         payment.announcement.stealthAddress,
-        '0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496',
+        DUST_POOL_ADDRESS,
+        balance,
+        depositCalldata,
         THANOS_CHAIN_ID,
       );
 
-      res = await fetch('/api/pool-deposit', {
+      const res = await fetch('/api/pool-deposit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -268,12 +323,14 @@ async function claimToPoolDeposit(
           walletType: 'create2',
         }),
       });
-    }
 
-    const data = await res.json();
-    if (!res.ok) {
-      if (process.env.NODE_ENV === 'development') console.warn('[PoolDeposit] Failed:', data.error);
-      return null;
+      const data = await res.json();
+      if (!res.ok) {
+        if (process.env.NODE_ENV === 'development') console.warn('[PoolDeposit] Failed:', data.error);
+        return null;
+      }
+      txHash = data.txHash;
+      leafIndex = data.leafIndex;
     }
 
     // Store deposit data locally
@@ -283,8 +340,8 @@ async function claimToPoolDeposit(
       amount: deposit.amount.toString(),
       commitment: deposit.commitmentHex,
       nullifierHash: '0x' + deposit.nullifierHash.toString(16).padStart(64, '0'),
-      leafIndex: data.leafIndex,
-      txHash: data.txHash,
+      leafIndex,
+      txHash,
       timestamp: Date.now(),
       withdrawn: false,
     };
@@ -293,9 +350,9 @@ async function claimToPoolDeposit(
     existing.push(storedDeposit);
     saveDeposits(userAddress, existing);
 
-    if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] Success, leafIndex:', data.leafIndex);
+    if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] Success, leafIndex:', leafIndex);
 
-    return { txHash: data.txHash, leafIndex: data.leafIndex, depositData: storedDeposit };
+    return { txHash, leafIndex, depositData: storedDeposit };
   } catch (e) {
     if (process.env.NODE_ENV === 'development') console.warn('[PoolDeposit] Error:', e);
     return null;
@@ -676,58 +733,10 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       const isRecovery = currentBal < originalAmt * 0.1 && originalAmt > 0.001;
 
       if (isRecovery) {
-        // Recovery path: funds already at sponsor, just deposit to pool
-        onProgress(deposited, total, `Recovering ${i + 1}/${total} (${originalAmt.toFixed(4)} TON)...`);
-
-        try {
-          const amountWei = ethers.utils.parseEther(payment.originalAmount!);
-          const deposit = await generateDeposit(amountWei.toBigInt());
-
-          const res = await fetch('/api/pool-deposit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              stealthAddress: payment.announcement.stealthAddress,
-              commitment: deposit.commitmentHex,
-              walletType: payment.walletType,
-              alreadyDrained: true,
-              amount: amountWei.toString(),
-            }),
-          });
-
-          const data = await res.json();
-          if (res.ok) {
-            const storedDeposit: StoredDeposit = {
-              nullifier: deposit.nullifier.toString(),
-              secret: deposit.secret.toString(),
-              amount: deposit.amount.toString(),
-              commitment: deposit.commitmentHex,
-              nullifierHash: '0x' + deposit.nullifierHash.toString(16).padStart(64, '0'),
-              leafIndex: data.leafIndex,
-              txHash: data.txHash,
-              timestamp: Date.now(),
-              withdrawn: false,
-            };
-            const existing = loadDeposits(address);
-            existing.push(storedDeposit);
-            saveDeposits(address, existing);
-
-            deposited++;
-            setPayments(prev => prev.map(p =>
-              p.announcement.txHash === payment.announcement.txHash
-                ? { ...p, claimed: true, balance: '0' }
-                : p
-            ));
-            onProgress(deposited, total, `Recovered ${deposited}/${total}`);
-          } else {
-            failed++;
-            onProgress(deposited, total, `Failed ${i + 1}/${total}: ${data.error}`);
-          }
-        } catch (e) {
-          failed++;
-          if (process.env.NODE_ENV === 'development') console.warn('[PoolRecovery] Error:', e);
-          onProgress(deposited, total, `Failed ${i + 1}/${total}, continuing...`);
-        }
+        // Recovery: balance is near-zero but original was significant
+        // These were previously drained to sponsor — skip (already lost privacy)
+        skipped++;
+        onProgress(deposited, total, `Skipped ${i + 1}/${total} (already drained)`);
         continue;
       }
 

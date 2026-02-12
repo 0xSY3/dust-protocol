@@ -153,6 +153,23 @@ export function getAddressFromPrivateKey(privateKey: string): string {
   return new ethers.Wallet(privateKey).address;
 }
 
+export async function signWalletExecute(
+  stealthPrivateKey: string,
+  walletAddress: string,
+  to: string,
+  value: ethers.BigNumber,
+  data: string,
+  chainId: number,
+  nonce = 0,
+): Promise<string> {
+  const wallet = new ethers.Wallet(stealthPrivateKey);
+  const hash = ethers.utils.solidityKeccak256(
+    ['address', 'address', 'uint256', 'bytes32', 'uint256', 'uint256'],
+    [walletAddress, to, value, ethers.utils.keccak256(data), nonce, chainId]
+  );
+  return wallet.signMessage(ethers.utils.arrayify(hash));
+}
+
 export async function signUserOp(userOpHash: string, stealthPrivateKey: string): Promise<string> {
   const wallet = new ethers.Wallet(stealthPrivateKey);
   return wallet.signMessage(ethers.utils.arrayify(userOpHash));

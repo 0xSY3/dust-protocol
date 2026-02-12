@@ -154,8 +154,16 @@ export async function POST(req: Request) {
       }
     }
     // Gas limit must cover verificationGasLimit×2 (account + paymaster) + callGasLimit + overhead
+    const callGas = ethers.BigNumber.from(userOp.callGasLimit);
+    const verGas = ethers.BigNumber.from(userOp.verificationGasLimit);
+    const preGas = ethers.BigNumber.from(userOp.preVerificationGas);
+    const overhead = ethers.BigNumber.from(100_000);
+    const computedGasLimit = preGas.add(verGas.mul(2)).add(callGas).add(overhead);
+    // Use at least 1.5M, but scale up for pool deposits
+    const gasLimit = computedGasLimit.gt(1_500_000) ? computedGasLimit : ethers.BigNumber.from(1_500_000);
+
     const tx = await entryPoint.handleOps([userOp], sponsor.address, {
-      gasLimit: 1_500_000,
+      gasLimit,
       type: 2,
     });
     const receipt = await tx.wait();

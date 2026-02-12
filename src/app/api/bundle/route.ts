@@ -95,10 +95,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing sender or callData' }, { status: 400, headers: NO_STORE });
     }
 
-    // Whitelist callData: only allow drain(address) selector to prevent arbitrary contract calls
-    const ALLOWED_SELECTORS = ['0xece53132']; // drain(address)
+    // Whitelist callData selectors to prevent arbitrary contract calls
+    const DRAIN_SELECTOR = '0xece53132';   // drain(address)
+    const EXECUTE_SELECTOR = '0xb61d27f6'; // execute(address,uint256,bytes)
     const selector = callData.slice(0, 10).toLowerCase();
-    if (!ALLOWED_SELECTORS.includes(selector)) {
+
+    if (selector === EXECUTE_SELECTOR) {
+      // For execute(), only allow calls targeting the DustPool contract
+      const DUST_POOL = '0x473e83478caB06F685C4536ebCfC6C21911F7852'.toLowerCase();
+      try {
+        const decoded = ethers.utils.defaultAbiCoder.decode(
+          ['address', 'uint256', 'bytes'], '0x' + callData.slice(10)
+        );
+        if (decoded[0].toLowerCase() !== DUST_POOL) {
+          return NextResponse.json({ error: 'Execute target not allowed' }, { status: 400, headers: NO_STORE });
+        }
+      } catch {
+        return NextResponse.json({ error: 'Invalid execute calldata' }, { status: 400, headers: NO_STORE });
+      }
+    } else if (selector !== DRAIN_SELECTOR) {
       return NextResponse.json({ error: 'Unsupported operation' }, { status: 400, headers: NO_STORE });
     }
 
@@ -109,8 +124,9 @@ export async function POST(req: Request) {
     // Get nonce from EntryPoint
     const nonce = body.nonce || (await entryPoint.getNonce(sender, 0)).toString();
 
-    // Gas params — generous for stealth wallet operations
-    const callGasLimit = body.callGasLimit || '200000';
+    // Gas params — higher for pool deposits (Poseidon Merkle tree ~6.8M gas)
+    const isPoolDeposit = selector === EXECUTE_SELECTOR;
+    const callGasLimit = body.callGasLimit || (isPoolDeposit ? '8000000' : '200000');
     const verificationGasLimit = body.verificationGasLimit || (initCode && initCode !== '0x' ? '500000' : '200000');
     const preVerificationGas = body.preVerificationGas || '50000';
 

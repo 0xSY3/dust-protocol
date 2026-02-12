@@ -12,10 +12,13 @@ const CHAIN_ID = 111551119090;
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const FACTORY_ABI = [
-  'function deployAndDrain(address _owner, address _to, bytes _sig)',
+  'function deploy(address _owner) returns (address)',
   'function computeAddress(address) view returns (address)',
 ];
-const STEALTH_WALLET_ABI = ['function drain(address to, bytes sig)'];
+const STEALTH_WALLET_ABI = [
+  'function execute(address to, uint256 value, bytes data, bytes sig)',
+  'function nonce() view returns (uint256)',
+];
 
 // Rate limiting
 const claimCooldowns = new Map<string, number>();
@@ -62,6 +65,15 @@ function isValidAddress(addr: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
 
+/**
+ * Pool deposit — stealth wallet deposits DIRECTLY into DustPool.
+ *
+ * For CREATE2 wallets: uses StealthWallet.execute() to call DustPool.deposit()
+ * so the deposit comes FROM the stealth wallet address (not the sponsor).
+ *
+ * For ERC-4337 accounts: handled client-side via bundle API (UserOp with
+ * StealthAccount.execute() → DustPool.deposit()). This route is not used.
+ */
 export async function POST(req: Request) {
   try {
     if (!SPONSOR_KEY) {
@@ -103,81 +115,79 @@ export async function POST(req: Request) {
 
     const txOpts = { type: 2 as const, maxFeePerGas, maxPriorityFeePerGas: maxPriorityFee };
 
-    let depositAmount: ethers.BigNumber;
-
-    // Step 1: Drain stealth wallet to sponsor (or use pre-drained amount)
-    if (walletType === 'account' && body.alreadyDrained) {
-      // ERC-4337 account: already drained to sponsor via bundle API
-      if (!body.amount) {
-        return NextResponse.json({ error: 'Amount required for pre-drained deposits' }, { status: 400 });
-      }
-      depositAmount = ethers.BigNumber.from(body.amount);
-      console.log('[PoolDeposit] Account pre-drained, depositing:', ethers.utils.formatEther(depositAmount));
-    } else if (walletType === 'create2' && owner && signature) {
-      // CREATE2 wallet: drain to sponsor then deposit
+    if (walletType === 'create2' && owner && signature) {
+      // CREATE2 wallet: deploy if needed, then execute DustPool.deposit() directly
       const balance = await provider.getBalance(stealthAddress);
       if (balance.isZero()) {
         return NextResponse.json({ error: 'No funds in stealth address' }, { status: 400 });
       }
-      depositAmount = balance;
 
       const existingCode = await provider.getCode(stealthAddress);
       const alreadyDeployed = existingCode !== '0x';
 
-      if (alreadyDeployed) {
-        const wallet = new ethers.Contract(stealthAddress, STEALTH_WALLET_ABI, sponsor);
-        const drainTx = await wallet.drain(sponsor.address, signature, { gasLimit: 300_000, ...txOpts });
-        await drainTx.wait();
-      } else {
-        const newFactory = new ethers.Contract(STEALTH_WALLET_FACTORY, [...FACTORY_ABI], sponsor);
+      // Deploy wallet if not already deployed
+      if (!alreadyDeployed) {
+        const newFactory = new ethers.Contract(STEALTH_WALLET_FACTORY, FACTORY_ABI, sponsor);
         const newFactoryAddr = await newFactory.computeAddress(owner);
         const factory = newFactoryAddr.toLowerCase() === stealthAddress.toLowerCase()
           ? newFactory
           : new ethers.Contract(LEGACY_STEALTH_WALLET_FACTORY, FACTORY_ABI, sponsor);
 
-        const drainTx = await factory.deployAndDrain(owner, sponsor.address, signature, { gasLimit: 300_000, ...txOpts });
-        await drainTx.wait();
+        console.log('[PoolDeposit] Deploying CREATE2 wallet for', stealthAddress);
+        const deployTx = await factory.deploy(owner, { gasLimit: 300_000, ...txOpts });
+        await deployTx.wait();
       }
+
+      // Encode DustPool.deposit(commitment) calldata
+      const poolIface = new ethers.utils.Interface(DUST_POOL_ABI);
+      const depositCalldata = poolIface.encodeFunctionData('deposit', [commitment]);
+
+      // Call wallet.execute(DustPool, balance, depositCalldata, sig)
+      // The wallet makes an internal call to DustPool.deposit{value: balance}(commitment)
+      // Deposit comes FROM the stealth wallet address, not the sponsor
+      const wallet = new ethers.Contract(stealthAddress, STEALTH_WALLET_ABI, sponsor);
+
+      console.log('[PoolDeposit] Stealth wallet', stealthAddress, 'depositing', ethers.utils.formatEther(balance), 'directly into DustPool');
+
+      const executeTx = await wallet.execute(
+        DUST_POOL_ADDRESS,
+        balance,
+        depositCalldata,
+        signature,
+        { gasLimit: 8_000_000, ...txOpts },
+      );
+      const receipt = await executeTx.wait();
+
+      // Parse Deposit event to get leafIndex
+      const poolContract = new ethers.Contract(DUST_POOL_ADDRESS, DUST_POOL_ABI, provider);
+      const depositEvent = receipt.logs.find((log: ethers.providers.Log) => {
+        try {
+          const parsed = poolContract.interface.parseLog(log);
+          return parsed.name === 'Deposit';
+        } catch { return false; }
+      });
+
+      let leafIndex = 0;
+      if (depositEvent) {
+        const parsed = poolContract.interface.parseLog(depositEvent);
+        leafIndex = parsed.args.leafIndex.toNumber();
+      }
+
+      console.log('[PoolDeposit] Success, leafIndex:', leafIndex);
+
+      return NextResponse.json({
+        success: true,
+        txHash: receipt.transactionHash,
+        leafIndex,
+        amount: ethers.utils.formatEther(balance),
+      });
     } else if (walletType === 'eoa') {
-      return NextResponse.json({ error: 'EOA wallets not supported for pool deposit — use direct claim' }, { status: 400 });
+      return NextResponse.json({ error: 'EOA wallets not supported for pool deposit' }, { status: 400 });
+    } else if (walletType === 'account') {
+      return NextResponse.json({ error: 'ERC-4337 accounts should use the bundle API for direct pool deposits' }, { status: 400 });
     } else {
       return NextResponse.json({ error: 'Invalid wallet type or missing parameters' }, { status: 400 });
     }
-
-    // Step 2: Sponsor deposits drained amount into DustPool
-    const poolContract = new ethers.Contract(DUST_POOL_ADDRESS, DUST_POOL_ABI, sponsor);
-
-    console.log('[PoolDeposit] Depositing', ethers.utils.formatEther(depositAmount), 'into DustPool');
-
-    const depositTx = await poolContract.deposit(commitment, {
-      value: depositAmount,
-      gasLimit: 8_000_000, // Merkle insert with 20-depth Poseidon tree ~6.8M gas
-      ...txOpts,
-    });
-    const receipt = await depositTx.wait();
-
-    // Parse Deposit event to get leafIndex
-    const depositEvent = receipt.logs.find((log: ethers.providers.Log) => {
-      try {
-        const parsed = poolContract.interface.parseLog(log);
-        return parsed.name === 'Deposit';
-      } catch { return false; }
-    });
-
-    let leafIndex = 0;
-    if (depositEvent) {
-      const parsed = poolContract.interface.parseLog(depositEvent);
-      leafIndex = parsed.args.leafIndex.toNumber();
-    }
-
-    console.log('[PoolDeposit] Success, leafIndex:', leafIndex);
-
-    return NextResponse.json({
-      success: true,
-      txHash: receipt.transactionHash,
-      leafIndex,
-      amount: ethers.utils.formatEther(depositAmount),
-    });
   } catch (e) {
     console.error('[PoolDeposit] Error:', e);
     return NextResponse.json({ error: 'Pool deposit failed' }, { status: 500 });
