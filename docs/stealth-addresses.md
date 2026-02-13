@@ -1,6 +1,6 @@
 # Stealth Addresses — How Dust Protocol Works
 
-Private payments on Tokamak Network. Send TON to anyone without revealing their identity on-chain.
+Private payments on EVM chains. Send funds to anyone without revealing their identity on-chain. Currently deployed on Thanos Sepolia (TON) and Ethereum Sepolia (ETH).
 
 ## The Simple Version
 
@@ -9,7 +9,7 @@ Imagine you want to receive money privately. Normally, you share your wallet add
 With Dust Protocol:
 - You register a name like `alice.tok`
 - Someone visits your payment page and sees a one-time address
-- They send TON to that address from any wallet
+- They send funds to that address from any wallet
 - Only you can find and claim the payment
 - No one else can link that payment to you
 
@@ -19,11 +19,11 @@ Each payment goes to a different address. There's no trail connecting them to ea
 
 ### 1. No-Opt-In (Primary — No Wallet Needed)
 
-The sender doesn't need any special software. They just send TON to a plain address.
+The sender doesn't need any special software. They just send funds to a plain address.
 
 ```
 Sender visits pay/alice → server generates fresh stealth address + announces on-chain → page shows address + QR code
-Sender copies address → sends from MetaMask/exchange/anywhere
+Sender copies address → sends from MetaMask / exchange / anywhere
 ```
 
 The server-side resolve API (`GET /api/resolve/{name}`) handles everything: name resolution, stealth address generation, and on-chain announcement. The announcement exists before the sender even copies the address, so they can close the page at any time.
@@ -62,7 +62,9 @@ Names are stored on the `StealthNameRegistry` contract. When someone visits `/pa
 
 ## What's Deployed
 
-Thanos Sepolia (chain ID: 111551119090):
+All contract addresses and chain config are in `src/config/chains.ts`.
+
+### Thanos Sepolia (chain ID: 111551119090)
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
@@ -76,7 +78,25 @@ Thanos Sepolia (chain ID: 111551119090):
 | Groth16Verifier | `0x3ff80Dc7F1D39155c6eac52f5c5Cf317524AF25C` | ZK proof verification for DustPool |
 | DustPool | `0x473e83478caB06F685C4536ebCfC6C21911F7852` | Privacy pool with Poseidon Merkle tree |
 
-Deployment block: `6272527` (scanner never starts before this)
+Deployment block: `6272527`
+
+### Ethereum Sepolia (chain ID: 11155111)
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| ERC5564Announcer | `0x64044FfBefA7f1252DdfA931c939c19F21413aB0` | Emits Announcement events when payments are made |
+| ERC6538Registry | `0xb848398167054cCb66264Ec25C35F8CfB1EF1Ca7` | Stores stealth meta-addresses (public keys) |
+| StealthNameRegistry | `0x4364cd60dF5F4dC82E81346c4E64515C08f19BBc` | Maps `.tok` names to meta-addresses |
+| EntryPoint (v0.6) | `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` | Canonical ERC-4337 EntryPoint |
+| StealthAccountFactory | `0xc73fce071129c7dD7f2F930095AfdE7C1b8eA82A` | CREATE2 deployment of stealth smart accounts |
+| DustPaymaster | `0x20C28cbF9bc462Fb361C8DAB0C0375011b81BEb2` | Gas sponsorship for stealth claims |
+| StealthWalletFactory | `0x1c65a6F830359f207e593867B78a303B9D757453` | CREATE2 wallet deployment |
+
+Deployment block: `10251347`
+
+DustPool is not yet deployed on Ethereum Sepolia.
+
+The scanner starts from the deployment block for each chain and never scans before it.
 
 ## Pages
 
@@ -134,10 +154,10 @@ All user data lives in localStorage (no backend database). Storage version: v5.
 |-------------|---------------|
 | `dust_username_{address}` | User's .tok name |
 | `dust_pin_{address}` | AES-256-GCM encrypted PIN |
-| ~~`dust_pending_{name}_{link}`~~ | Removed — no longer needed since resolve API handles announcement server-side |
 | `stealth_claim_addresses_{address}` | Derived claim addresses |
 | `stealth_claim_signature_{address}` | Signature hash for claim key verification |
-| `stealth_last_scanned_{address}` | Last scanned block number |
-| `stealth_payments_{address}` | Cached scanned payments |
+| `stealth_last_scanned_{address}` | Last scanned block number (per-chain via scanner) |
+| `stealth_payments_{address}` | Cached scanned payments (per-chain via scanner) |
 | `dustpool_deposits_{address}` | DustPool deposit secrets (nullifier, secret, commitment, amount, leafIndex) |
 | `dust_claim_to_pool` | Privacy pool toggle state (true/false) |
+| `dust_active_chain` | Active chain ID for chain selector |

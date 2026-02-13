@@ -1,6 +1,8 @@
 # Dust Protocol
 
-Private payment infrastructure on Tokamak Network. Send and receive untraceable payments using stealth addresses, `.tok` names, and a ZK privacy pool for unlinkable fund withdrawal.
+Private payment infrastructure for EVM chains. Send and receive untraceable payments using stealth addresses, `.tok` names, and a ZK privacy pool for unlinkable fund withdrawal.
+
+Currently deployed on **Thanos Sepolia** and **Ethereum Sepolia**.
 
 ## Features
 
@@ -12,7 +14,8 @@ Private payment infrastructure on Tokamak Network. Send and receive untraceable 
 - **Paymaster-Sponsored Gas** — All claims are gasless via DustPaymaster. The on-chain paymaster sponsors gas through ERC-4337, with auto-top-up when deposits run low
 - **Real-time Scanning** — Automatic detection of incoming payments (supports legacy EOA, CREATE2, and ERC-4337 account announcements)
 - **Unified Dashboard** — Single balance view aggregating unclaimed stealth payments + claim wallet holdings, with per-address breakdown
-- **DustPool (ZK Privacy Pool)** — Withdraw funds from multiple stealth wallets into a single fresh address with zero on-chain linkability via Groth16 ZK proofs
+- **Multi-Chain Support** — Chain selector in sidebar, switch between Thanos Sepolia and Ethereum Sepolia. All API routes, hooks, and scanner are chain-aware
+- **DustPool (ZK Privacy Pool)** — Withdraw funds from multiple stealth wallets into a single fresh address with zero on-chain linkability via Groth16 ZK proofs (Thanos Sepolia only)
 
 ## Setup
 
@@ -25,17 +28,25 @@ npm run dev
 ### Environment Variables
 
 ```
-NEXT_PUBLIC_STEALTH_ANNOUNCER_ADDRESS=0x2C2a59E9e71F2D1A8A2D447E73813B9F89CBb125
-NEXT_PUBLIC_STEALTH_REGISTRY_ADDRESS=0x9C527Cc8CB3F7C73346EFd48179e564358847296
-NEXT_PUBLIC_STEALTH_NAME_REGISTRY_ADDRESS=0x0129DE641192920AB78eBca2eF4591E2Ac48BA59
 RELAYER_PRIVATE_KEY=<deployer-private-key>
 ```
 
+Contract addresses and RPC URLs are configured per-chain in `src/config/chains.ts`. No per-chain env vars needed.
+
+## Supported Networks
+
+| Network | Chain ID | Native Currency | Explorer |
+|---------|----------|----------------|----------|
+| Thanos Sepolia | `111551119090` | TON | [explorer.thanos-sepolia.tokamak.network](https://explorer.thanos-sepolia.tokamak.network) |
+| Ethereum Sepolia | `11155111` | ETH | [sepolia.etherscan.io](https://sepolia.etherscan.io) |
+
+All chain-specific configuration (RPC URLs, contract addresses, creation codes) lives in `src/config/chains.ts`.
+
 ## Smart Contracts
 
-All contracts are deployed on Thanos Sepolia (chain ID: 111551119090).
+### Thanos Sepolia (chain ID: 111551119090)
 
-### Core Stealth Infrastructure
+#### Core Stealth Infrastructure
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
@@ -43,7 +54,7 @@ All contracts are deployed on Thanos Sepolia (chain ID: 111551119090).
 | ERC6538Registry | `0x9C527Cc8CB3F7C73346EFd48179e564358847296` | Stealth meta-address registry |
 | StealthNameRegistry | `0x0129DE641192920AB78eBca2eF4591E2Ac48BA59` | `.tok` name to meta-address mapping |
 
-### ERC-4337 Account Abstraction
+#### ERC-4337 Account Abstraction
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
@@ -51,7 +62,7 @@ All contracts are deployed on Thanos Sepolia (chain ID: 111551119090).
 | StealthAccountFactory | `0xfE89381ae27a102336074c90123A003e96512954` | CREATE2 deployment of stealth accounts |
 | DustPaymaster | `0x9e2eb36F7161C066351DC9E418E7a0620EE5d095` | Gas sponsorship for stealth claims |
 
-### Legacy (Backward Compatible)
+#### Legacy (Backward Compatible)
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
@@ -59,12 +70,30 @@ All contracts are deployed on Thanos Sepolia (chain ID: 111551119090).
 | Legacy AccountFactory | `0x0D93df03e6CF09745A24Ee78A4Cab032781E7aa6` | Previous generation account factory |
 | Legacy WalletFactory | `0x85e7Fe33F594AC819213e63EEEc928Cb53A166Cd` | First generation wallet factory |
 
-### DustPool (ZK Privacy Pool)
+#### DustPool (ZK Privacy Pool)
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
 | Groth16Verifier | `0x3ff80Dc7F1D39155c6eac52f5c5Cf317524AF25C` | ZK proof verification (BN254 pairing) |
 | DustPool | `0x473e83478caB06F685C4536ebCfC6C21911F7852` | Privacy pool with Poseidon Merkle tree |
+
+Deployment block: `6272527`
+
+### Ethereum Sepolia (chain ID: 11155111)
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| ERC5564Announcer | `0x64044FfBefA7f1252DdfA931c939c19F21413aB0` | On-chain stealth payment announcements |
+| ERC6538Registry | `0xb848398167054cCb66264Ec25C35F8CfB1EF1Ca7` | Stealth meta-address registry |
+| StealthNameRegistry | `0x4364cd60dF5F4dC82E81346c4E64515C08f19BBc` | `.tok` name to meta-address mapping |
+| EntryPoint (v0.6) | `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` | Canonical ERC-4337 EntryPoint |
+| StealthWalletFactory | `0x1c65a6F830359f207e593867B78a303B9D757453` | CREATE2 wallet deployment |
+| StealthAccountFactory | `0xc73fce071129c7dD7f2F930095AfdE7C1b8eA82A` | ERC-4337 stealth account deployment |
+| DustPaymaster | `0x20C28cbF9bc462Fb361C8DAB0C0375011b81BEb2` | Gas sponsorship for stealth claims |
+
+Deployment block: `10251347`
+
+DustPool is not yet deployed on Ethereum Sepolia. Privacy pool features are disabled on this chain.
 
 ## How It Works
 
@@ -122,9 +151,9 @@ Without the pool, claiming stealth payments drains every wallet to the same clai
 #### The Problem
 
 ```
-Stealth Wallet A (5 TON) ──→ Claim Address 0xABC
-Stealth Wallet B (3 TON) ──→ Claim Address 0xABC  ← ALL LINKED
-Stealth Wallet C (7 TON) ──→ Claim Address 0xABC
+Stealth Wallet A (5 ETH) ──→ Claim Address 0xABC
+Stealth Wallet B (3 ETH) ──→ Claim Address 0xABC  ← ALL LINKED
+Stealth Wallet C (7 ETH) ──→ Claim Address 0xABC
 ```
 
 An observer sees all stealth wallets drain to the same address. Privacy is destroyed.
@@ -138,7 +167,7 @@ DEPOSIT (all mixed into one pool):
   Stealth Wallet C ──→ DustPool (commitment₃)
 
 WITHDRAW (unlinkable via ZK proof):
-  DustPool ──→ Fresh Address 0xNEW (15 TON)
+  DustPool ──→ Fresh Address 0xNEW (15 ETH)
   Nobody can tell which deposits map to which withdrawal.
 ```
 
@@ -231,7 +260,10 @@ src/
 │       └── pool-withdraw/ # ZK-verified pool withdrawal
 ├── components/
 │   ├── dashboard/        # Balance cards, withdraw modal
-│   └── send/             # Send modal + recipient resolution
+│   ├── send/             # Send modal + recipient resolution
+│   └── ChainSelector.tsx # Network switcher dropdown
+├── config/
+│   └── chains.ts         # Chain registry (RPC, contracts, creation codes per chain)
 ├── hooks/stealth/
 │   ├── useStealthScanner # Payment detection + auto-claim + pool deposit
 │   ├── useUnifiedBalance # Aggregated balance across all addresses
@@ -239,9 +271,10 @@ src/
 ├── lib/
 │   ├── stealth/          # Core stealth address cryptography
 │   ├── dustpool/         # Poseidon hashing, Merkle tree, proof generation
+│   ├── server-provider.ts # Shared server-side JSON-RPC provider
 │   └── design/           # Design tokens (colors, radius, shadows)
 └── contexts/
-    └── AuthContext        # Wallet connection, stealth keys, PIN auth
+    └── AuthContext        # Wallet connection, stealth keys, PIN auth, active chain
 
 contracts/
 ├── wallet/               # StealthWallet + StealthAccount (Foundry)
@@ -265,13 +298,15 @@ public/zk/               # Browser ZK assets (WASM + zkey)
 - **ERC-4337 Stealth Accounts** — Full account abstraction with DustPaymaster sponsorship. Private key never leaves browser. 48 Foundry tests passing.
 - **Unified Dashboard** — Aggregated balance across unclaimed stealth payments + HD-derived claim wallets
 - **DustPool (ZK Privacy Pool)** — Groth16 ZK proofs for unlinkable fund withdrawal. Poseidon Merkle tree (depth 20), browser proof generation via snarkjs, sponsored deposit + withdrawal. 10 Foundry tests passing.
+- **Multi-Chain Support** — Chain config registry, chain-aware API routes/hooks/scanner, chain selector UI. Deployed on Thanos Sepolia + Ethereum Sepolia.
 
 ### Future
 
 - **Merkle tree gas optimization** — Hardcode zero hashes in MerkleTree.sol to reduce deposit gas from 6.8M to ~700K
-- **Multi-asset pool** — Support ERC-20 token deposits alongside native TON
+- **Multi-asset pool** — Support ERC-20 token deposits alongside native currency
 - **Association sets** — Let users prove their deposit is not from a sanctioned address (0xBow-style inclusion proofs)
-- **Cross-chain stealth** — Extend stealth addresses to other Tokamak L2s
+- **EIP-7702 Stealth Sub-Accounts** — On Pectra-enabled chains (Ethereum Sepolia), allow stealth EOAs to delegate code via EIP-7702 for sub-account spending policies
+- **DustPool on Ethereum Sepolia** — Deploy ZK privacy pool contracts + trusted setup on Ethereum Sepolia
 
 ## Research Links
 
@@ -292,7 +327,7 @@ public/zk/               # Browser ZK assets (WASM + zkey)
 - **ZK Proving**: circom, snarkjs (Groth16 on BN254), circomlibjs (Poseidon)
 - **Smart Contracts**: Foundry (Solidity 0.8.x), poseidon-solidity
 - **Standards**: ERC-5564, ERC-6538, ERC-4337
-- **Network**: Thanos Sepolia (chain ID: 111551119090)
+- **Networks**: Thanos Sepolia (chain ID: 111551119090), Ethereum Sepolia (chain ID: 11155111)
 
 ## License
 

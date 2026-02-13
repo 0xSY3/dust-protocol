@@ -19,17 +19,18 @@ Everything is built on **secp256k1** elliptic curve cryptography (same curve as 
 ### Stealth Meta-Address Format
 
 ```
-st:thanos:0x{spending_pub_key_33_bytes}{viewing_pub_key_33_bytes}
+st:eth:0x{spending_pub_key_33_bytes}{viewing_pub_key_33_bytes}
 ```
 
-Example: `st:thanos:0x02abc...def03xyz...789` (total 132 hex chars after `0x`)
+Example: `st:eth:0x02abc...def03xyz...789` (total 132 hex chars after `0x`)
 
 Regex: `/^st:([a-z]+):0x([0-9a-fA-F]{132})$/`
 
 - First 66 hex chars = compressed spending public key (02/03 prefix)
 - Last 66 hex chars = compressed viewing public key (02/03 prefix)
+- The chain prefix (e.g. `eth`, `thanos`) is a label only — the parser accepts any lowercase alpha string. The actual chain is determined by `chainId` passed to hooks/API calls.
 
-On-chain (in ERC-6538 Registry and StealthNameRegistry), the meta-address is stored as raw bytes without the `st:thanos:` prefix.
+On-chain (in ERC-6538 Registry and StealthNameRegistry), the meta-address is stored as raw bytes without the `st:eth:` prefix.
 
 ## Key Derivation
 
@@ -81,7 +82,7 @@ When someone wants to pay Alice:
 7. Stealth address: last 20 bytes of keccak256(uncompressed P_stealth)
 ```
 
-The stealth address is derived as an ERC-4337 smart account via CREATE2 from the `StealthAccountFactory`. The constructor args encode the `EntryPoint` address and the stealth EOA (owner). Anyone can send ETH/TON to the predicted address before the account is deployed.
+The stealth address is derived as an ERC-4337 smart account via CREATE2 from the `StealthAccountFactory`. The constructor args encode the `EntryPoint` address and the stealth EOA (owner). Anyone can send funds to the predicted address before the account is deployed. The EntryPoint address and creation code differ per chain (see `src/config/chains.ts`).
 
 ### ERC-4337 Account Address
 
@@ -190,7 +191,7 @@ The key design decision is **eager pre-announcement**: the stealth address is an
        │                     │                     │
        │    7. User copies   │                     │
        │    address and      │                     │
-       │    sends TON        │                     │
+       │    sends funds      │                     │
        │<────────────────────│                     │
        │                     │                     │
        │ 8. Poll balance (optional UX)             │
@@ -291,14 +292,14 @@ WITHDRAW (unlinkable via ZK proof):
 
 Trusted setup: Hermez `powersOfTau28_hez_final_15.ptau` (2^15 = 32,768 constraints capacity).
 
-### Contracts
+### Contracts (Thanos Sepolia only)
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
 | Groth16Verifier | `0x3ff80Dc7F1D39155c6eac52f5c5Cf317524AF25C` | ZK proof verification (BN254 pairing) |
 | DustPool | `0x473e83478caB06F685C4536ebCfC6C21911F7852` | Privacy pool with Poseidon Merkle tree |
 
-Deployment block: `6327184`
+Deployment block: `6327184`. DustPool is not yet deployed on Ethereum Sepolia.
 
 ### Gas Costs (All Sponsored)
 
@@ -381,7 +382,11 @@ src/
 │       ├── pool-deposit/         # Stealth wallet → DustPool deposit
 │       └── pool-withdraw/        # ZK-verified pool withdrawal
 │
+├── config/
+│   └── chains.ts                 # Chain registry: RPC, contracts, creation codes per chainId
+│
 ├── lib/
+│   ├── server-provider.ts        # Shared ServerJsonRpcProvider for API routes
 │   ├── stealth/                  # Core cryptographic library
 │   │   ├── address.ts            # Stealth address math (generate, verify, compute private key)
 │   │   ├── keys.ts               # Key derivation (from signature, from signature+PIN)
@@ -427,6 +432,7 @@ src/
 │   ├── onboarding/               # Onboarding step components
 │   ├── settings/                 # Settings components
 │   ├── layout/                   # Sidebar, navigation
+│   ├── ChainSelector.tsx         # Network switcher dropdown
 │   └── ui/                       # Shared UI primitives
 │
 └── contexts/
@@ -476,3 +482,38 @@ It cannot:
 | [ERC-4337](https://eips.ethereum.org/EIPS/eip-4337) | Account abstraction — stealth smart accounts, gasless claims via DustPaymaster |
 | ECDH (secp256k1) | Shared secret computation between sender and receiver |
 | EIP-712 | Typed signatures for sponsored key registration |
+
+## Multi-Chain Architecture
+
+All chain-specific configuration is centralized in `src/config/chains.ts`. Each chain has:
+
+- RPC URL, block explorer, native currency
+- Contract addresses (announcer, registry, name registry, factories, entrypoint, paymaster)
+- Creation codes (bytecode for CREATE2 address derivation — differs per chain due to embedded EntryPoint address)
+- Deployment block (scanner start block)
+- Feature flags (`dustPool`, `supportsEIP7702`)
+
+### How It Works
+
+1. **`getChainConfig(chainId)`** returns the full config for a chain
+2. **`AuthContext`** tracks `activeChainId` (persisted in localStorage) and exposes `setActiveChain()`
+3. **API routes** accept `chainId` in request body (POST) or query param (GET), defaulting to Thanos Sepolia
+4. **Client hooks** receive `chainId` and pass it to API calls, scanner, and address derivation
+5. **`ServerJsonRpcProvider`** (`src/lib/server-provider.ts`) creates chain-specific providers for API routes
+
+### Chain Selector
+
+The `ChainSelector` component in the sidebar lets users switch chains. On switch:
+- `activeChainId` updates in AuthContext
+- Scanner cache clears and re-scans from the new chain's deployment block
+- All dashboard data refreshes for the new chain
+
+### Per-Chain Features
+
+| Feature | Thanos Sepolia | Ethereum Sepolia |
+|---------|---------------|-----------------|
+| Stealth addresses | Yes | Yes |
+| ERC-4337 accounts | Yes | Yes |
+| `.tok` names | Yes | Yes |
+| DustPool (ZK) | Yes | Not yet deployed |
+| EIP-7702 sub-accounts | No (not Pectra) | Planned |
