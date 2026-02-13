@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { getChainConfig } from '@/config/chains';
 import { getServerSponsor, parseChainId } from '@/lib/server-provider';
 
+export const maxDuration = 60;
+
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const REGISTRY_ABI = [

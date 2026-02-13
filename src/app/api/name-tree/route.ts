@@ -5,6 +5,8 @@
 import { NextResponse } from 'next/server';
 import { nameMerkleTree } from '@/lib/naming/merkleTree';
 
+export const maxDuration = 30;
+
 export async function GET() {
   const treeData = nameMerkleTree.exportTree();
 

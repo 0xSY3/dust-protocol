@@ -3,6 +3,8 @@ import { getChainConfig } from '@/config/chains';
 import { parseChainId } from '@/lib/server-provider';
 import { STEALTH_SUB_ACCOUNT_7702_ABI } from '@/lib/stealth/types';
 
+export const maxDuration = 60;
+
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 // Rate limiting: 10s cooldown per stealth address

@@ -4,6 +4,8 @@ import { getChainConfig } from '@/config/chains';
 import { getServerProvider, getServerSponsor, parseChainId } from '@/lib/server-provider';
 import { ENTRY_POINT_ABI } from '@/lib/stealth/types';
 
+export const maxDuration = 60;
+
 // Auto-top-up: if paymaster deposit drops below MIN, top up
 const PAYMASTER_MIN_DEPOSIT = ethers.utils.parseEther('0.1');
 const PAYMASTER_TOP_UP_AMOUNT = ethers.utils.parseEther('1.0');

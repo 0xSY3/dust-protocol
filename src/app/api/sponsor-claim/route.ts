@@ -5,6 +5,8 @@ import { isKnownToken } from '@/config/tokens';
 import { getServerProvider, getServerSponsor, parseChainId } from '@/lib/server-provider';
 import { canUseGelato, sponsoredRelay, waitForRelay } from '@/lib/relay/gelato';
 
+export const maxDuration = 60;
+
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 // Rate limiting: per-address cooldown + global request counter

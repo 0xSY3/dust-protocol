@@ -15,41 +15,22 @@ class ServerJsonRpcProvider extends ethers.providers.JsonRpcProvider {
   async send(method: string, params: unknown[]): Promise<unknown> {
     const id = this._nextId++;
     const body = JSON.stringify({ jsonrpc: '2.0', method, params, id });
-    const url = new URL(this.rpcUrl);
 
-    // Use Node http/https directly to bypass Next.js fetch patching
-    const mod = url.protocol === 'https:' ? await import('https') : await import('http');
-
-    return new Promise((resolve, reject) => {
-      const req = mod.request(
-        {
-          hostname: url.hostname,
-          port: url.port || (url.protocol === 'https:' ? 443 : 80),
-          path: url.pathname,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(body),
-          },
-        },
-        (res) => {
-          let data = '';
-          res.on('data', (chunk: Buffer) => { data += chunk; });
-          res.on('end', () => {
-            try {
-              const json = JSON.parse(data);
-              if (json.error) reject(new Error(json.error.message || 'RPC Error'));
-              else resolve(json.result);
-            } catch (e) {
-              reject(new Error(`Invalid JSON response: ${data.slice(0, 100)}`));
-            }
-          });
-        }
-      );
-      req.on('error', reject);
-      req.write(body);
-      req.end();
+    // Use native fetch with cache: 'no-store' to bypass Next.js fetch patching
+    const res = await fetch(this.rpcUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      cache: 'no-store',
     });
+
+    if (!res.ok) {
+      throw new Error(`RPC request failed: ${res.status} ${res.statusText}`);
+    }
+
+    const json = await res.json();
+    if (json.error) throw new Error(json.error.message || 'RPC Error');
+    return json.result;
   }
 }
 

@@ -4,6 +4,8 @@
 import { NextResponse } from 'next/server';
 import { nameMerkleTree } from '@/lib/naming/merkleTree';
 
+export const maxDuration = 30;
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const rawName = searchParams.get('name');

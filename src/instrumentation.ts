@@ -2,9 +2,11 @@ export async function register() {
   // Only run on server
   if (typeof window !== 'undefined') return;
 
+  // Use ethers directly instead of server-provider (avoids Node http/https import
+  // that breaks webpack bundling for the instrumentation hook)
+  const { ethers } = await import('ethers');
   const { nameMerkleTree } = await import('@/lib/naming/merkleTree');
   const { startPeriodicSync } = await import('@/lib/naming/rootSync');
-  const { getServerProvider } = await import('@/lib/server-provider');
   const { getCanonicalNamingChain } = await import('@/config/chains');
 
   try {
@@ -16,7 +18,7 @@ export async function register() {
     // 3. We can't recover name strings from NameRegistered events (indexed string = hash only)
     const legacyAddr = canonical.contracts.nameRegistry;
     if (legacyAddr) {
-      const provider = getServerProvider(canonical.id);
+      const provider = new ethers.providers.JsonRpcProvider(canonical.rpcUrl);
       await nameMerkleTree.warmFromCanonical(provider, legacyAddr, canonical.deploymentBlock);
       console.log('[instrumentation] Merkle tree warmed from canonical chain');
     }

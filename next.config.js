@@ -4,8 +4,10 @@ const nextConfig = {
   experimental: {
     instrumentationHook: true,
   },
-  webpack: (config) => {
-    config.resolve.fallback = { fs: false, net: false, tls: false };
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = { fs: false, net: false, tls: false, http: false, https: false, url: false };
+    }
     config.externals.push('pino-pretty', 'lokijs', 'encoding');
     return config;
   },

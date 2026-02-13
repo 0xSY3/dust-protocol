@@ -4,6 +4,8 @@ import { DUST_POOL_ABI } from '@/lib/stealth/types';
 import { getChainConfig } from '@/config/chains';
 import { getServerProvider, getServerSponsor, parseChainId } from '@/lib/server-provider';
 
+export const maxDuration = 60;
+
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const FACTORY_ABI = [

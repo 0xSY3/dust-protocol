@@ -5,6 +5,8 @@ import { getServerSponsor, parseChainId } from '@/lib/server-provider';
 import { onNameRegistered } from '@/lib/naming/rootSync';
 import { nameMerkleTree } from '@/lib/naming/merkleTree';
 
+export const maxDuration = 60;
+
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const NAME_REGISTRY_ABI = [

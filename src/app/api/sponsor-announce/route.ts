@@ -4,6 +4,8 @@ import { getChainConfig } from '@/config/chains';
 import { getServerSponsor, parseChainId } from '@/lib/server-provider';
 import { canUseGelato, sponsoredRelay, waitForRelay } from '@/lib/relay/gelato';
 
+export const maxDuration = 60;
+
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const ANNOUNCER_ABI = [
