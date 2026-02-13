@@ -1,14 +1,9 @@
 import { ethers } from 'ethers';
 import { NextResponse } from 'next/server';
-import {
-  STEALTH_WALLET_FACTORY,
-  LEGACY_STEALTH_WALLET_FACTORY,
-  DUST_POOL_ADDRESS,
-  DUST_POOL_ABI,
-} from '@/lib/stealth/types';
+import { DUST_POOL_ABI } from '@/lib/stealth/types';
+import { getChainConfig } from '@/config/chains';
+import { getServerProvider, getServerSponsor, parseChainId } from '@/lib/server-provider';
 
-const RPC_URL = 'https://rpc.thanos-sepolia.tokamak.network';
-const CHAIN_ID = 111551119090;
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const FACTORY_ABI = [
@@ -24,42 +19,6 @@ const STEALTH_WALLET_ABI = [
 const claimCooldowns = new Map<string, number>();
 const CLAIM_COOLDOWN_MS = 10_000;
 const MAX_GAS_PRICE = ethers.utils.parseUnits('100', 'gwei');
-
-// Custom provider to bypass Next.js fetch patching
-class ServerJsonRpcProvider extends ethers.providers.JsonRpcProvider {
-  async send(method: string, params: unknown[]): Promise<unknown> {
-    const id = this._nextId++;
-    const body = JSON.stringify({ jsonrpc: '2.0', method, params, id });
-    const https = await import('https');
-    const url = new URL(RPC_URL);
-    return new Promise((resolve, reject) => {
-      const req = https.request({
-        hostname: url.hostname,
-        port: url.port || 443,
-        path: url.pathname,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-      }, (res) => {
-        let data = '';
-        res.on('data', (chunk: Buffer) => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(data);
-            if (json.error) reject(new Error(json.error.message || 'RPC Error'));
-            else resolve(json.result);
-          } catch { reject(new Error(`Invalid JSON: ${data.slice(0, 100)}`)); }
-        });
-      });
-      req.on('error', reject);
-      req.write(body);
-      req.end();
-    });
-  }
-}
-
-function getProvider() {
-  return new ServerJsonRpcProvider(RPC_URL, { name: 'thanos-sepolia', chainId: CHAIN_ID });
-}
 
 function isValidAddress(addr: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(addr);
@@ -81,6 +40,13 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    const chainId = parseChainId(body);
+    const config = getChainConfig(chainId);
+
+    if (!config.contracts.dustPool) {
+      return NextResponse.json({ error: 'DustPool not available on this chain' }, { status: 400 });
+    }
+
     const { stealthAddress, owner, signature, commitment, walletType } = body;
 
     if (!stealthAddress || !commitment) {
@@ -98,8 +64,8 @@ export async function POST(req: Request) {
     }
     claimCooldowns.set(addrKey, Date.now());
 
-    const provider = getProvider();
-    const sponsor = new ethers.Wallet(SPONSOR_KEY!, provider);
+    const provider = getServerProvider(chainId);
+    const sponsor = getServerSponsor(chainId);
 
     const [feeData, block] = await Promise.all([
       provider.getFeeData(),
@@ -114,6 +80,7 @@ export async function POST(req: Request) {
     }
 
     const txOpts = { type: 2 as const, maxFeePerGas, maxPriorityFeePerGas: maxPriorityFee };
+    const dustPoolAddress = config.contracts.dustPool;
 
     if (walletType === 'create2' && owner && signature) {
       // CREATE2 wallet: deploy if needed, then execute DustPool.deposit() directly
@@ -127,11 +94,16 @@ export async function POST(req: Request) {
 
       // Deploy wallet if not already deployed
       if (!alreadyDeployed) {
-        const newFactory = new ethers.Contract(STEALTH_WALLET_FACTORY, FACTORY_ABI, sponsor);
+        const newFactory = new ethers.Contract(config.contracts.walletFactory, FACTORY_ABI, sponsor);
         const newFactoryAddr = await newFactory.computeAddress(owner);
-        const factory = newFactoryAddr.toLowerCase() === stealthAddress.toLowerCase()
-          ? newFactory
-          : new ethers.Contract(LEGACY_STEALTH_WALLET_FACTORY, FACTORY_ABI, sponsor);
+        let factory;
+        if (newFactoryAddr.toLowerCase() === stealthAddress.toLowerCase()) {
+          factory = newFactory;
+        } else if (config.contracts.legacyWalletFactory) {
+          factory = new ethers.Contract(config.contracts.legacyWalletFactory, FACTORY_ABI, sponsor);
+        } else {
+          return NextResponse.json({ error: 'Stealth address does not match wallet factory' }, { status: 400 });
+        }
 
         console.log('[PoolDeposit] Deploying CREATE2 wallet for', stealthAddress);
         const deployTx = await factory.deploy(owner, { gasLimit: 300_000, ...txOpts });
@@ -150,7 +122,7 @@ export async function POST(req: Request) {
       console.log('[PoolDeposit] Stealth wallet', stealthAddress, 'depositing', ethers.utils.formatEther(balance), 'directly into DustPool');
 
       const executeTx = await wallet.execute(
-        DUST_POOL_ADDRESS,
+        dustPoolAddress,
         balance,
         depositCalldata,
         signature,
@@ -159,7 +131,7 @@ export async function POST(req: Request) {
       const receipt = await executeTx.wait();
 
       // Parse Deposit event to get leafIndex
-      const poolContract = new ethers.Contract(DUST_POOL_ADDRESS, DUST_POOL_ABI, provider);
+      const poolContract = new ethers.Contract(dustPoolAddress, DUST_POOL_ABI, provider);
       const depositEvent = receipt.logs.find((log: ethers.providers.Log) => {
         try {
           const parsed = poolContract.interface.parseLog(log);

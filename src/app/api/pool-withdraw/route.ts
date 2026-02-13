@@ -1,9 +1,9 @@
 import { ethers } from 'ethers';
 import { NextResponse } from 'next/server';
-import { DUST_POOL_ADDRESS, DUST_POOL_ABI } from '@/lib/stealth/types';
+import { DUST_POOL_ABI } from '@/lib/stealth/types';
+import { getChainConfig } from '@/config/chains';
+import { getServerProvider, getServerSponsor, parseChainId } from '@/lib/server-provider';
 
-const RPC_URL = 'https://rpc.thanos-sepolia.tokamak.network';
-const CHAIN_ID = 111551119090;
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const MAX_GAS_PRICE = ethers.utils.parseUnits('100', 'gwei');
@@ -11,42 +11,6 @@ const MAX_GAS_PRICE = ethers.utils.parseUnits('100', 'gwei');
 // Rate limiting
 const withdrawCooldowns = new Map<string, number>();
 const WITHDRAW_COOLDOWN_MS = 10_000;
-
-// Custom provider to bypass Next.js fetch patching
-class ServerJsonRpcProvider extends ethers.providers.JsonRpcProvider {
-  async send(method: string, params: unknown[]): Promise<unknown> {
-    const id = this._nextId++;
-    const body = JSON.stringify({ jsonrpc: '2.0', method, params, id });
-    const https = await import('https');
-    const url = new URL(RPC_URL);
-    return new Promise((resolve, reject) => {
-      const req = https.request({
-        hostname: url.hostname,
-        port: url.port || 443,
-        path: url.pathname,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
-      }, (res) => {
-        let data = '';
-        res.on('data', (chunk: Buffer) => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(data);
-            if (json.error) reject(new Error(json.error.message || 'RPC Error'));
-            else resolve(json.result);
-          } catch { reject(new Error(`Invalid JSON: ${data.slice(0, 100)}`)); }
-        });
-      });
-      req.on('error', reject);
-      req.write(body);
-      req.end();
-    });
-  }
-}
-
-function getProvider() {
-  return new ServerJsonRpcProvider(RPC_URL, { name: 'thanos-sepolia', chainId: CHAIN_ID });
-}
 
 function isValidAddress(addr: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(addr);
@@ -59,6 +23,13 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    const chainId = parseChainId(body);
+    const config = getChainConfig(chainId);
+
+    if (!config.contracts.dustPool) {
+      return NextResponse.json({ error: 'DustPool not available on this chain' }, { status: 400 });
+    }
+
     const { proof, root, nullifierHash, recipient, amount } = body;
 
     if (!proof || !root || !nullifierHash || !recipient || !amount) {
@@ -76,8 +47,8 @@ export async function POST(req: Request) {
     }
     withdrawCooldowns.set(nhKey, Date.now());
 
-    const provider = getProvider();
-    const sponsor = new ethers.Wallet(SPONSOR_KEY!, provider);
+    const provider = getServerProvider(chainId);
+    const sponsor = getServerSponsor(chainId);
 
     const [feeData, block] = await Promise.all([
       provider.getFeeData(),
@@ -91,7 +62,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Gas price too high' }, { status: 503 });
     }
 
-    const poolContract = new ethers.Contract(DUST_POOL_ADDRESS, DUST_POOL_ABI, sponsor);
+    const poolContract = new ethers.Contract(config.contracts.dustPool, DUST_POOL_ABI, sponsor);
 
     console.log('[PoolWithdraw] Processing withdrawal to', recipient, 'amount:', amount);
 

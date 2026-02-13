@@ -6,8 +6,8 @@ import { getServerSponsor, parseChainId } from '@/lib/server-provider';
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const NAME_REGISTRY_ABI = [
-  'function registerName(string calldata name, bytes calldata stealthMetaAddress) external',
-  'function isNameAvailable(string calldata name) external view returns (bool)',
+  'function updateMetaAddress(string calldata name, bytes calldata newMetaAddress) external',
+  'function getOwner(string calldata name) external view returns (address)',
 ];
 
 export async function POST(req: Request) {
@@ -20,21 +20,20 @@ export async function POST(req: Request) {
     const chainId = parseChainId(body);
     const config = getChainConfig(chainId);
 
-    const { name, metaAddress } = body;
+    const { name, newMetaAddress } = body;
 
-    if (!name || !metaAddress) {
+    if (!name || !newMetaAddress) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Validate name
     const stripped = name.toLowerCase().replace(/\.tok$/, '').trim();
     if (!stripped || stripped.length > 32 || !/^[a-zA-Z0-9_-]+$/.test(stripped)) {
       return NextResponse.json({ error: 'Invalid name' }, { status: 400 });
     }
 
-    const metaBytes = metaAddress.startsWith('st:')
-      ? '0x' + (metaAddress.match(/st:[a-z]+:0x([0-9a-fA-F]+)/)?.[1] || '')
-      : metaAddress.startsWith('0x') ? metaAddress : '0x' + metaAddress;
+    const metaBytes = newMetaAddress.startsWith('st:')
+      ? '0x' + (newMetaAddress.match(/st:[a-z]+:0x([0-9a-fA-F]+)/)?.[1] || '')
+      : newMetaAddress.startsWith('0x') ? newMetaAddress : '0x' + newMetaAddress;
 
     if (!metaBytes || metaBytes === '0x') {
       return NextResponse.json({ error: 'Invalid meta-address' }, { status: 400 });
@@ -43,16 +42,16 @@ export async function POST(req: Request) {
     const sponsor = getServerSponsor(chainId);
     const registry = new ethers.Contract(config.contracts.nameRegistry, NAME_REGISTRY_ABI, sponsor);
 
-    // Check availability first
-    const available = await registry.isNameAvailable(stripped);
-    if (!available) {
-      return NextResponse.json({ error: 'Name already taken' }, { status: 409 });
+    // Verify the sponsor (deployer) owns this name
+    const owner = await registry.getOwner(stripped);
+    if (owner.toLowerCase() !== sponsor.address.toLowerCase()) {
+      return NextResponse.json({ error: 'Name not owned by sponsor' }, { status: 403 });
     }
 
-    const tx = await registry.registerName(stripped, metaBytes);
+    const tx = await registry.updateMetaAddress(stripped, metaBytes);
     const receipt = await tx.wait();
 
-    console.log('[SponsorNameRegister] Registered:', stripped, 'tx:', receipt.transactionHash);
+    console.log('[SponsorNameUpdateMeta] Updated:', stripped, 'tx:', receipt.transactionHash);
 
     return NextResponse.json({
       success: true,
@@ -60,7 +59,7 @@ export async function POST(req: Request) {
       name: stripped,
     });
   } catch (e) {
-    console.error('[SponsorNameRegister] Error:', e);
-    return NextResponse.json({ error: 'Name registration failed' }, { status: 500 });
+    console.error('[SponsorNameUpdateMeta] Error:', e);
+    return NextResponse.json({ error: 'Meta-address update failed' }, { status: 500 });
   }
 }

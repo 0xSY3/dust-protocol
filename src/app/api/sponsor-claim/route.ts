@@ -1,8 +1,8 @@
 import { ethers } from 'ethers';
 import { NextResponse } from 'next/server';
+import { getChainConfig } from '@/config/chains';
+import { getServerProvider, getServerSponsor, parseChainId } from '@/lib/server-provider';
 
-const RPC_URL = 'https://rpc.thanos-sepolia.tokamak.network';
-const CHAIN_ID = 111551119090;
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 // Rate limiting: per-address cooldown + global request counter
@@ -43,11 +43,10 @@ async function checkSponsorBalance(provider: ethers.providers.Provider, sponsorA
   }
 }
 
-const STEALTH_WALLET_FACTORY = '0xbc8e75a5374a6533cD3C4A427BF4FA19737675D3';
-const LEGACY_STEALTH_WALLET_FACTORY = '0x85e7Fe33F594AC819213e63EEEc928Cb53A166Cd';
 const FACTORY_ABI = [
   'function deployAndDrain(address _owner, address _to, bytes _sig)',
   'function deploy(address _owner) returns (address)',
+  'function computeAddress(address) view returns (address)',
 ];
 const STEALTH_WALLET_ABI = [
   'function drain(address to, bytes sig)',
@@ -62,59 +61,6 @@ function isValidPrivateKey(key: string): boolean {
   return /^[0-9a-fA-F]{64}$/.test(cleaned);
 }
 
-// Custom JSON-RPC fetch that bypasses Next.js fetch patching
-// Next.js overrides global fetch() with a version that adds caching headers,
-// which breaks ethers.js v5 provider internals (ERR_INVALID_URL: 'client')
-class ServerJsonRpcProvider extends ethers.providers.JsonRpcProvider {
-  async send(method: string, params: unknown[]): Promise<unknown> {
-    const id = this._nextId++;
-    const body = JSON.stringify({ jsonrpc: '2.0', method, params, id });
-
-    // Use native Node.js https module to bypass Next.js fetch patching
-    const https = await import('https');
-    const url = new URL(RPC_URL);
-
-    return new Promise((resolve, reject) => {
-      const req = https.request(
-        {
-          hostname: url.hostname,
-          port: url.port || 443,
-          path: url.pathname,
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(body),
-          },
-        },
-        (res) => {
-          let data = '';
-          res.on('data', (chunk: Buffer) => { data += chunk; });
-          res.on('end', () => {
-            try {
-              const json = JSON.parse(data);
-              if (json.error) {
-                const error = new Error(json.error.message || 'RPC Error');
-                reject(error);
-              } else {
-                resolve(json.result);
-              }
-            } catch (e) {
-              reject(new Error(`Invalid JSON response: ${data.slice(0, 100)}`));
-            }
-          });
-        }
-      );
-      req.on('error', reject);
-      req.write(body);
-      req.end();
-    });
-  }
-}
-
-function getProvider() {
-  return new ServerJsonRpcProvider(RPC_URL, { name: 'thanos-sepolia', chainId: CHAIN_ID });
-}
-
 export async function POST(req: Request) {
   try {
     if (!SPONSOR_KEY) {
@@ -126,22 +72,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Service busy, please try again shortly' }, { status: 429 });
     }
 
+    const body = await req.json();
+    const chainId = parseChainId(body);
+    const config = getChainConfig(chainId);
+
     // Sponsor balance monitoring
-    const provider = getProvider();
-    const sponsor = new ethers.Wallet(SPONSOR_KEY!, provider);
+    const provider = getServerProvider(chainId);
+    const sponsor = getServerSponsor(chainId);
     if (!(await checkSponsorBalance(provider, sponsor.address))) {
       return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 503 });
     }
 
-    const body = await req.json();
-
     // Detect claim mode: signature-based (CREATE2) vs private-key-based (legacy EOA)
     if (body.signature && body.owner) {
-      return handleCreate2Claim(body);
+      return handleCreate2Claim(body, chainId);
     }
     // DEPRECATED: Legacy EOA claim — private key should not be sent to server
     console.warn('[Sponsor] DEPRECATED: Legacy EOA claim used — migrate to CREATE2/ERC-4337');
-    return handleLegacyEOAClaim(body);
+    return handleLegacyEOAClaim(body, chainId);
   } catch (e) {
     console.error('[Sponsor] Error:', e);
     return NextResponse.json({ error: 'Withdrawal failed' }, { status: 500 });
@@ -149,8 +97,9 @@ export async function POST(req: Request) {
 }
 
 // CREATE2 wallet claim: owner signs drain message client-side, sponsor calls factory.deployAndDrain
-async function handleCreate2Claim(body: { stealthAddress: string; owner: string; recipient: string; signature: string }) {
+async function handleCreate2Claim(body: { stealthAddress: string; owner: string; recipient: string; signature: string }, chainId: number) {
   const { stealthAddress, owner, recipient, signature } = body;
+  const config = getChainConfig(chainId);
 
   if (!stealthAddress || !owner || !recipient || !signature) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -167,8 +116,8 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
   }
   claimCooldowns.set(addrKey, Date.now());
 
-  const provider = getProvider();
-  const sponsor = new ethers.Wallet(SPONSOR_KEY!, provider);
+  const provider = getServerProvider(chainId);
+  const sponsor = getServerSponsor(chainId);
 
   const balance = await provider.getBalance(stealthAddress);
   if (balance.isZero()) {
@@ -209,13 +158,15 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
     });
   } else {
     // Determine which factory deployed the CREATE2 address
-    const newFactory = new ethers.Contract(STEALTH_WALLET_FACTORY, [...FACTORY_ABI, 'function computeAddress(address) view returns (address)'], sponsor);
+    const newFactory = new ethers.Contract(config.contracts.walletFactory, FACTORY_ABI, sponsor);
     const newFactoryAddr = await newFactory.computeAddress(owner);
     let factory;
     if (newFactoryAddr.toLowerCase() === stealthAddress.toLowerCase()) {
       factory = newFactory;
+    } else if (config.contracts.legacyWalletFactory) {
+      factory = new ethers.Contract(config.contracts.legacyWalletFactory, FACTORY_ABI, sponsor);
     } else {
-      factory = new ethers.Contract(LEGACY_STEALTH_WALLET_FACTORY, FACTORY_ABI, sponsor);
+      return NextResponse.json({ error: 'Stealth address does not match wallet factory' }, { status: 400 });
     }
     tx = await factory.deployAndDrain(owner, recipient, signature, {
       gasLimit,
@@ -237,7 +188,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
 }
 
 // Legacy EOA claim: server reconstructs stealth wallet and sends funds
-async function handleLegacyEOAClaim(body: { stealthAddress: string; stealthPrivateKey: string; recipient: string }) {
+async function handleLegacyEOAClaim(body: { stealthAddress: string; stealthPrivateKey: string; recipient: string }, chainId: number) {
   const { stealthAddress, stealthPrivateKey, recipient } = body;
 
   if (!stealthAddress || !stealthPrivateKey || !recipient) {
@@ -263,8 +214,8 @@ async function handleLegacyEOAClaim(body: { stealthAddress: string; stealthPriva
   }
   claimCooldowns.set(addrKey, Date.now());
 
-  const provider = getProvider();
-  const sponsor = new ethers.Wallet(SPONSOR_KEY!, provider);
+  const provider = getServerProvider(chainId);
+  const sponsor = getServerSponsor(chainId);
   const stealthWallet = new ethers.Wallet(stealthPrivateKey, provider);
 
   // Verify key matches stealth address
