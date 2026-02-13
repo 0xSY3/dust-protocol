@@ -51,8 +51,11 @@ export async function syncRootToAllChains(): Promise<{
     return { root: currentRoot, synced: [], errors: [] };
   }
 
+  const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
   const destinationChains = getSupportedChains().filter(
-    c => c.id !== CANONICAL_CHAIN_ID && c.contracts.nameVerifier
+    c => c.id !== CANONICAL_CHAIN_ID
+      && c.contracts.nameVerifier
+      && c.contracts.nameVerifier !== ZERO_ADDRESS
   );
 
   const synced: { chainId: number; txHash: string }[] = [];

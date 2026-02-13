@@ -152,9 +152,16 @@ export function useStealthAddress() {
       return sig;
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to derive keys';
-      if (msg.toLowerCase().includes('rejected') || msg.toLowerCase().includes('denied') || msg.includes('ACTION_REJECTED')) {
+      if (
+        msg.toLowerCase().includes('rejected') ||
+        msg.toLowerCase().includes('denied') ||
+        msg.includes('ACTION_REJECTED') ||
+        msg.includes('user_rejected')
+      ) {
+        // User cancelled — show a gentle prompt instead of an error
         setError('Please approve the signature request in your wallet');
       } else {
+        console.error('[useStealthAddress] Signature failed:', msg);
         setError(msg);
       }
       return null;

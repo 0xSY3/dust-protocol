@@ -77,10 +77,10 @@ export const cardAccents = [
   "#4F46E5", // deep indigo
 ];
 
-// Minimum balance needed to cover gas for a claim transaction
-export const MIN_CLAIMABLE_BALANCE = 0.0001;
+import { getChainConfig, DEFAULT_CHAIN_ID, MIN_CLAIMABLE_BALANCE } from '@/config/chains';
 
-import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
+// Re-export from canonical location for backwards compatibility
+export { MIN_CLAIMABLE_BALANCE };
 
 /** Chain-aware explorer URL */
 export function getExplorerBase(chainId?: number): string {

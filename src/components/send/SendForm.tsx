@@ -3,19 +3,27 @@
 import { useState, useEffect, ChangeEvent } from "react";
 import { Box, Text, VStack, HStack, Input, Spinner } from "@chakra-ui/react";
 import { Button } from "@/components/ui/button";
+import { ethers } from "ethers";
 import { colors, radius, getExplorerBase } from "@/lib/design/tokens";
 import { getChainConfig } from "@/config/chains";
 import { getTokensForChain, NATIVE_TOKEN_ADDRESS, type TokenConfig } from "@/config/tokens";
 import { useStealthSend, useStealthName } from "@/hooks/stealth";
 import { isStealthName, NAME_SUFFIX } from "@/lib/stealth";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAccount } from "wagmi";
+import { getChainProvider } from "@/lib/providers";
 import { AlertCircleIcon as AlertIcon } from "@/components/stealth/icons";
 import {
   CheckCircleIcon, AlertCircleIcon, LockIcon, ArrowUpRightIcon,
 } from "@/components/stealth/icons";
 
+const ERC20_BALANCE_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+];
+
 export function SendForm() {
   const { activeChainId } = useAuth();
+  const { address: walletAddress } = useAccount();
   const chainConfig = getChainConfig(activeChainId);
   const symbol = chainConfig.nativeCurrency.symbol;
   const tokens = getTokensForChain(activeChainId);
@@ -31,6 +39,43 @@ export function SendForm() {
   const [isResolving, setIsResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [sendTxHash, setSendTxHash] = useState<string | null>(null);
+
+  // H3: Fetch user's token balances for the token selector
+  const [tokenBalances, setTokenBalances] = useState<Record<string, string>>({});
+  const [nativeBalance, setNativeBalance] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!walletAddress) return;
+    let cancelled = false;
+    const fetchBalances = async () => {
+      try {
+        const provider = getChainProvider(activeChainId);
+        // Fetch native balance
+        const ethBal = await provider.getBalance(walletAddress);
+        if (!cancelled) {
+          setNativeBalance(parseFloat(ethers.utils.formatEther(ethBal)).toFixed(4));
+        }
+        // Fetch ERC-20 balances
+        const balMap: Record<string, string> = {};
+        await Promise.allSettled(
+          tokens.map(async (t) => {
+            const erc20 = new ethers.Contract(t.address, ERC20_BALANCE_ABI, provider);
+            const bal: ethers.BigNumber = await erc20.balanceOf(walletAddress);
+            balMap[t.address] = parseFloat(ethers.utils.formatUnits(bal, t.decimals)).toFixed(
+              t.decimals <= 6 ? 2 : 4
+            );
+          })
+        );
+        if (!cancelled) {
+          setTokenBalances(balMap);
+        }
+      } catch (e) {
+        console.warn("[SendForm] Failed to fetch token balances:", e);
+      }
+    };
+    fetchBalances();
+    return () => { cancelled = true; };
+  }, [walletAddress, activeChainId, tokens]);
 
   const isNativeToken = selectedToken === NATIVE_TOKEN_ADDRESS;
   const selectedTokenConfig: TokenConfig | undefined = tokens.find(t => t.address === selectedToken);
@@ -130,10 +175,11 @@ export function SendForm() {
                     border={`1px solid ${isNativeToken ? colors.accent.indigo : colors.border.default}`}
                     cursor="pointer" transition="all 0.15s"
                     onClick={() => setSelectedToken(NATIVE_TOKEN_ADDRESS)}>
-                    {symbol}
+                    {symbol}{nativeBalance !== null && <Text as="span" fontSize="11px" ml="4px" opacity={0.7}>{nativeBalance}</Text>}
                   </Box>
                   {tokens.map(t => {
                     const isActive = selectedToken === t.address;
+                    const bal = tokenBalances[t.address];
                     return (
                       <Box as="button" key={t.address} px="12px" py="6px" borderRadius={radius.xs}
                         fontSize="13px" fontWeight={500}
@@ -142,7 +188,7 @@ export function SendForm() {
                         border={`1px solid ${isActive ? colors.accent.indigo : colors.border.default}`}
                         cursor="pointer" transition="all 0.15s"
                         onClick={() => setSelectedToken(t.address)}>
-                        {t.symbol}
+                        {t.symbol}{bal !== undefined && <Text as="span" fontSize="11px" ml="4px" opacity={0.7}>{bal}</Text>}
                       </Box>
                     );
                   })}

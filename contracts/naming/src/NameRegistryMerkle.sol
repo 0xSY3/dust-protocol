@@ -56,6 +56,7 @@ contract NameRegistryMerkle {
     error NotOwner();
     error NotSponsor();
     error InvalidName();
+    error InvalidMetaAddress();
     error TreeFull();
 
     modifier onlySponsor() {
@@ -82,6 +83,7 @@ contract NameRegistryMerkle {
         bytes32 nameHash = keccak256(abi.encodePacked(name));
         if (names[nameHash].owner != address(0)) revert NameTaken();
         if (bytes(name).length == 0 || bytes(name).length > 32) revert InvalidName();
+        if (stealthMetaAddress.length == 0) revert InvalidMetaAddress();
 
         uint256 version = 1;
         bytes32 leaf = _computeLeaf(nameHash, keccak256(stealthMetaAddress), version);
@@ -110,6 +112,7 @@ contract NameRegistryMerkle {
         bytes32 nameHash = keccak256(abi.encodePacked(name));
         NameEntry storage entry = names[nameHash];
         if (entry.owner == address(0)) revert NameNotFound();
+        if (newMetaAddress.length == 0) revert InvalidMetaAddress();
 
         bytes memory oldMeta = entry.metaAddress;
         uint256 newVersion = entry.version + 1;
@@ -167,12 +170,9 @@ contract NameRegistryMerkle {
 
     function isKnownRoot(bytes32 root) public view returns (bool) {
         if (root == bytes32(0)) return false;
-        uint256 i = currentRootIndex;
-        do {
+        for (uint256 i = 0; i < ROOT_HISTORY_SIZE; i++) {
             if (roots[i] == root) return true;
-            if (i == 0) i = ROOT_HISTORY_SIZE;
-            i--;
-        } while (i != currentRootIndex);
+        }
         return false;
     }
 

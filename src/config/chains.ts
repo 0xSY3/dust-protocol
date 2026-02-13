@@ -174,5 +174,10 @@ export function getCanonicalNamingChain(): ChainConfig {
   return chain;
 }
 
+// Minimum balance needed to cover gas for a claim transaction (EOA only).
+// Based on 21000 gas * 1 gwei * 2x buffer = 0.000042; using 0.0001 to be safe.
+// Sponsored wallet types (create2, account, eip7702) can claim any amount > 0.
+export const MIN_CLAIMABLE_BALANCE = 0.0001;
+
 // Re-export viem chain definitions for providers.tsx
 export { thanosSepolia, ethereumSepolia };

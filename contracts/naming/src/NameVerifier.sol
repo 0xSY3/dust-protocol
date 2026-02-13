@@ -46,12 +46,9 @@ contract NameVerifier {
 
     function isKnownRoot(bytes32 root) public view returns (bool) {
         if (root == bytes32(0)) return false;
-        uint256 i = currentRootIndex;
-        do {
+        for (uint256 i = 0; i < ROOT_HISTORY_SIZE; i++) {
             if (roots[i] == root) return true;
-            if (i == 0) i = ROOT_HISTORY_SIZE;
-            i--;
-        } while (i != currentRootIndex);
+        }
         return false;
     }
 

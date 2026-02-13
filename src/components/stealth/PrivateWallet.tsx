@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useWalletConnect } from "@/hooks/wallet-connect/useWalletConnect";
 import { isStealthName, NAME_SUFFIX, GeneratedStealthAddress, ScanResult } from "@/lib/stealth";
-import { getChainConfig } from "@/config/chains";
+import { getChainConfig, MIN_CLAIMABLE_BALANCE } from "@/config/chains";
 import { isPrivyEnabled } from "@/config/privy";
 import { useLogin } from "@privy-io/react-auth";
 import { useConnect } from "wagmi";
@@ -65,11 +65,6 @@ const colors: ColorTokens = {
   },
   glow: { indigo: "0 0 30px rgba(124, 127, 255, 0.3)", green: "0 0 30px rgba(0, 214, 143, 0.3)" },
 };
-
-// Minimum balance needed to cover gas for a claim transaction
-// Based on 21000 gas * 1 gwei * 2x buffer = 0.000042 TON
-// Using 0.0001 TON as minimum to be safe
-const MIN_CLAIMABLE_BALANCE = 0.0001;
 
 const radius: RadiusTokens = { xl: "20px", lg: "16px", md: "12px", sm: "8px", xs: "6px" };
 
@@ -179,8 +174,24 @@ export const PrivateWallet = () => {
 
   const handleSetup = async () => {
     setSetupStep("signing");
-    await deriveKeysFromWallet();
-    setSetupStep("ready");
+    try {
+      const result = await deriveKeysFromWallet();
+      if (!result) {
+        // Signature was rejected or failed — go back to welcome
+        setSetupStep("welcome");
+        return;
+      }
+      setSetupStep("ready");
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      if (errMsg.includes('User rejected') || errMsg.includes('user_rejected') || errMsg.includes('ACTION_REJECTED')) {
+        // User cancelled — don't show error toast, just reset
+        setSetupStep("welcome");
+        return;
+      }
+      console.error('[PrivateWallet] Signature failed:', errMsg);
+      setSetupStep("welcome");
+    }
   };
 
   const handleSendPreview = () => {

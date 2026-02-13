@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { NextResponse } from 'next/server';
 import { getChainConfig } from '@/config/chains';
+import { isKnownToken } from '@/config/tokens';
 import { getServerProvider, getServerSponsor, parseChainId } from '@/lib/server-provider';
 import { canUseGelato, sponsoredRelay, waitForRelay } from '@/lib/relay/gelato';
 
@@ -299,12 +300,25 @@ async function handleTokenSweep(
   const useGelato = canUseGelato(chainId);
 
   for (const sweep of tokenSweeps) {
-    if (!isValidAddress(sweep.tokenAddress)) continue;
+    if (!isValidAddress(sweep.tokenAddress)) {
+      console.warn(`[TokenSweep] Skipping invalid token address: ${sweep.tokenAddress}`);
+      continue;
+    }
+
+    // H4: Verify token is in known registry to prevent sweeping arbitrary contracts
+    if (!isKnownToken(chainId, sweep.tokenAddress)) {
+      console.warn(`[TokenSweep] Skipping unknown token ${sweep.tokenAddress} on chain ${chainId}`);
+      continue;
+    }
 
     try {
+      // H4: Verify the stealth wallet actually holds a non-zero balance of this token
       const token = new ethers.Contract(sweep.tokenAddress, ERC20_ABI, provider);
       const balance: ethers.BigNumber = await token.balanceOf(stealthAddress);
-      if (balance.isZero()) continue;
+      if (balance.isZero()) {
+        console.warn(`[TokenSweep] Skipping ${sweep.tokenAddress}: zero balance`);
+        continue;
+      }
 
       const transferData = erc20Iface.encodeFunctionData('transfer', [recipient, balance]);
       let txHash: string;
@@ -342,6 +356,17 @@ async function handleTokenSweep(
         });
         const receipt = await tx.wait();
         txHash = receipt.transactionHash;
+      }
+
+      // C4: Verify the transfer actually succeeded by checking post-transfer balance
+      try {
+        const postBalance: ethers.BigNumber = await token.balanceOf(stealthAddress);
+        if (!postBalance.isZero()) {
+          console.warn(`[TokenSweep] Transfer may have partially failed for ${sweep.tokenAddress}: post-balance=${postBalance.toString()}`);
+        }
+      } catch {
+        // Non-critical: just log and continue
+        console.warn(`[TokenSweep] Could not verify post-transfer balance for ${sweep.tokenAddress}`);
       }
 
       results.push({

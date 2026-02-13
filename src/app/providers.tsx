@@ -6,7 +6,7 @@ import { WagmiProvider, createConfig } from "@privy-io/wagmi";
 import { http } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getSupportedChains } from "@/config/chains";
-import { PRIVY_APP_ID, PRIVY_CONFIG } from "@/config/privy";
+import { PRIVY_APP_ID, PRIVY_CONFIG, isPrivyEnabled } from "@/config/privy";
 
 // Build wagmi config from chain registry
 const supportedChains = getSupportedChains();
@@ -23,6 +23,15 @@ const config = createConfig({
 const queryClient = new QueryClient();
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  // Skip Privy wrapping when appId is not configured (prevents crash)
+  if (!isPrivyEnabled) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ChakraProvider value={defaultSystem}>{children}</ChakraProvider>
+      </QueryClientProvider>
+    );
+  }
+
   return (
     <PrivyProvider appId={PRIVY_APP_ID} config={PRIVY_CONFIG}>
       <QueryClientProvider client={queryClient}>

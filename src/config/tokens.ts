@@ -1,4 +1,5 @@
 // ERC-20 token configuration per chain
+import { ethers } from 'ethers';
 
 export interface TokenConfig {
   address: string;
@@ -86,3 +87,40 @@ export function getTokenBySymbol(chainId: number, symbol: string): TokenConfig |
 
 /** Special value representing native currency in token selectors */
 export const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+
+// C3: On-chain decimal validation utility
+const ERC20_DECIMALS_ABI = ['function decimals() view returns (uint8)'];
+
+/**
+ * Validate that a token's on-chain decimals match the expected value from our registry.
+ * Returns true if decimals match or if verification is not possible (e.g. network error).
+ */
+export async function validateTokenDecimals(
+  provider: ethers.providers.Provider,
+  tokenAddress: string,
+  expectedDecimals: number
+): Promise<boolean> {
+  try {
+    const contract = new ethers.Contract(tokenAddress, ERC20_DECIMALS_ABI, provider);
+    const onChainDecimals = await contract.decimals();
+    const match = Number(onChainDecimals) === expectedDecimals;
+    if (!match) {
+      console.warn(
+        `[tokens] Decimal mismatch for ${tokenAddress}: expected ${expectedDecimals}, got ${Number(onChainDecimals)}`
+      );
+    }
+    return match;
+  } catch {
+    console.warn(`[tokens] Could not verify decimals for ${tokenAddress}`);
+    return true; // Assume correct if can't verify
+  }
+}
+
+/**
+ * Check if a token address is in the known registry for a given chain.
+ */
+export function isKnownToken(chainId: number, tokenAddress: string): boolean {
+  return getTokensForChain(chainId).some(
+    t => t.address.toLowerCase() === tokenAddress.toLowerCase()
+  );
+}

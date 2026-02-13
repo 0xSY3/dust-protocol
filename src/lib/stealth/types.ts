@@ -54,6 +54,12 @@ export interface ScanResult {
   derivedAddress?: string;
   walletType?: 'eoa' | 'create2' | 'account' | 'eip7702';
   tokenBalances?: TokenBalance[];
+  /** Token address decoded from announcement metadata (if ERC-20 transfer) */
+  announcedTokenAddress?: string | null;
+  /** Token amount (raw hex) decoded from announcement metadata (if ERC-20 transfer) */
+  announcedTokenAmount?: string | null;
+  /** Chain ID encoded in announcement metadata (if present) */
+  announcedChainId?: number | null;
 }
 
 export const SCHEME_ID = { SECP256K1: 1 } as const;

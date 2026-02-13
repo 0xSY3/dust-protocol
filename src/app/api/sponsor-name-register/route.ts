@@ -137,29 +137,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Name registration failed' }, { status: 500 });
     }
 
-    // Register on canonical NameRegistryMerkle (fire and forget — don't block the response)
+    // Insert into server Merkle tree immediately (optimistic — primary chain succeeded)
+    try {
+      nameMerkleTree.insert(stripped, metaBytes);
+      onNameRegistered();
+    } catch (e) {
+      console.warn('[SponsorNameRegister] Failed to insert into server Merkle tree:', e);
+    }
+
+    // Fire-and-forget: also register on canonical NameRegistryMerkle
     registerOnCanonicalMerkle(stripped, metaBytes).then((merkleTxHash) => {
       if (merkleTxHash) {
-        // Insert into server-side Merkle tree singleton
-        nameMerkleTree.insert(stripped, metaBytes);
-        // Trigger batch root sync to destination chains
-        onNameRegistered();
-      } else {
-        // Even if on-chain failed (placeholder), keep server tree in sync
-        try {
-          nameMerkleTree.insert(stripped, metaBytes);
-        } catch (e) {
-          console.warn('[SponsorNameRegister] Failed to insert into server Merkle tree:', e);
-        }
-        onNameRegistered();
+        onNameRegistered(); // Trigger root sync only if on-chain succeeded
       }
     }).catch((e) => {
       console.warn('[SponsorNameRegister] Canonical Merkle registration error:', e);
-      // Still insert into server tree for name-tree API availability
-      try {
-        nameMerkleTree.insert(stripped, metaBytes);
-      } catch { /* ignore duplicate */ }
-      onNameRegistered();
     });
 
     // Mirror to all other supported chains (fire and forget — don't block the response)

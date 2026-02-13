@@ -47,6 +47,12 @@ export class NameMerkleTree {
 
   /** Insert a name entry and return its leaf index */
   insert(name: string, metaAddress: string, version: number = 1): number {
+    const existing = this.nameMap.get(name.toLowerCase());
+    if (existing) {
+      // Name already in tree — update instead of duplicate insert
+      return this.update(name, metaAddress, existing.version + 1);
+    }
+
     const nameHash = ethers.utils.keccak256(
       ethers.utils.solidityPack(['string'], [name])
     );
@@ -177,53 +183,49 @@ export class NameMerkleTree {
     };
   }
 
-  /** Warm tree from canonical chain events on startup */
+  /**
+   * Warm tree from legacy nameRegistry on startup.
+   * Since NameRegistered events use `string indexed name` (which only stores the hash),
+   * we cannot recover the original name string from events. Instead, we call the legacy
+   * nameRegistry's `getNamesOwnedBy(deployer)` to get all registered name strings,
+   * then `resolveName(name)` for each to get the metaAddress, and insert into the tree.
+   */
   async warmFromCanonical(
     provider: ethers.providers.Provider,
     registryAddress: string,
-    fromBlock: number,
+    _fromBlock: number,
   ): Promise<void> {
-    const iface = new ethers.utils.Interface([
-      'event NameRegistered(string indexed name, bytes32 indexed nameHash, bytes metaAddress, uint256 leafIndex, uint256 version, bytes32 newRoot)',
-      'event NameUpdated(bytes32 indexed nameHash, bytes oldMetaAddress, bytes newMetaAddress, uint256 newLeafIndex, uint256 newVersion, bytes32 newRoot)',
-    ]);
+    const DEPLOYER = process.env.SPONSOR_ADDRESS ?? '0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496';
 
-    const logs = await provider.getLogs({
-      address: registryAddress,
-      topics: [
-        [
-          iface.getEventTopic('NameRegistered'),
-          iface.getEventTopic('NameUpdated'),
-        ],
-      ],
-      fromBlock,
-      toBlock: 'latest',
-    });
+    const registryAbi = [
+      'function getNamesOwnedBy(address owner) external view returns (string[] memory)',
+      'function resolveName(string calldata name) external view returns (bytes)',
+    ];
 
-    // Sort by block number and log index for correct ordering
-    logs.sort((a, b) => {
-      if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
-      return a.logIndex - b.logIndex;
-    });
+    const registry = new ethers.Contract(registryAddress, registryAbi, provider);
 
-    for (const log of logs) {
+    let names: string[];
+    try {
+      names = await registry.getNamesOwnedBy(DEPLOYER);
+    } catch (e) {
+      console.warn('[NameMerkle] Failed to call getNamesOwnedBy — registry may not support it:', e);
+      return;
+    }
+
+    let inserted = 0;
+    for (const name of names) {
       try {
-        const parsed = iface.parseLog(log);
-        if (parsed.name === 'NameRegistered') {
-          const metaAddress = parsed.args.metaAddress as string;
-          const version = (parsed.args.version as ethers.BigNumber).toNumber();
-          // We can't recover the original name from indexed string, so skip name-based insert
-          // Instead, we rely on the leafIndex ordering
-          // For warm-up, we'd need a separate mechanism to get names (e.g., RPC calls)
-          void metaAddress;
-          void version;
+        const metaAddress: string = await registry.resolveName(name);
+        if (metaAddress && metaAddress !== '0x' && metaAddress.length > 4) {
+          this.insert(name, metaAddress);
+          inserted++;
         }
-      } catch {
-        // Skip unparseable logs
+      } catch (e) {
+        console.warn(`[NameMerkle] Failed to resolve name "${name}":`, e);
       }
     }
 
-    console.log(`[NameMerkle] Warmed tree from ${logs.length} events, root: ${this._root}`);
+    console.log(`[NameMerkle] Warmed tree with ${inserted}/${names.length} names from deployer, root: ${this._root}`);
   }
 }
 

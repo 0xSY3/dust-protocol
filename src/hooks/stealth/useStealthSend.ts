@@ -351,12 +351,14 @@ export function useStealthSend(chainId?: number) {
       const sendTxHash = receipt.transactionHash;
 
       // Announce via sponsored API (deployer pays gas)
-      // Encode token info in metadata: viewTag + 'T' marker + token address (20 bytes) + amount (32 bytes)
+      // H1: Encode token info in metadata: viewTag + 'T' marker + chainId (4 bytes big-endian) + token address (20 bytes) + amount (32 bytes)
       try {
         const ephPubKey = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
         const tokenAddrHex = tokenAddress.replace(/^0x/, '').toLowerCase();
         const amountHex = amountWei.toHexString().replace(/^0x/, '').padStart(64, '0');
-        const metadata = '0x' + generated.viewTag + '54' + tokenAddrHex + amountHex; // 0x54 = 'T'
+        // Encode chainId as 4-byte big-endian hex (e.g. chainId 11155111 -> 00aa36a7)
+        const chainIdHex = activeChainId.toString(16).padStart(8, '0');
+        const metadata = '0x' + generated.viewTag + '54' + chainIdHex + tokenAddrHex + amountHex; // 0x54 = 'T'
         await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata, activeChainId);
       } catch (announceErr) {
         console.warn('Sponsored announcement failed but token sent:', announceErr);

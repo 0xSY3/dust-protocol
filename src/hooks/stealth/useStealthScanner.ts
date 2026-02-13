@@ -14,7 +14,7 @@ import {
   loadDeposits,
   type StoredDeposit,
 } from '@/lib/dustpool';
-import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
+import { getChainConfig, DEFAULT_CHAIN_ID, MIN_CLAIMABLE_BALANCE } from '@/config/chains';
 import { getTokensForChain } from '@/config/tokens';
 import { getChainProvider, getChainBatchProvider } from '@/lib/providers';
 
@@ -29,6 +29,12 @@ interface StealthPayment extends ScanResult {
   keyMismatch?: boolean;
   autoClaiming?: boolean;
   tokenBalances?: TokenBalance[];
+  /** Token address decoded from announcement metadata (C1 fix) */
+  announcedTokenAddress?: string | null;
+  /** Token amount (raw hex) decoded from announcement metadata (C1 fix) */
+  announcedTokenAmount?: string | null;
+  /** Chain ID encoded in announcement metadata */
+  announcedChainId?: number | null;
 }
 
 // localStorage keys
@@ -566,7 +572,10 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     const now = Date.now();
     const claimable = newPayments.filter(p => {
       const txHash = p.announcement.txHash;
-      if (p.claimed || p.keyMismatch || parseFloat(p.balance || '0') <= 0) return false;
+      const bal = parseFloat(p.balance || '0');
+      if (p.claimed || p.keyMismatch || bal <= 0) return false;
+      // EOA wallets need enough balance to cover gas; sponsored types just need > 0
+      if ((!p.walletType || p.walletType === 'eoa') && bal < MIN_CLAIMABLE_BALANCE) return false;
       if (autoClaimingRef.current.has(txHash)) return false;
       // Pool-eligible payments are NOT auto-claimed — user deposits manually via dashboard button
       if (poolMode && (p.walletType === 'create2' || p.walletType === 'account')) return false;
@@ -639,6 +648,8 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
   }, [address, chainId]);
 
   const isBgScanningRef = useRef(false);
+  // H2: Track current scan ID to detect superseded scans
+  const currentScanIdRef = useRef(0);
 
   const scan = useCallback(async (fromBlock?: number, silent = false) => {
     if (!stealthKeys || !isConnected) {
@@ -657,6 +668,10 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       setIsScanning(true);
       setProgress({ current: 0, total: 0 });
     }
+
+    // H2: Assign a unique scan ID to detect superseded scans
+    const scanId = Date.now();
+    currentScanIdRef.current = scanId;
 
     try {
       // Incremental scanning: use lastScannedBlock for silent/background scans
@@ -686,6 +701,9 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
 
       const results = await scanAnnouncements(provider, stealthKeys, startBlock, latestBlock, config.contracts.announcer, chainId);
 
+      // H2: Check if this scan was superseded before starting balance queries
+      if (currentScanIdRef.current !== scanId) return;
+
       // Batch all balance queries via JsonRpcBatchProvider
       const tokens = getTokensForChain(chainId);
       const enriched: StealthPayment[] = await Promise.all(
@@ -714,6 +732,12 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
                   };
                 })
               );
+              // C2: Log rejected token balance queries instead of silently ignoring
+              balResults.forEach((result, idx) => {
+                if (result.status === 'rejected') {
+                  console.warn(`[scanner] Token balance query failed for ${tokens[idx]?.symbol}:`, result.reason);
+                }
+              });
               const nonZero = balResults
                 .filter((r): r is PromiseFulfilledResult<TokenBalance> => r.status === 'fulfilled')
                 .map(r => r.value)
@@ -742,6 +766,9 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
           }
         })
       );
+
+      // H2: Check if this scan was superseded after balance queries completed
+      if (currentScanIdRef.current !== scanId) return;
 
       // Store keys in ref, strip from state
       enriched.forEach(p => {

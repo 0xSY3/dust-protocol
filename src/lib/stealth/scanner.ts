@@ -140,12 +140,44 @@ export async function scanAnnouncements(
           return cfg?.supportsEIP7702 && !!cfg.contracts.subAccount7702;
         } catch { return false; }
       })();
+
+      // Decode token metadata from announcement if present
+      // Format: viewTag (1 byte) + optional ['T' marker (1 byte) + chainId (4 bytes big-endian) + tokenAddress (20 bytes) + amount (variable)]
+      let announcedTokenAddress: string | null = null;
+      let announcedTokenAmount: string | null = null;
+      let announcedChainId: number | null = null;
+
+      const metadata = announcement.metadata;
+      if (metadata && metadata.length > 4) { // more than just '0x' + viewTag
+        const metaHex = metadata.slice(2); // remove '0x'
+        const viewTagLen = 2; // 1 byte = 2 hex chars
+        const rest = metaHex.slice(viewTagLen);
+
+        // Check for 'T' marker (0x54 = 'T' in ASCII)
+        if (rest.startsWith('54') && rest.length >= 2 + 8 + 40) { // 'T' + 4-byte chainId + 20-byte address
+          // New format with chainId: T + chainId (4 bytes) + tokenAddress (20 bytes) + amount
+          announcedChainId = parseInt(rest.slice(2, 10), 16) || null;
+          announcedTokenAddress = '0x' + rest.slice(10, 50);
+          if (rest.length > 50) {
+            announcedTokenAmount = rest.slice(50); // remaining hex is the amount
+          }
+        } else if (rest.startsWith('54') && rest.length >= 2 + 40) { // Legacy: 'T' + 20-byte address (no chainId)
+          announcedTokenAddress = '0x' + rest.slice(2, 42);
+          if (rest.length > 42) {
+            announcedTokenAmount = rest.slice(42); // remaining hex is the amount
+          }
+        }
+      }
+
       results.push({
         announcement,
         stealthPrivateKey,
         isMatch: true,
         privateKeyVerified: true,
         walletType: accountMatch ? 'account' : create2Match ? 'create2' : (eoaMatch && is7702Chain) ? 'eip7702' : 'eoa',
+        announcedTokenAddress,
+        announcedTokenAmount,
+        announcedChainId,
       });
     }
   }

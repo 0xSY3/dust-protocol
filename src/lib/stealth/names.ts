@@ -181,6 +181,10 @@ export async function resolveViaMerkleProof(name: string, chainId?: number): Pro
     // but still return the entry since we trust the server-side tree
     const isPlaceholder = verifierAddress === '0x0000000000000000000000000000000000000000';
 
+    if (isPlaceholder) {
+      console.warn('[names] On-chain verification skipped — contracts not deployed. Running in trusted-server mode.');
+    }
+
     if (verifierAddress && !isPlaceholder) {
       const provider = getReadOnlyProvider(verifyChainId);
       const verifier = new ethers.Contract(verifierAddress, NAME_VERIFIER_ABI, provider);

@@ -63,13 +63,19 @@ export async function sponsoredRelay(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      chainId: chainId.toString(),
+      chainId: Number(chainId),
       target,
       data,
       sponsorApiKey: GELATO_API_KEY,
     }),
   });
 
+  if (response.status === 429) {
+    throw new Error('Gelato rate limited — please retry after a short delay');
+  }
+  if (response.status === 402) {
+    throw new Error('Gelato 1Balance credits exhausted — falling back to sponsor wallet');
+  }
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
     throw new Error(`Gelato relay request failed (${response.status}): ${errorText}`);
@@ -128,7 +134,7 @@ export async function waitForRelay(
     }
   }
 
-  throw new Error(`Gelato task ${taskId} timed out after ${timeoutMs}ms`);
+  throw new Error(`Gelato relay timeout after ${timeoutMs}ms — taskId: ${taskId} (check manually at https://api.gelato.digital/tasks/status/${taskId})`);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
