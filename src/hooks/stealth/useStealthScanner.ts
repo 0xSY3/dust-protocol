@@ -6,8 +6,7 @@ import {
   getLastScannedBlock, getAnnouncementCount, getAddressFromPrivateKey,
   signWalletDrain, signWalletExecute, signUserOp,
   type StealthKeyPair, type ScanResult,
-  DEPLOYMENT_BLOCK, DUST_POOL_ADDRESS, DUST_POOL_ABI,
-  STEALTH_ACCOUNT_FACTORY, STEALTH_ACCOUNT_FACTORY_ABI,
+  DUST_POOL_ABI, STEALTH_ACCOUNT_FACTORY_ABI,
 } from '@/lib/stealth';
 import {
   generateDeposit,
@@ -15,6 +14,8 @@ import {
   loadDeposits,
   type StoredDeposit,
 } from '@/lib/dustpool';
+import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
+import { getChainProvider, getChainBatchProvider } from '@/lib/providers';
 
 interface StealthPayment extends ScanResult {
   balance?: string;
@@ -24,26 +25,8 @@ interface StealthPayment extends ScanResult {
   autoClaiming?: boolean;
 }
 
-// Thanos Sepolia RPC for reliable fee estimation
-const THANOS_RPC = 'https://rpc.thanos-sepolia.tokamak.network';
-
 // localStorage keys
 const PAYMENTS_STORAGE_KEY = 'stealth_payments_';
-
-function getProvider() {
-  if (typeof window === 'undefined' || !window.ethereum) return null;
-  return new ethers.providers.Web3Provider(window.ethereum as ethers.providers.ExternalProvider);
-}
-
-// Direct RPC provider for accurate fee data (bypasses MetaMask network issues)
-function getThanosProvider() {
-  return new ethers.providers.JsonRpcProvider(THANOS_RPC);
-}
-
-// Batch provider for parallel balance queries — batches multiple JSON-RPC calls into single HTTP request
-function getThanosBatchProvider() {
-  return new ethers.providers.JsonRpcBatchProvider(THANOS_RPC);
-}
 
 function loadPaymentsFromStorage(address: string): StealthPayment[] {
   if (typeof window === 'undefined') return [];
@@ -64,8 +47,6 @@ function savePaymentsToStorage(address: string, payments: StealthPayment[]): voi
   } catch { /* quota exceeded etc */ }
 }
 
-const THANOS_CHAIN_ID = 111551119090;
-
 // StealthAccount.drain(address to) selector
 const DRAIN_SELECTOR = '0xece53132';
 
@@ -73,13 +54,15 @@ const DRAIN_SELECTOR = '0xece53132';
 async function autoClaimAccount(
   payment: ScanResult,
   recipient: string,
+  chainId: number,
 ): Promise<{ txHash: string } | null> {
   try {
+    const config = getChainConfig(chainId);
     const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
     const accountAddress = payment.announcement.stealthAddress;
 
     // Check if account is already deployed
-    const provider = getThanosProvider();
+    const provider = getChainProvider(chainId);
     const code = await provider.getCode(accountAddress);
     const isDeployed = code !== '0x';
 
@@ -88,7 +71,7 @@ async function autoClaimAccount(
     if (!isDeployed) {
       const iface = new ethers.utils.Interface(STEALTH_ACCOUNT_FACTORY_ABI);
       const createData = iface.encodeFunctionData('createAccount', [ownerEOA, 0]);
-      initCode = ethers.utils.hexConcat([STEALTH_ACCOUNT_FACTORY, createData]);
+      initCode = ethers.utils.hexConcat([config.contracts.accountFactory, createData]);
     }
 
     // Build callData: drain(recipient)
@@ -105,6 +88,7 @@ async function autoClaimAccount(
         sender: accountAddress,
         initCode,
         callData,
+        chainId,
       }),
     });
     const prepData = await prepRes.json();
@@ -121,7 +105,7 @@ async function autoClaimAccount(
     const submitRes = await fetch('/api/bundle/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userOp }),
+      body: JSON.stringify({ userOp, chainId }),
     });
     const submitData = await submitRes.json();
     if (!submitRes.ok) {
@@ -141,9 +125,10 @@ async function autoClaimAccount(
 async function autoClaimLegacy(
   payment: ScanResult,
   recipient: string,
+  chainId: number,
 ): Promise<{ txHash: string; amount: string; gasFunded: string } | null> {
   try {
-    let body: Record<string, string>;
+    let body: Record<string, string | number>;
 
     if (payment.walletType === 'create2') {
       const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
@@ -151,19 +136,21 @@ async function autoClaimLegacy(
         payment.stealthPrivateKey,
         payment.announcement.stealthAddress,
         recipient,
-        THANOS_CHAIN_ID,
+        chainId,
       );
       body = {
         stealthAddress: payment.announcement.stealthAddress,
         owner: ownerEOA,
         recipient,
         signature,
+        chainId,
       };
     } else {
       body = {
         stealthAddress: payment.announcement.stealthAddress,
         stealthPrivateKey: payment.stealthPrivateKey,
         recipient,
+        chainId,
       };
     }
 
@@ -189,11 +176,12 @@ async function autoClaimLegacy(
 async function autoClaimPayment(
   payment: ScanResult,
   recipient: string,
+  chainId: number,
 ): Promise<{ txHash: string } | null> {
   if (payment.walletType === 'account') {
-    return autoClaimAccount(payment, recipient);
+    return autoClaimAccount(payment, recipient, chainId);
   }
-  return autoClaimLegacy(payment, recipient);
+  return autoClaimLegacy(payment, recipient, chainId);
 }
 
 // Stealth wallet deposits DIRECTLY into DustPool (privacy-preserving).
@@ -203,15 +191,23 @@ async function autoClaimPayment(
 async function claimToPoolDeposit(
   payment: ScanResult,
   userAddress: string,
+  chainId: number,
 ): Promise<{ txHash: string; leafIndex: number; depositData: StoredDeposit } | null> {
   try {
+    const config = getChainConfig(chainId);
+    const dustPoolAddress = config.contracts.dustPool;
+    if (!dustPoolAddress) {
+      if (process.env.NODE_ENV === 'development') console.warn('[PoolDeposit] DustPool not available on chain', chainId);
+      return null;
+    }
+
     const wt = payment.walletType;
     if (wt !== 'create2' && wt !== 'account') {
       if (process.env.NODE_ENV === 'development') console.warn('[PoolDeposit] Unsupported wallet type:', wt);
       return null;
     }
 
-    const provider = getThanosProvider();
+    const provider = getChainProvider(chainId);
     const balance = await provider.getBalance(payment.announcement.stealthAddress);
     if (balance.isZero()) {
       if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] Zero balance, skipping');
@@ -230,13 +226,11 @@ async function claimToPoolDeposit(
 
     if (wt === 'account') {
       // ERC-4337: Build UserOp with execute(DustPool, balance, depositCalldata)
-      // The stealth account calls DustPool.deposit() directly — deposit from stealth address
       if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] ERC-4337 direct pool deposit...');
 
       const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
       const accountAddress = payment.announcement.stealthAddress;
 
-      // Check if account is already deployed
       const code = await provider.getCode(accountAddress);
       const isDeployed = code !== '0x';
 
@@ -244,24 +238,22 @@ async function claimToPoolDeposit(
       if (!isDeployed) {
         const iface = new ethers.utils.Interface(STEALTH_ACCOUNT_FACTORY_ABI);
         const createData = iface.encodeFunctionData('createAccount', [ownerEOA, 0]);
-        initCode = ethers.utils.hexConcat([STEALTH_ACCOUNT_FACTORY, createData]);
+        initCode = ethers.utils.hexConcat([config.contracts.accountFactory, createData]);
       }
 
-      // StealthAccount.execute(address dest, uint256 value, bytes func)
       const EXECUTE_SELECTOR = '0xb61d27f6';
       const callData = ethers.utils.hexConcat([
         EXECUTE_SELECTOR,
         ethers.utils.defaultAbiCoder.encode(
           ['address', 'uint256', 'bytes'],
-          [DUST_POOL_ADDRESS, balance, depositCalldata]
+          [dustPoolAddress, balance, depositCalldata]
         ),
       ]);
 
-      // Step 1: Get completed UserOp from server (with high gas for Poseidon tree)
       const prepRes = await fetch('/api/bundle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sender: accountAddress, initCode, callData }),
+        body: JSON.stringify({ sender: accountAddress, initCode, callData, chainId }),
       });
       const prepData = await prepRes.json();
       if (!prepRes.ok) {
@@ -269,15 +261,13 @@ async function claimToPoolDeposit(
         return null;
       }
 
-      // Step 2: Sign userOpHash locally
       const { userOp, userOpHash } = prepData;
       userOp.signature = await signUserOp(userOpHash, payment.stealthPrivateKey);
 
-      // Step 3: Submit signed UserOp
       const submitRes = await fetch('/api/bundle/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userOp }),
+        body: JSON.stringify({ userOp, chainId }),
       });
       const submitData = await submitRes.json();
       if (!submitRes.ok) {
@@ -287,9 +277,8 @@ async function claimToPoolDeposit(
 
       txHash = submitData.txHash;
 
-      // Parse leafIndex from tx receipt
       const receipt = await provider.getTransactionReceipt(txHash);
-      const poolContract = new ethers.Contract(DUST_POOL_ADDRESS, DUST_POOL_ABI, provider);
+      const poolContract = new ethers.Contract(dustPoolAddress, DUST_POOL_ABI, provider);
       const depositEvent = receipt.logs.find((log: ethers.providers.Log) => {
         try { return poolContract.interface.parseLog(log).name === 'Deposit'; }
         catch { return false; }
@@ -306,10 +295,10 @@ async function claimToPoolDeposit(
       const signature = await signWalletExecute(
         payment.stealthPrivateKey,
         payment.announcement.stealthAddress,
-        DUST_POOL_ADDRESS,
+        dustPoolAddress,
         balance,
         depositCalldata,
-        THANOS_CHAIN_ID,
+        chainId,
       );
 
       const res = await fetch('/api/pool-deposit', {
@@ -321,6 +310,7 @@ async function claimToPoolDeposit(
           signature,
           commitment: deposit.commitmentHex,
           walletType: 'create2',
+          chainId,
         }),
       });
 
@@ -333,7 +323,6 @@ async function claimToPoolDeposit(
       leafIndex = data.leafIndex;
     }
 
-    // Store deposit data locally
     const storedDeposit: StoredDeposit = {
       nullifier: deposit.nullifier.toString(),
       secret: deposit.secret.toString(),
@@ -362,9 +351,11 @@ async function claimToPoolDeposit(
 interface UseStealthScannerOptions {
   autoClaimRecipient?: string;
   claimToPool?: boolean;
+  chainId?: number;
 }
 
 export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: UseStealthScannerOptions) {
+  const chainId = options?.chainId ?? DEFAULT_CHAIN_ID;
   const { address, isConnected } = useAccount();
   const [payments, setPayments] = useState<StealthPayment[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -477,7 +468,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
 
       if (recipient) {
         // Direct claim to recipient
-        claimResult = await autoClaimPayment(paymentWithKey, recipient);
+        claimResult = await autoClaimPayment(paymentWithKey, recipient, chainId);
       } else {
         // No recipient — skip
         autoClaimingRef.current.delete(txHash);
@@ -510,10 +501,11 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       return;
     }
 
+    const config = getChainConfig(chainId);
     // Use direct RPC provider for event scanning — more reliable than MetaMask
-    const provider = getThanosProvider();
+    const provider = getChainProvider(chainId);
     // Use batch provider for balance queries — batches 2N calls into fewer HTTP requests
-    const batchProvider = getThanosBatchProvider();
+    const batchProvider = getChainBatchProvider(chainId);
 
     if (!silent) {
       setError(null);
@@ -528,10 +520,11 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         startBlock = fromBlock;
       } else if (silent && address) {
         // Background scan: only scan new blocks since last scan
-        startBlock = getLastScannedBlock(address) ?? DEPLOYMENT_BLOCK;
+        // Key includes chainId so scans are per-chain
+        startBlock = getLastScannedBlock(`${chainId}:${address}`) ?? config.deploymentBlock;
       } else {
         // Full scan (manual trigger): always from deployment
-        startBlock = DEPLOYMENT_BLOCK;
+        startBlock = config.deploymentBlock;
       }
 
       const latestBlock = await provider.getBlockNumber();
@@ -542,11 +535,11 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       if (process.env.NODE_ENV === 'development') console.log(`[Scanner] from=${startBlock}, latest=${latestBlock}`);
 
       if (!silent) {
-        const total = await getAnnouncementCount(provider, startBlock, latestBlock);
+        const total = await getAnnouncementCount(provider, startBlock, latestBlock, config.contracts.announcer);
         setProgress({ current: 0, total });
       }
 
-      const results = await scanAnnouncements(provider, stealthKeys, startBlock, latestBlock);
+      const results = await scanAnnouncements(provider, stealthKeys, startBlock, latestBlock, config.contracts.announcer, chainId);
 
       // Batch all balance queries via JsonRpcBatchProvider
       const enriched: StealthPayment[] = await Promise.all(
@@ -612,7 +605,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       }
 
       if (address) {
-        saveLastScannedBlock(address, latestBlock);
+        saveLastScannedBlock(`${chainId}:${address}`, latestBlock);
       }
 
       if (!silent) {
@@ -624,7 +617,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     } finally {
       if (!silent) setIsScanning(false);
     }
-  }, [stealthKeys, isConnected, address, tryAutoClaim]);
+  }, [stealthKeys, isConnected, address, chainId, tryAutoClaim]);
 
   const scanRef = useRef(scan);
   scanRef.current = scan;
@@ -667,7 +660,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       }
       const paymentWithKey = { ...payment, stealthPrivateKey: key };
 
-      const result = await autoClaimPayment(paymentWithKey, recipient);
+      const result = await autoClaimPayment(paymentWithKey, recipient, chainId);
       if (!result) {
         throw new Error('Claim failed');
       }
@@ -682,7 +675,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       setError(msg);
       return null;
     }
-  }, []);
+  }, [chainId]);
 
   // Directly deposit unclaimed payments to pool with progress reporting
   // Handles both normal deposits (drain + pool) and recovery (already drained, just pool deposit)
@@ -743,9 +736,10 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       // Normal path: drain stealth wallet then deposit to pool
       const paymentWithKey = { ...payment, stealthPrivateKey: key };
       const amt = currentBal.toFixed(4);
-      onProgress(deposited, total, `Depositing ${i + 1}/${total} (${amt} TON)...`);
+      const symbol = getChainConfig(chainId).nativeCurrency.symbol;
+      onProgress(deposited, total, `Depositing ${i + 1}/${total} (${amt} ${symbol})...`);
 
-      const result = await claimToPoolDeposit(paymentWithKey, address);
+      const result = await claimToPoolDeposit(paymentWithKey, address, chainId);
 
       if (result) {
         deposited++;
@@ -767,7 +761,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     onProgress(deposited, total, msg);
 
     return { deposited, skipped, failed };
-  }, [address, payments]);
+  }, [address, payments, chainId]);
 
   return { payments, scan, scanInBackground, stopBackgroundScan, claimPayment, depositToPool, isScanning, progress, error };
 }

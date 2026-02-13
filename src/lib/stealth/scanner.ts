@@ -64,7 +64,8 @@ export async function scanAnnouncements(
   keys: StealthKeyPair,
   fromBlock: number,
   toBlock?: number | 'latest',
-  announcerAddress = CANONICAL_ADDRESSES.announcer
+  announcerAddress = CANONICAL_ADDRESSES.announcer,
+  chainId?: number,
 ): Promise<ScanResult[]> {
   // Verify key consistency
   const derived = secp256k1.keyFromPrivate(keys.spendingPrivateKey.replace(/^0x/, ''), 'hex');
@@ -108,18 +109,18 @@ export async function scanAnnouncements(
     let create2Match = false;
     let accountMatch = false;
     if (!eoaMatch) {
-      const create2Addr = computeStealthWalletAddress(derivedEOA);
+      const create2Addr = computeStealthWalletAddress(derivedEOA, chainId);
       create2Match = create2Addr.toLowerCase() === announcedAddr;
       if (!create2Match) {
-        const legacyCreate2Addr = computeLegacyStealthWalletAddress(derivedEOA);
+        const legacyCreate2Addr = computeLegacyStealthWalletAddress(derivedEOA, chainId);
         create2Match = legacyCreate2Addr.toLowerCase() === announcedAddr;
       }
     }
     if (!eoaMatch && !create2Match) {
-      const accountAddr = computeStealthAccountAddress(derivedEOA);
+      const accountAddr = computeStealthAccountAddress(derivedEOA, chainId);
       accountMatch = accountAddr.toLowerCase() === announcedAddr;
       if (!accountMatch) {
-        const legacyAccountAddr = computeLegacyStealthAccountAddress(derivedEOA);
+        const legacyAccountAddr = computeLegacyStealthAccountAddress(derivedEOA, chainId);
         accountMatch = legacyAccountAddr.toLowerCase() === announcedAddr;
       }
     }
@@ -151,7 +152,8 @@ export async function scanAnnouncementsViewOnly(
   spendingPublicKey: string,
   fromBlock: number,
   toBlock?: number | 'latest',
-  announcerAddress = CANONICAL_ADDRESSES.announcer
+  announcerAddress = CANONICAL_ADDRESSES.announcer,
+  chainId?: number,
 ): Promise<StealthAnnouncement[]> {
   const announcer = new ethers.Contract(announcerAddress, ANNOUNCER_ABI, provider);
   const filter = announcer.filters.Announcement(SCHEME_ID.SECP256K1, null, null);
@@ -191,13 +193,13 @@ export async function scanAnnouncementsViewOnly(
     })();
     if (eoaAddr) {
       const addr = announcement.stealthAddress.toLowerCase();
-      if (computeStealthWalletAddress(eoaAddr).toLowerCase() === addr
-        || computeLegacyStealthWalletAddress(eoaAddr).toLowerCase() === addr) {
+      if (computeStealthWalletAddress(eoaAddr, chainId).toLowerCase() === addr
+        || computeLegacyStealthWalletAddress(eoaAddr, chainId).toLowerCase() === addr) {
         matches.push(announcement);
         continue;
       }
-      if (computeStealthAccountAddress(eoaAddr).toLowerCase() === addr
-        || computeLegacyStealthAccountAddress(eoaAddr).toLowerCase() === addr) {
+      if (computeStealthAccountAddress(eoaAddr, chainId).toLowerCase() === addr
+        || computeLegacyStealthAccountAddress(eoaAddr, chainId).toLowerCase() === addr) {
         matches.push(announcement);
       }
     }

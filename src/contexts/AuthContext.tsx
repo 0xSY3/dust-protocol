@@ -1,15 +1,21 @@
 "use client";
 
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { useAccount } from "wagmi";
 import { useStealthAddress, useStealthName, usePin } from "@/hooks/stealth";
+import { DEFAULT_CHAIN_ID, isChainSupported } from "@/config/chains";
 import type { StealthKeyPair } from "@/lib/stealth";
 import type { OwnedName } from "@/lib/design/types";
+
+const CHAIN_STORAGE_KEY = 'dust_active_chain';
 
 interface AuthState {
   // Connection
   isConnected: boolean;
   address: string | undefined;
+  // Chain
+  activeChainId: number;
+  setActiveChain: (chainId: number) => void;
   // Hydration — true once localStorage has been read
   isHydrated: boolean;
   // PIN
@@ -51,6 +57,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const nameHook = useStealthName(stealthAddr.metaAddress);
   const pinHook = usePin();
 
+  // Active chain state — persisted in localStorage
+  const [activeChainId, setActiveChainIdState] = useState(DEFAULT_CHAIN_ID);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = localStorage.getItem(CHAIN_STORAGE_KEY);
+    if (stored) {
+      const id = parseInt(stored, 10);
+      if (isChainSupported(id)) setActiveChainIdState(id);
+    }
+  }, []);
+
+  const setActiveChain = useCallback((chainId: number) => {
+    if (!isChainSupported(chainId)) return;
+    setActiveChainIdState(chainId);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(CHAIN_STORAGE_KEY, chainId.toString());
+    }
+  }, []);
+
   // User is onboarded if they have stealth keys + claim addresses, OR if they have a PIN stored
   // (PIN is only set during onboarding activation, so it's a reliable signal)
   const isOnboarded = stealthAddr.isHydrated && (
@@ -60,6 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthState = {
     isConnected,
     address,
+    activeChainId,
+    setActiveChain,
     isHydrated: stealthAddr.isHydrated,
     hasPin: pinHook.hasPin,
     isPinVerified: pinHook.isPinVerified,

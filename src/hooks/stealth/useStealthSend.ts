@@ -6,6 +6,8 @@ import {
   CANONICAL_ADDRESSES, SCHEME_ID, type GeneratedStealthAddress,
 } from '@/lib/stealth';
 import type { OutgoingPayment } from '@/lib/design/types';
+import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
+import { getChainProvider } from '@/lib/providers';
 
 const OUTGOING_STORAGE_KEY = 'dust_outgoing_payments_';
 
@@ -31,45 +33,37 @@ const ANNOUNCER_ABI = [
   'function announce(uint256 schemeId, address stealthAddress, bytes calldata ephemeralPubKey, bytes calldata metadata) external',
 ];
 
-// Direct RPC for reliable gas estimation
-const THANOS_RPC = 'https://rpc.thanos-sepolia.tokamak.network';
-const THANOS_CHAIN_ID = 111551119090;
-const THANOS_CHAIN_ID_HEX = '0x' + THANOS_CHAIN_ID.toString(16);
-
 function getProvider() {
   if (typeof window === 'undefined' || !window.ethereum) return null;
   return new ethers.providers.Web3Provider(window.ethereum as ethers.providers.ExternalProvider);
 }
 
-/** Switch MetaMask to Thanos Sepolia, adding the chain if needed */
-async function ensureThanosSepolia(): Promise<void> {
+/** Switch MetaMask to the target chain, adding it if needed */
+async function ensureChain(chainId: number): Promise<void> {
   if (typeof window === 'undefined' || !window.ethereum) return;
+  const config = getChainConfig(chainId);
+  const chainIdHex = '0x' + chainId.toString(16);
   try {
     await window.ethereum.request({
       method: 'wallet_switchEthereumChain',
-      params: [{ chainId: THANOS_CHAIN_ID_HEX }],
+      params: [{ chainId: chainIdHex }],
     });
   } catch (err: unknown) {
-    // 4902 = chain not added yet
     if (err && typeof err === 'object' && 'code' in err && (err as { code: number }).code === 4902) {
       await window.ethereum.request({
         method: 'wallet_addEthereumChain',
         params: [{
-          chainId: THANOS_CHAIN_ID_HEX,
-          chainName: 'Thanos Sepolia',
-          nativeCurrency: { name: 'TON', symbol: 'TON', decimals: 18 },
-          rpcUrls: [THANOS_RPC],
-          blockExplorerUrls: ['https://explorer.thanos-sepolia.tokamak.network'],
+          chainId: chainIdHex,
+          chainName: config.name,
+          nativeCurrency: config.nativeCurrency,
+          rpcUrls: [config.rpcUrl],
+          blockExplorerUrls: [config.blockExplorerUrl],
         }],
       });
     } else {
       throw err;
     }
   }
-}
-
-function getThanosProvider() {
-  return new ethers.providers.JsonRpcProvider(THANOS_RPC);
 }
 
 // Estimate gas cost for ETH transfer only (21k gas)
@@ -97,11 +91,12 @@ async function sponsorAnnounce(
   stealthAddress: string,
   ephemeralPubKey: string,
   metadata: string,
+  chainId?: number,
 ): Promise<string> {
   const res = await fetch('/api/sponsor-announce', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stealthAddress, ephemeralPubKey, metadata }),
+    body: JSON.stringify({ stealthAddress, ephemeralPubKey, metadata, chainId }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Sponsored announcement failed');
@@ -124,7 +119,8 @@ async function calculateMaxSendable(
 function validateSendAmount(
   amount: string,
   balance: ethers.BigNumber,
-  gasCost: ethers.BigNumber
+  gasCost: ethers.BigNumber,
+  symbol = 'ETH',
 ): { valid: boolean; error?: string } {
   if (!amount || amount.trim() === '') {
     return { valid: false, error: 'Amount is required' };
@@ -148,11 +144,11 @@ function validateSendAmount(
     if (balance.lt(totalNeeded)) {
       const maxSendable = balance.sub(gasCost);
       if (maxSendable.lte(0)) {
-        return { valid: false, error: `Insufficient balance for gas (~${ethers.utils.formatEther(gasCost)} TON needed)` };
+        return { valid: false, error: `Insufficient balance for gas (~${ethers.utils.formatEther(gasCost)} ${symbol} needed)` };
       }
       return {
         valid: false,
-        error: `Insufficient balance. Max sendable: ${parseFloat(ethers.utils.formatEther(maxSendable)).toFixed(6)} TON`
+        error: `Insufficient balance. Max sendable: ${parseFloat(ethers.utils.formatEther(maxSendable)).toFixed(6)} ${symbol}`
       };
     }
 
@@ -163,7 +159,8 @@ function validateSendAmount(
 }
 
 
-export function useStealthSend() {
+export function useStealthSend(chainId?: number) {
+  const activeChainId = chainId ?? DEFAULT_CHAIN_ID;
   const { isConnected } = useAccount();
   const [lastGeneratedAddress, setLastGeneratedAddress] = useState<GeneratedStealthAddress | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -173,28 +170,26 @@ export function useStealthSend() {
     setError(null);
     try {
       const parsed = parseStealthMetaAddress(metaAddress);
-      const generated = generateStealthAddress(parsed);
+      const generated = generateStealthAddress(parsed, activeChainId);
       setLastGeneratedAddress(generated);
       return generated;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to generate address');
       return null;
     }
-  }, []);
+  }, [activeChainId]);
 
   const generateAddressForAddress = useCallback(async (recipientAddress: string): Promise<GeneratedStealthAddress | null> => {
     setError(null);
     setIsLoading(true);
     try {
-      const provider = getProvider();
-      if (!provider) throw new Error('No wallet provider');
-
+      const provider = getChainProvider(activeChainId);
       const metaBytes = await lookupStealthMetaAddress(provider, recipientAddress);
       if (!metaBytes) throw new Error('Recipient has no registered stealth address');
 
       const uri = `st:thanos:0x${metaBytes.replace(/^0x/, '')}`;
       const parsed = parseStealthMetaAddress(uri);
-      const generated = generateStealthAddress(parsed);
+      const generated = generateStealthAddress(parsed, activeChainId);
       setLastGeneratedAddress(generated);
       return generated;
     } catch (e) {
@@ -203,7 +198,7 @@ export function useStealthSend() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [activeChainId]);
 
   // Get maximum sendable amount (exposed for UI "Max" button)
   const getMaxSendable = useCallback(async (): Promise<string | null> => {
@@ -214,35 +209,36 @@ export function useStealthSend() {
       const signer = provider.getSigner();
       const address = await signer.getAddress();
 
-      // Use direct RPC for accurate gas estimation
-      const thanosProvider = getThanosProvider();
-      const { maxAmount } = await calculateMaxSendable(thanosProvider, address);
+      const rpcProvider = getChainProvider(activeChainId);
+      const { maxAmount } = await calculateMaxSendable(rpcProvider, address);
 
       if (maxAmount.lte(0)) return '0';
       return ethers.utils.formatEther(maxAmount);
     } catch {
       return null;
     }
-  }, []);
+  }, [activeChainId]);
 
   const sendEthToStealth = useCallback(async (metaAddress: string, amount: string, linkSlug?: string): Promise<string | null> => {
     if (!isConnected) { setError('Wallet not connected'); return null; }
     setError(null);
     setIsLoading(true);
 
+    const config = getChainConfig(activeChainId);
+
     try {
-      await ensureThanosSepolia();
+      await ensureChain(activeChainId);
       const provider = getProvider();
       if (!provider) throw new Error('No wallet provider');
       const signer = provider.getSigner();
       const signerAddress = await signer.getAddress();
 
       // Use direct RPC for reliable balance/gas data
-      const thanosProvider = getThanosProvider();
+      const rpcProvider = getChainProvider(activeChainId);
 
       // Validate balance and gas BEFORE generating address
-      const { balance, gasCost } = await calculateMaxSendable(thanosProvider, signerAddress);
-      const validation = validateSendAmount(amount, balance, gasCost);
+      const { balance, gasCost } = await calculateMaxSendable(rpcProvider, signerAddress);
+      const validation = validateSendAmount(amount, balance, gasCost, config.nativeCurrency.symbol);
       if (!validation.valid) {
         throw new Error(validation.error);
       }
@@ -252,8 +248,8 @@ export function useStealthSend() {
       if (!generated) throw new Error('Failed to generate stealth address');
 
       // Send ETH with explicit gas parameters
-      const feeData = await thanosProvider.getFeeData();
-      const block = await thanosProvider.getBlock('latest');
+      const feeData = await rpcProvider.getFeeData();
+      const block = await rpcProvider.getBlock('latest');
       const baseFee = block.baseFeePerGas || feeData.gasPrice || ethers.utils.parseUnits('1', 'gwei');
       const priorityFee = feeData.maxPriorityFeePerGas || ethers.utils.parseUnits('1', 'gwei');
       const twoXBaseFee = baseFee.mul(2);
@@ -280,7 +276,7 @@ export function useStealthSend() {
           const slugHex = Array.from(slugBytes).map(b => b.toString(16).padStart(2, '0')).join('');
           metadata += slugHex;
         }
-        await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata);
+        await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata, activeChainId);
       } catch (announceErr) {
         console.warn('Sponsored announcement failed but ETH sent:', announceErr);
         setError(`Sent successfully but announcement failed. Recipient may need to scan manually.`);
@@ -303,27 +299,28 @@ export function useStealthSend() {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, generateAddressFor]);
+  }, [isConnected, activeChainId, generateAddressFor]);
 
   const sendTokenToStealth = useCallback(async (metaAddress: string, tokenAddress: string, amount: string): Promise<string | null> => {
     if (!isConnected) { setError('Wallet not connected'); return null; }
     setError(null);
     setIsLoading(true);
 
+    const config = getChainConfig(activeChainId);
+
     try {
-      await ensureThanosSepolia();
+      await ensureChain(activeChainId);
       const provider = getProvider();
       if (!provider) throw new Error('No wallet provider');
       const signer = provider.getSigner();
       const signerAddress = await signer.getAddress();
 
-      // Check ETH balance for gas (only token transfer gas; announcement is sponsored)
-      const thanosProvider = getThanosProvider();
-      const ethBalance = await thanosProvider.getBalance(signerAddress);
-      const gasCost = await estimateEthTransferGasCost(thanosProvider);
+      const rpcProvider = getChainProvider(activeChainId);
+      const ethBalance = await rpcProvider.getBalance(signerAddress);
+      const gasCost = await estimateEthTransferGasCost(rpcProvider);
 
       if (ethBalance.lt(gasCost)) {
-        throw new Error(`Insufficient ETH for gas. Need ~${ethers.utils.formatEther(gasCost)} TON`);
+        throw new Error(`Insufficient balance for gas. Need ~${ethers.utils.formatEther(gasCost)} ${config.nativeCurrency.symbol}`);
       }
 
       const erc20 = new ethers.Contract(tokenAddress, [
@@ -352,7 +349,7 @@ export function useStealthSend() {
       try {
         const ephPubKey = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
         const metadata = '0x' + generated.viewTag;
-        await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata);
+        await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata, activeChainId);
       } catch (announceErr) {
         console.warn('Sponsored announcement failed but token sent:', announceErr);
         setError(`Sent successfully but announcement failed. Recipient may need to scan manually.`);
@@ -365,7 +362,7 @@ export function useStealthSend() {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, generateAddressFor]);
+  }, [isConnected, activeChainId, generateAddressFor]);
 
   const announcePayment = useCallback(async (stealthAddress: string, ephemeralPublicKey: string, viewTag: string): Promise<string | null> => {
     if (!isConnected) { setError('Wallet not connected'); return null; }
@@ -373,11 +370,12 @@ export function useStealthSend() {
     setIsLoading(true);
 
     try {
+      const config = getChainConfig(activeChainId);
       const provider = getProvider();
       if (!provider) throw new Error('No wallet provider');
       const signer = provider.getSigner();
 
-      const announcer = new ethers.Contract(CANONICAL_ADDRESSES.announcer, ANNOUNCER_ABI, signer);
+      const announcer = new ethers.Contract(config.contracts.announcer, ANNOUNCER_ABI, signer);
       const tx = await announcer.announce(SCHEME_ID.SECP256K1, stealthAddress, '0x' + ephemeralPublicKey.replace(/^0x/, ''), '0x' + viewTag);
       const receipt = await tx.wait();
       return receipt.transactionHash;
@@ -387,7 +385,7 @@ export function useStealthSend() {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected]);
+  }, [isConnected, activeChainId]);
 
   return {
     generateAddressFor,

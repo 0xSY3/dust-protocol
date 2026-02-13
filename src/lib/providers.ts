@@ -1,7 +1,6 @@
 // Shared provider and signing utilities — single source of truth
 import { ethers } from 'ethers';
-
-const THANOS_RPC = 'https://rpc.thanos-sepolia.tokamak.network';
+import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
 
 /** Get ethers Web3Provider from injected wallet (MetaMask etc.) */
 export function getProvider(): ethers.providers.Web3Provider | null {
@@ -17,9 +16,21 @@ export async function getProviderWithAccounts(): Promise<ethers.providers.Web3Pr
   return provider;
 }
 
-/** Get read-only provider for Thanos Sepolia RPC */
+/** Get read-only JSON-RPC provider for any supported chain */
+export function getChainProvider(chainId?: number): ethers.providers.JsonRpcProvider {
+  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID);
+  return new ethers.providers.JsonRpcProvider(config.rpcUrl);
+}
+
+/** Get batch provider for parallel balance queries on any supported chain */
+export function getChainBatchProvider(chainId?: number): ethers.providers.JsonRpcBatchProvider {
+  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID);
+  return new ethers.providers.JsonRpcBatchProvider(config.rpcUrl);
+}
+
+/** @deprecated Use getChainProvider() instead */
 export function getThanosProvider(): ethers.providers.JsonRpcProvider {
-  return new ethers.providers.JsonRpcProvider(THANOS_RPC);
+  return getChainProvider(DEFAULT_CHAIN_ID);
 }
 
 /** Sign a message using wagmi wallet client (preferred) or ethers fallback */

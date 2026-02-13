@@ -4,13 +4,14 @@ import { ethers } from 'ethers';
 import {
   generateStealthKeyPair, deriveStealthKeyPairFromSignature, deriveStealthKeyPairFromSignatureAndPin,
   formatStealthMetaAddress, parseStealthMetaAddress, lookupStealthMetaAddress,
-  isRegistered as checkIsRegistered, getRegistryNonce, signRegistration,
+  isRegistered as checkIsRegistered, signRegistration,
   STEALTH_KEY_DERIVATION_MESSAGE,
   type StealthKeyPair, type StealthMetaAddress,
   deriveClaimAddresses, deriveClaimAddressesWithPin, saveClaimAddressesToStorage, loadClaimAddressesFromStorage,
   type DerivedClaimAddress,
 } from '@/lib/stealth';
-import { getProvider, getProviderWithAccounts, signMessage as signWithWallet } from '@/lib/providers';
+import { getProviderWithAccounts, getChainProvider, signMessage as signWithWallet } from '@/lib/providers';
+import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
 
 const STORAGE_KEY = 'tokamak_stealth_keys_';
 
@@ -88,10 +89,9 @@ export function useStealthAddress() {
     }
   }, [address, stealthKeys]);
 
-  const fetchBalance = useCallback(async (addr: string): Promise<string> => {
-    const provider = getProvider();
-    if (!provider) return '0';
+  const fetchBalance = useCallback(async (addr: string, chainId?: number): Promise<string> => {
     try {
+      const provider = getChainProvider(chainId);
       const bal = await provider.getBalance(addr);
       return ethers.utils.formatEther(bal);
     } catch {
@@ -187,22 +187,29 @@ export function useStealthAddress() {
 
   const exportKeys = useCallback(() => stealthKeys, [stealthKeys]);
 
-  const registerMetaAddress = useCallback(async (): Promise<string | null> => {
+  const registerMetaAddress = useCallback(async (chainId?: number): Promise<string | null> => {
     if (!metaAddress || !isConnected || !address) { setError('No keys or wallet not connected'); return null; }
     setError(null);
     setIsLoading(true);
+    const cid = chainId ?? DEFAULT_CHAIN_ID;
     try {
-      const provider = await getProviderWithAccounts();
-      if (!provider) throw new Error('No wallet provider');
+      const provider = getChainProvider(cid);
+      const config = getChainConfig(cid);
+      const registryContract = new ethers.Contract(
+        config.contracts.registry,
+        ['function nonceOf(address) view returns (uint256)'],
+        provider,
+      );
+      const nonce = await registryContract.nonceOf(address);
 
-      // Sponsored flow: user signs EIP-712 typed data (gasless), deployer submits on-chain
-      const nonce = await getRegistryNonce(provider, address);
-      const signature = await signRegistration(provider.getSigner(), metaAddress, nonce, 111551119090);
+      const walletProvider = await getProviderWithAccounts();
+      if (!walletProvider) throw new Error('No wallet provider');
+      const signature = await signRegistration(walletProvider.getSigner(), metaAddress, nonce, cid);
 
       const res = await fetch('/api/sponsor-register-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ registrant: address, metaAddress, signature }),
+        body: JSON.stringify({ registrant: address, metaAddress, signature, chainId: cid }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Sponsored registration failed');
@@ -217,12 +224,11 @@ export function useStealthAddress() {
     }
   }, [metaAddress, isConnected, address]);
 
-  const checkRegistration = useCallback(async (): Promise<boolean> => {
+  const checkRegistration = useCallback(async (chainId?: number): Promise<boolean> => {
     if (!address || !isConnected) return false;
     setIsLoading(true);
     try {
-      const provider = getProvider();
-      if (!provider) return false;
+      const provider = getChainProvider(chainId);
       const registered = await checkIsRegistered(provider, address);
       setIsRegistered(registered);
       return registered;
@@ -233,11 +239,11 @@ export function useStealthAddress() {
     }
   }, [address, isConnected]);
 
-  const lookupAddress = useCallback(async (addr: string): Promise<string | null> => {
+  const lookupAddress = useCallback(async (addr: string, chainId?: number): Promise<string | null> => {
     setIsLoading(true);
     try {
-      const provider = getProvider();
-      return provider ? await lookupStealthMetaAddress(provider, addr) : null;
+      const provider = getChainProvider(chainId);
+      return await lookupStealthMetaAddress(provider, addr);
     } catch {
       return null;
     } finally {

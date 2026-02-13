@@ -1,12 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ethers } from 'ethers';
+import { getChainProvider } from '@/lib/providers';
 
-const THANOS_RPC = 'https://rpc.thanos-sepolia.tokamak.network';
 const POLL_INTERVAL_MS = 3000;
-
-function getReadOnlyProvider() {
-  return new ethers.providers.JsonRpcProvider(THANOS_RPC);
-}
 
 interface BalancePollerResult {
   balance: string;
@@ -15,7 +11,7 @@ interface BalancePollerResult {
   isPolling: boolean;
 }
 
-export function useBalancePoller(address: string | null): BalancePollerResult {
+export function useBalancePoller(address: string | null, chainId?: number): BalancePollerResult {
   const [balance, setBalance] = useState('0');
   const [hasDeposit, setHasDeposit] = useState(false);
   const [depositAmount, setDepositAmount] = useState('0');
@@ -41,7 +37,7 @@ export function useBalancePoller(address: string | null): BalancePollerResult {
     setBalance('0');
     setDepositAmount('0');
 
-    const provider = getReadOnlyProvider();
+    const provider = getChainProvider(chainId);
 
     const poll = async () => {
       if (stoppedRef.current) return;
@@ -70,7 +66,7 @@ export function useBalancePoller(address: string | null): BalancePollerResult {
     return () => {
       stopPolling();
     };
-  }, [address, stopPolling]);
+  }, [address, chainId, stopPolling]);
 
   return { balance, hasDeposit, depositAmount, isPolling };
 }

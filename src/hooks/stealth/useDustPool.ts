@@ -9,13 +9,8 @@ import {
   generateWithdrawProof,
   type StoredDeposit,
 } from '@/lib/dustpool';
-import { DUST_POOL_ADDRESS, DUST_POOL_DEPLOYMENT_BLOCK } from '@/lib/stealth';
-
-const THANOS_RPC = 'https://rpc.thanos-sepolia.tokamak.network';
-
-function getThanosProvider() {
-  return new ethers.providers.JsonRpcProvider(THANOS_RPC);
-}
+import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
+import { getChainProvider } from '@/lib/providers';
 
 export interface ConsolidateProgress {
   phase: 'idle' | 'loading' | 'proving' | 'submitting' | 'done' | 'error';
@@ -24,7 +19,12 @@ export interface ConsolidateProgress {
   message: string;
 }
 
-export function useDustPool() {
+export function useDustPool(chainId?: number) {
+  const activeChainId = chainId ?? DEFAULT_CHAIN_ID;
+  const config = getChainConfig(activeChainId);
+  const dustPoolAddress = config.contracts.dustPool;
+  const dustPoolDeploymentBlock = config.dustPoolDeploymentBlock;
+  const hasDustPool = !!dustPoolAddress && !!dustPoolDeploymentBlock;
   const { address } = useAccount();
   const [deposits, setDeposits] = useState<StoredDeposit[]>([]);
   const [poolBalance, setPoolBalance] = useState('0');
@@ -52,7 +52,7 @@ export function useDustPool() {
 
   // Consolidate: generate proofs for all unwithdrawable deposits, submit withdrawals
   const consolidate = useCallback(async (freshRecipient: string) => {
-    if (!address || isConsolidatingRef.current) return;
+    if (!address || isConsolidatingRef.current || !hasDustPool) return;
 
     isConsolidatingRef.current = true;
     const unwithdrawn = deposits.filter(d => !d.withdrawn);
@@ -64,17 +64,16 @@ export function useDustPool() {
     }
 
     try {
-      // Phase 1: Rebuild Merkle tree from on-chain events
       setProgress({
         phase: 'loading', current: 0, total: unwithdrawn.length,
         message: 'Rebuilding Merkle tree from on-chain events...',
       });
 
-      const provider = getThanosProvider();
+      const provider = getChainProvider(activeChainId);
       const { tree } = await buildTreeFromEvents(
         provider,
-        DUST_POOL_ADDRESS,
-        DUST_POOL_DEPLOYMENT_BLOCK,
+        dustPoolAddress!,
+        dustPoolDeploymentBlock!,
       );
 
       const txHashes: string[] = [];
@@ -111,6 +110,7 @@ export function useDustPool() {
             nullifierHash: withdrawProof.nullifierHash,
             recipient: freshRecipient,
             amount: withdrawProof.amount,
+            chainId: activeChainId,
           }),
         });
 
@@ -139,7 +139,7 @@ export function useDustPool() {
 
       setProgress({
         phase: 'done', current: unwithdrawn.length, total: unwithdrawn.length,
-        message: `Withdrew ${ethers.utils.formatEther(totalAmount)} TON to ${freshRecipient.slice(0, 8)}...`,
+        message: `Withdrew ${ethers.utils.formatEther(totalAmount)} ${config.nativeCurrency.symbol} to ${freshRecipient.slice(0, 8)}...`,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Withdrawal failed';
@@ -150,7 +150,7 @@ export function useDustPool() {
     } finally {
       isConsolidatingRef.current = false;
     }
-  }, [address, deposits]);
+  }, [address, deposits, activeChainId, hasDustPool, dustPoolAddress, dustPoolDeploymentBlock, config.nativeCurrency.symbol]);
 
   const resetProgress = useCallback(() => {
     setProgress({ phase: 'idle', current: 0, total: 0, message: '' });
@@ -163,6 +163,7 @@ export function useDustPool() {
     consolidate,
     resetProgress,
     loadPoolDeposits,
+    hasDustPool,
     isConsolidating: progress.phase === 'proving' || progress.phase === 'submitting' || progress.phase === 'loading',
   };
 }

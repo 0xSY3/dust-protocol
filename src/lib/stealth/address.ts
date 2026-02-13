@@ -10,6 +10,7 @@ import {
   LEGACY_STEALTH_WALLET_FACTORY, LEGACY_STEALTH_WALLET_CREATION_CODE,
   LEGACY_STEALTH_ACCOUNT_FACTORY, LEGACY_STEALTH_ACCOUNT_CREATION_CODE,
 } from './types';
+import { getChainConfig } from '@/config/chains';
 
 const secp256k1 = new EC('secp256k1');
 
@@ -30,36 +31,52 @@ function pubKeyToAddress(pubPoint: any): string {
   return ethers.utils.getAddress('0x' + hash.slice(-40));
 }
 
-export function computeStealthWalletAddress(ownerEOA: string): string {
+export function computeStealthWalletAddress(ownerEOA: string, chainId?: number): string {
+  const config = chainId !== undefined ? getChainConfig(chainId) : null;
+  const factory = config ? config.contracts.walletFactory : STEALTH_WALLET_FACTORY;
+  const creationCode = config ? config.creationCodes.wallet : STEALTH_WALLET_CREATION_CODE;
   const initCode = ethers.utils.solidityPack(
     ['bytes', 'bytes'],
-    [STEALTH_WALLET_CREATION_CODE, ethers.utils.defaultAbiCoder.encode(['address'], [ownerEOA])]
+    [creationCode, ethers.utils.defaultAbiCoder.encode(['address'], [ownerEOA])]
   );
-  return ethers.utils.getCreate2Address(STEALTH_WALLET_FACTORY, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
+  return ethers.utils.getCreate2Address(factory, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
 }
 
-export function computeStealthAccountAddress(ownerEOA: string): string {
+export function computeStealthAccountAddress(ownerEOA: string, chainId?: number): string {
+  const config = chainId !== undefined ? getChainConfig(chainId) : null;
+  const factory = config ? config.contracts.accountFactory : STEALTH_ACCOUNT_FACTORY;
+  const creationCode = config ? config.creationCodes.account : STEALTH_ACCOUNT_CREATION_CODE;
+  const entryPoint = config ? config.contracts.entryPoint : ENTRY_POINT_ADDRESS;
   const initCode = ethers.utils.solidityPack(
     ['bytes', 'bytes'],
-    [STEALTH_ACCOUNT_CREATION_CODE, ethers.utils.defaultAbiCoder.encode(['address', 'address'], [ENTRY_POINT_ADDRESS, ownerEOA])]
+    [creationCode, ethers.utils.defaultAbiCoder.encode(['address', 'address'], [entryPoint, ownerEOA])]
   );
-  return ethers.utils.getCreate2Address(STEALTH_ACCOUNT_FACTORY, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
+  return ethers.utils.getCreate2Address(factory, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
 }
 
-export function computeLegacyStealthWalletAddress(ownerEOA: string): string {
+export function computeLegacyStealthWalletAddress(ownerEOA: string, chainId?: number): string {
+  const config = chainId !== undefined ? getChainConfig(chainId) : null;
+  const factory = config ? config.contracts.legacyWalletFactory : LEGACY_STEALTH_WALLET_FACTORY;
+  const creationCode = config ? config.creationCodes.legacyWallet : LEGACY_STEALTH_WALLET_CREATION_CODE;
+  if (!factory || !creationCode) return ethers.constants.AddressZero;
   const initCode = ethers.utils.solidityPack(
     ['bytes', 'bytes'],
-    [LEGACY_STEALTH_WALLET_CREATION_CODE, ethers.utils.defaultAbiCoder.encode(['address'], [ownerEOA])]
+    [creationCode, ethers.utils.defaultAbiCoder.encode(['address'], [ownerEOA])]
   );
-  return ethers.utils.getCreate2Address(LEGACY_STEALTH_WALLET_FACTORY, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
+  return ethers.utils.getCreate2Address(factory, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
 }
 
-export function computeLegacyStealthAccountAddress(ownerEOA: string): string {
+export function computeLegacyStealthAccountAddress(ownerEOA: string, chainId?: number): string {
+  const config = chainId !== undefined ? getChainConfig(chainId) : null;
+  const factory = config ? config.contracts.legacyAccountFactory : LEGACY_STEALTH_ACCOUNT_FACTORY;
+  const creationCode = config ? config.creationCodes.legacyAccount : LEGACY_STEALTH_ACCOUNT_CREATION_CODE;
+  const entryPoint = config ? config.contracts.entryPoint : ENTRY_POINT_ADDRESS;
+  if (!factory || !creationCode) return ethers.constants.AddressZero;
   const initCode = ethers.utils.solidityPack(
     ['bytes', 'bytes'],
-    [LEGACY_STEALTH_ACCOUNT_CREATION_CODE, ethers.utils.defaultAbiCoder.encode(['address', 'address'], [ENTRY_POINT_ADDRESS, ownerEOA])]
+    [creationCode, ethers.utils.defaultAbiCoder.encode(['address', 'address'], [entryPoint, ownerEOA])]
   );
-  return ethers.utils.getCreate2Address(LEGACY_STEALTH_ACCOUNT_FACTORY, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
+  return ethers.utils.getCreate2Address(factory, ethers.constants.HashZero, ethers.utils.keccak256(initCode));
 }
 
 export async function signWalletDrain(
@@ -77,7 +94,7 @@ export async function signWalletDrain(
   return wallet.signMessage(ethers.utils.arrayify(hash));
 }
 
-export function generateStealthAddress(meta: StealthMetaAddress): GeneratedStealthAddress {
+export function generateStealthAddress(meta: StealthMetaAddress, chainId?: number): GeneratedStealthAddress {
   const ephemeral = secp256k1.genKeyPair();
   const ephemeralPublicKey = ephemeral.getPublic(true, 'hex');
 
@@ -93,7 +110,7 @@ export function generateStealthAddress(meta: StealthMetaAddress): GeneratedSteal
   const stealthPubPoint = spendingKey.getPublic().add(hashKey.getPublic());
 
   const stealthEOAAddress = pubKeyToAddress(stealthPubPoint);
-  const stealthAddress = computeStealthAccountAddress(stealthEOAAddress);
+  const stealthAddress = computeStealthAccountAddress(stealthEOAAddress, chainId);
 
   return {
     stealthAddress,

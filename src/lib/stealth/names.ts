@@ -73,11 +73,16 @@ function toBytes(metaAddress: string): string {
   return metaAddress.startsWith('0x') ? metaAddress : '0x' + metaAddress;
 }
 
-// Use direct RPC for read-only operations (more reliable than wallet provider)
-const THANOS_RPC = 'https://rpc.thanos-sepolia.tokamak.network';
+import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
 
-function getReadOnlyProvider(): ethers.providers.JsonRpcProvider {
-  return new ethers.providers.JsonRpcProvider(THANOS_RPC);
+function getReadOnlyProvider(chainId?: number): ethers.providers.JsonRpcProvider {
+  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID);
+  return new ethers.providers.JsonRpcProvider(config.rpcUrl);
+}
+
+function getNameRegistryForChain(chainId?: number): string {
+  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID);
+  return config.contracts.nameRegistry;
 }
 
 function getRegistry(signerOrProvider: ethers.Signer | ethers.providers.Provider) {
