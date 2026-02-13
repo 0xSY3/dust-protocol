@@ -112,7 +112,7 @@ export async function POST(req: Request) {
 
       // Encode DustPool.deposit(commitment) calldata
       const poolIface = new ethers.utils.Interface(DUST_POOL_ABI);
-      const depositCalldata = poolIface.encodeFunctionData('deposit', [commitment]);
+      const depositCalldata = poolIface.encodeFunctionData('deposit', [commitment, balance]);
 
       // Call wallet.execute(DustPool, balance, depositCalldata, sig)
       // The wallet makes an internal call to DustPool.deposit{value: balance}(commitment)

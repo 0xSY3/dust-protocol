@@ -71,13 +71,14 @@ export async function calculateRelayerFee(stealthAddress: string): Promise<FeeCa
 
 export async function submitRelayerWithdraw(
   stealthAddress: string,
-  stealthPrivateKey: string,
-  recipient: string
+  signature: string,
+  recipient: string,
+  owner: string,
 ): Promise<WithdrawResponse | null> {
   const res = await fetch(`${RELAYER_URL}/withdraw`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stealthAddress, stealthPrivateKey, recipient }),
+    body: JSON.stringify({ stealthAddress, signature, recipient, owner }),
   });
 
   if (!res.ok) {

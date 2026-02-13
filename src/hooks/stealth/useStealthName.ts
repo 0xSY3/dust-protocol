@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
-import { ethers } from 'ethers';
 import {
   resolveStealthName, isNameAvailable, getNamesOwnedBy,
   isNameRegistryConfigured, stripNameSuffix,
@@ -53,7 +52,7 @@ export function useStealthName(userMetaAddress?: string | null) {
     setError(null);
 
     try {
-      const names = await getNamesOwnedBy(null as unknown as ethers.providers.Provider, address);
+      const names = await getNamesOwnedBy(null, address);
 
       if (names.length > 0) {
         setOwnedNames(names.reverse().map(name => ({ name, fullName: formatNameWithSuffix(name) })));
@@ -97,7 +96,7 @@ export function useStealthName(userMetaAddress?: string | null) {
       try {
         // First try: match by current meta-address
         let discovered = await discoverNameByMetaAddress(
-          null as unknown as ethers.providers.Provider,
+          null,
           userMetaAddress
         );
 
@@ -128,7 +127,7 @@ export function useStealthName(userMetaAddress?: string | null) {
   // Background recovery: transfer name from deployer to user if needed
   const tryRecoverName = useCallback(async (name: string, userAddress: string) => {
     try {
-      const owner = await getNameOwner(null as unknown as ethers.providers.Provider, name);
+      const owner = await getNameOwner(null, name);
       if (!owner || owner.toLowerCase() === userAddress.toLowerCase()) return; // already owned or free
       // Try sponsored transfer from deployer
       const res = await fetch('/api/sponsor-name-transfer', {
@@ -137,7 +136,7 @@ export function useStealthName(userMetaAddress?: string | null) {
         body: JSON.stringify({ name, newOwner: userAddress }),
       });
       if (res.ok) {
-        const refreshedNames = await getNamesOwnedBy(null as unknown as ethers.providers.Provider, userAddress);
+        const refreshedNames = await getNamesOwnedBy(null, userAddress);
         if (refreshedNames.length > 0) {
           setOwnedNames(refreshedNames.reverse().map(n => ({ name: n, fullName: formatNameWithSuffix(n) })));
         }
@@ -187,14 +186,14 @@ export function useStealthName(userMetaAddress?: string | null) {
   const checkAvailability = useCallback(async (name: string): Promise<boolean | null> => {
     if (!isConfigured) return null;
     try {
-      return await isNameAvailable(null as unknown as ethers.providers.Provider, name);
+      return await isNameAvailable(null, name);
     } catch { return null; }
   }, [isConfigured]);
 
   const resolveName = useCallback(async (name: string): Promise<string | null> => {
     if (!isConfigured) return null;
     try {
-      return await resolveStealthName(null as unknown as ethers.providers.Provider, name);
+      return await resolveStealthName(null, name);
     } catch { return null; }
   }, [isConfigured]);
 

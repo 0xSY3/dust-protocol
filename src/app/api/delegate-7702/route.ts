@@ -51,14 +51,13 @@ export async function POST(req: Request) {
     // Dynamic import viem — only used on 7702-capable chains
     const { createWalletClient, http, encodeFunctionData } = await import('viem');
     const { privateKeyToAccount } = await import('viem/accounts');
-    const { sepolia } = await import('viem/chains');
 
     const sponsorKey = SPONSOR_KEY.startsWith('0x') ? SPONSOR_KEY : `0x${SPONSOR_KEY}`;
     const sponsorAccount = privateKeyToAccount(sponsorKey as `0x${string}`);
 
     const client = createWalletClient({
       account: sponsorAccount,
-      chain: sepolia,
+      chain: config.viemChain,
       transport: http(config.rpcUrl),
     });
 

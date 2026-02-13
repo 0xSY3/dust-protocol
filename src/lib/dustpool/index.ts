@@ -141,20 +141,37 @@ function formatProofForContract(proof: {
 
 const STORAGE_KEY = 'dustpool_deposits_';
 
-export function saveDeposits(address: string, deposits: StoredDeposit[]): void {
+function depositsKey(address: string, chainId?: number): string {
+  const cid = chainId ?? 0;
+  return `${STORAGE_KEY}${cid}_${address.toLowerCase()}`;
+}
+
+// Migrate legacy (non-chain-scoped) deposit data to new key format
+function migrateLegacyDeposits(address: string, chainId?: number): void {
+  if (typeof window === 'undefined') return;
+  const legacyKey = `${STORAGE_KEY}${address.toLowerCase()}`;
+  const newKey = depositsKey(address, chainId);
+  try {
+    const legacy = localStorage.getItem(legacyKey);
+    if (legacy && !localStorage.getItem(newKey)) {
+      localStorage.setItem(newKey, legacy);
+      localStorage.removeItem(legacyKey);
+    }
+  } catch { /* ignore */ }
+}
+
+export function saveDeposits(address: string, deposits: StoredDeposit[], chainId?: number): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(
-      STORAGE_KEY + address.toLowerCase(),
-      JSON.stringify(deposits),
-    );
+    localStorage.setItem(depositsKey(address, chainId), JSON.stringify(deposits));
   } catch { /* quota exceeded */ }
 }
 
-export function loadDeposits(address: string): StoredDeposit[] {
+export function loadDeposits(address: string, chainId?: number): StoredDeposit[] {
   if (typeof window === 'undefined') return [];
+  migrateLegacyDeposits(address, chainId);
   try {
-    const raw = localStorage.getItem(STORAGE_KEY + address.toLowerCase());
+    const raw = localStorage.getItem(depositsKey(address, chainId));
     if (!raw) return [];
     return JSON.parse(raw);
   } catch {

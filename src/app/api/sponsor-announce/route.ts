@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { NextResponse } from 'next/server';
 import { getChainConfig } from '@/config/chains';
 import { getServerSponsor, parseChainId } from '@/lib/server-provider';
+import { canUseGelato, sponsoredRelay, waitForRelay } from '@/lib/relay/gelato';
 
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
     const chainId = parseChainId(body);
     const config = getChainConfig(chainId);
 
-    const { stealthAddress, ephemeralPubKey, metadata, announcerAddress } = body;
+    const { stealthAddress, ephemeralPubKey, metadata } = body;
 
     if (!stealthAddress || !ephemeralPubKey || !metadata) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -55,10 +56,40 @@ export async function POST(req: Request) {
     }
     announceCooldowns.set(key, Date.now());
 
-    const sponsor = getServerSponsor(chainId);
+    // Build calldata for the announce call
+    const announcerIface = new ethers.utils.Interface(ANNOUNCER_ABI);
+    const announcerAddress = config.contracts.announcer;
+    const calldata = announcerIface.encodeFunctionData('announce', [
+      1,
+      stealthAddress,
+      ephemeralPubKey,
+      metadata,
+    ]);
 
+    // Primary path: Gelato Relay (gasless via 1Balance)
+    if (canUseGelato(chainId)) {
+      try {
+        console.log('[SponsorAnnounce] Using Gelato relay');
+        const relayResult = await sponsoredRelay(chainId, announcerAddress, calldata);
+        const { txHash } = await waitForRelay(relayResult.taskId);
+
+        console.log('[SponsorAnnounce] Success via Gelato:', txHash);
+
+        return NextResponse.json({
+          success: true,
+          txHash,
+        });
+      } catch (gelatoError) {
+        console.warn('[SponsorAnnounce] Gelato relay failed, falling back to sponsor wallet:', gelatoError);
+      }
+    }
+
+    // Fallback path: sponsor wallet sends tx directly
+    console.log('[SponsorAnnounce] Using sponsor wallet');
+
+    const sponsor = getServerSponsor(chainId);
     const announcer = new ethers.Contract(
-      announcerAddress || config.contracts.announcer,
+      announcerAddress,
       ANNOUNCER_ABI,
       sponsor
     );
@@ -66,7 +97,7 @@ export async function POST(req: Request) {
     const tx = await announcer.announce(1, stealthAddress, ephemeralPubKey, metadata);
     const receipt = await tx.wait();
 
-    console.log('[SponsorAnnounce] Success:', receipt.transactionHash);
+    console.log('[SponsorAnnounce] Success via sponsor wallet:', receipt.transactionHash);
 
     return NextResponse.json({
       success: true,

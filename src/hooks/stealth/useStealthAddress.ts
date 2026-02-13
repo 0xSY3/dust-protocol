@@ -120,7 +120,7 @@ export function useStealthAddress() {
 
       // Derive stealth keys — PIN-based if PIN provided, legacy otherwise
       const newKeys = pin
-        ? deriveStealthKeyPairFromSignatureAndPin(sig, pin)
+        ? deriveStealthKeyPairFromSignatureAndPin(sig, pin, address)
         : deriveStealthKeyPairFromSignature(sig);
 
       // Validate before setting state

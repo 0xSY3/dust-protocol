@@ -7,26 +7,44 @@ import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 
 // Derive a 32-byte spending seed from wallet signature + PIN
-// TODO: Migrate to PBKDF2 with versioned storage (requires re-onboarding existing users)
+// Uses PBKDF2 with 100K iterations to resist brute-force (6-digit PIN = 1M combos)
 export function deriveSpendingSeed(signature: string, pin: string): string {
-  const input = new TextEncoder().encode(signature + pin + 'Dust Spend Authority');
-  const hash = sha512(input);
-  // Take first 32 bytes of the 64-byte SHA-512 output
-  return bytesToHex(hash.slice(0, 32));
+  const password = new TextEncoder().encode(signature + pin);
+  const salt = new TextEncoder().encode('Dust Spend Authority v2');
+  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
 }
 
 // Derive a 32-byte viewing seed from wallet signature + PIN
 export function deriveViewingSeed(signature: string, pin: string): string {
-  const input = new TextEncoder().encode(signature + pin + 'Dust View Authority');
-  const hash = sha512(input);
-  return bytesToHex(hash.slice(0, 32));
+  const password = new TextEncoder().encode(signature + pin);
+  const salt = new TextEncoder().encode('Dust View Authority v2');
+  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
 }
 
 // Derive a 32-byte claim seed from wallet signature + PIN
 export function deriveClaimSeed(signature: string, pin: string): string {
-  const input = new TextEncoder().encode(signature + pin + 'Dust Claim Authority');
-  const hash = sha512(input);
-  return bytesToHex(hash.slice(0, 32));
+  const password = new TextEncoder().encode(signature + pin);
+  const salt = new TextEncoder().encode('Dust Claim Authority v2');
+  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
+}
+
+// Legacy v1 derivation — used for migration fallback only
+export function deriveSpendingSeedV1(signature: string, pin: string): string {
+  const password = new TextEncoder().encode(signature + pin);
+  const salt = new TextEncoder().encode('Dust Spend Authority');
+  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
+}
+
+export function deriveViewingSeedV1(signature: string, pin: string): string {
+  const password = new TextEncoder().encode(signature + pin);
+  const salt = new TextEncoder().encode('Dust View Authority');
+  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
+}
+
+export function deriveClaimSeedV1(signature: string, pin: string): string {
+  const password = new TextEncoder().encode(signature + pin);
+  const salt = new TextEncoder().encode('Dust Claim Authority');
+  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
 }
 
 // Validate PIN format: exactly 6 digits

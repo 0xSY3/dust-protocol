@@ -36,7 +36,7 @@ export function useDustPool(chainId?: number) {
   // Load deposits from storage
   const loadPoolDeposits = useCallback(() => {
     if (!address) return;
-    const stored = loadDeposits(address);
+    const stored = loadDeposits(address, activeChainId);
     setDeposits(stored);
 
     // Calculate pool balance from unwithdrawable deposits
@@ -126,12 +126,12 @@ export function useDustPool(chainId?: number) {
       }
 
       // Save updated deposits
-      const allDeposits = loadDeposits(address);
+      const allDeposits = loadDeposits(address, activeChainId);
       for (const stored of unwithdrawn) {
         const idx = allDeposits.findIndex(d => d.commitment === stored.commitment);
         if (idx >= 0) allDeposits[idx].withdrawn = true;
       }
-      saveDeposits(address, allDeposits);
+      saveDeposits(address, allDeposits, activeChainId);
       setDeposits(allDeposits);
 
       const totalAmount = unwithdrawn.reduce((sum, d) => sum + BigInt(d.amount), BigInt(0));

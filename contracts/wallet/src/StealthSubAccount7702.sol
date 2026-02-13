@@ -43,6 +43,9 @@ contract StealthSubAccount7702 {
     error TransferFailed();
     error InvalidSignature();
     error CallFailed();
+    error Reentrancy();
+
+    uint256 private _reentrancyGuard = 1;
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -52,6 +55,13 @@ contract StealthSubAccount7702 {
     modifier whenInitialized() {
         if (!initialized) revert NotInitialized();
         _;
+    }
+
+    modifier nonReentrant() {
+        if (_reentrancyGuard != 1) revert Reentrancy();
+        _reentrancyGuard = 2;
+        _;
+        _reentrancyGuard = 1;
     }
 
     receive() external payable {}
@@ -74,7 +84,7 @@ contract StealthSubAccount7702 {
 
     /// @notice Drain all funds. Requires stealth EOA signature. Works before or after init.
     /// @dev Hash: keccak256(abi.encode(this, to, nonce, chainId)). Nonce prevents replay.
-    function drain(address to, bytes calldata sig) external {
+    function drain(address to, bytes calldata sig) external nonReentrant {
         if (to == address(0)) revert ZeroAddress();
 
         uint256 currentNonce = _drainNonce++;
@@ -115,7 +125,7 @@ contract StealthSubAccount7702 {
         address to,
         uint256 value,
         bytes calldata data
-    ) external {
+    ) external nonReentrant {
         SubAccount storage sub = subAccounts[subId];
         if (!sub.active) revert InactiveSub();
         if (msg.sender != sub.delegate) revert NotDelegate();
@@ -138,7 +148,7 @@ contract StealthSubAccount7702 {
     }
 
     /// @notice Execute an arbitrary call. Owner only.
-    function execute(address to, uint256 value, bytes calldata data) external onlyOwner whenInitialized {
+    function execute(address to, uint256 value, bytes calldata data) external onlyOwner whenInitialized nonReentrant {
         (bool ok, bytes memory result) = to.call{value: value}(data);
         if (!ok) {
             assembly { revert(add(result, 32), mload(result)) }

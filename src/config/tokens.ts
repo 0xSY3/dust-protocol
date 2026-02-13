@@ -1,0 +1,88 @@
+// ERC-20 token configuration per chain
+
+export interface TokenConfig {
+  address: string;
+  symbol: string;
+  decimals: number;
+  name: string;
+}
+
+// Ethereum Sepolia testnet tokens (well-known faucet/deployed addresses)
+const ETHEREUM_SEPOLIA_TOKENS: TokenConfig[] = [
+  {
+    address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+    symbol: 'USDC',
+    decimals: 6,
+    name: 'USD Coin',
+  },
+  {
+    address: '0x7169D38820dfd117C3FA1f22a697dBA58d90BA06',
+    symbol: 'USDT',
+    decimals: 6,
+    name: 'Tether USD',
+  },
+  {
+    address: '0x68194a729C2450ad26072b3D33ADaCbcef39D574',
+    symbol: 'DAI',
+    decimals: 18,
+    name: 'Dai Stablecoin',
+  },
+  {
+    address: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14',
+    symbol: 'WETH',
+    decimals: 18,
+    name: 'Wrapped Ether',
+  },
+];
+
+// Thanos Sepolia — uses wrapped TON + common test tokens
+const THANOS_SEPOLIA_TOKENS: TokenConfig[] = [
+  {
+    address: '0x7c6b91D9Be155A6Db01f749217d76fF02A7227F2',
+    symbol: 'WTON',
+    decimals: 18,
+    name: 'Wrapped TON',
+  },
+  {
+    address: '0x3c5B140E5e8265c525E6F81DCf68bF51520d9921',
+    symbol: 'USDC',
+    decimals: 6,
+    name: 'USD Coin',
+  },
+  {
+    address: '0x267B5B8EB2B48B0417b8b7BfC906AaD5a0CBdeFF',
+    symbol: 'USDT',
+    decimals: 6,
+    name: 'Tether USD',
+  },
+  {
+    address: '0xD46aF4e5003aF1dDc6FcCb8D02A8f64768F7f5c8',
+    symbol: 'DAI',
+    decimals: 18,
+    name: 'Dai Stablecoin',
+  },
+];
+
+const TOKEN_REGISTRY: Record<number, TokenConfig[]> = {
+  [11155111]: ETHEREUM_SEPOLIA_TOKENS,
+  [111551119090]: THANOS_SEPOLIA_TOKENS,
+};
+
+export function getTokensForChain(chainId: number): TokenConfig[] {
+  return TOKEN_REGISTRY[chainId] ?? [];
+}
+
+export function getTokenByAddress(chainId: number, tokenAddress: string): TokenConfig | undefined {
+  return getTokensForChain(chainId).find(
+    t => t.address.toLowerCase() === tokenAddress.toLowerCase()
+  );
+}
+
+export function getTokenBySymbol(chainId: number, symbol: string): TokenConfig | undefined {
+  return getTokensForChain(chainId).find(
+    t => t.symbol.toLowerCase() === symbol.toLowerCase()
+  );
+}
+
+/** Special value representing native currency in token selectors */
+export const NATIVE_TOKEN_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';

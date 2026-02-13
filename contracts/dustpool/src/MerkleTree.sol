@@ -6,7 +6,7 @@ import {PoseidonT3} from "poseidon-solidity/PoseidonT3.sol";
 /// @title MerkleTree — Incremental Poseidon binary Merkle tree (depth 20, ~1M leaves)
 contract MerkleTree {
     uint256 public constant TREE_DEPTH = 20;
-    uint256 public constant ROOT_HISTORY_SIZE = 30;
+    uint256 public constant ROOT_HISTORY_SIZE = 100;
 
     // Snark scalar field
     uint256 public constant FIELD_SIZE =
@@ -14,6 +14,7 @@ contract MerkleTree {
 
     uint256 public nextIndex;
     bytes32[TREE_DEPTH] public filledSubtrees;
+    bytes32[TREE_DEPTH] public zeroHashes;
     bytes32[ROOT_HISTORY_SIZE] public roots;
     uint256 public currentRootIndex;
 
@@ -22,6 +23,7 @@ contract MerkleTree {
         // zeros[0] = 0 (empty leaf)
         bytes32 currentZero = bytes32(0);
         for (uint256 i = 0; i < TREE_DEPTH; i++) {
+            zeroHashes[i] = currentZero;
             filledSubtrees[i] = currentZero;
             currentZero = _hashPair(currentZero, currentZero);
         }
@@ -68,17 +70,8 @@ contract MerkleTree {
         return bytes32(PoseidonT3.hash([uint256(left), uint256(right)]));
     }
 
-    /// @dev Pre-computed zero hashes for each level
-    function _zeros(uint256 level) internal pure returns (bytes32) {
-        // zeros[0] = 0
-        if (level == 0) return bytes32(0);
-        // Compute iteratively: zeros[i] = Poseidon(zeros[i-1], zeros[i-1])
-        // These are constants but we compute them for correctness.
-        // For gas optimization in production, replace with hardcoded values.
-        bytes32 z = bytes32(0);
-        for (uint256 i = 0; i < level; i++) {
-            z = bytes32(PoseidonT3.hash([uint256(z), uint256(z)]));
-        }
-        return z;
+    /// @dev Read pre-computed zero hash for a given level (stored at construction)
+    function _zeros(uint256 level) internal view returns (bytes32) {
+        return zeroHashes[level];
     }
 }

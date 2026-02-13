@@ -5,7 +5,7 @@ import {
   scanAnnouncements, setLastScannedBlock as saveLastScannedBlock,
   getLastScannedBlock, getAnnouncementCount, getAddressFromPrivateKey,
   signWalletDrain, signWalletExecute, signUserOp,
-  type StealthKeyPair, type ScanResult,
+  type StealthKeyPair, type ScanResult, type TokenBalance,
   DUST_POOL_ABI, STEALTH_ACCOUNT_FACTORY_ABI,
 } from '@/lib/stealth';
 import {
@@ -15,7 +15,12 @@ import {
   type StoredDeposit,
 } from '@/lib/dustpool';
 import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
+import { getTokensForChain } from '@/config/tokens';
 import { getChainProvider, getChainBatchProvider } from '@/lib/providers';
+
+const ERC20_BALANCE_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+];
 
 interface StealthPayment extends ScanResult {
   balance?: string;
@@ -23,15 +28,35 @@ interface StealthPayment extends ScanResult {
   claimed?: boolean;
   keyMismatch?: boolean;
   autoClaiming?: boolean;
+  tokenBalances?: TokenBalance[];
 }
 
 // localStorage keys
 const PAYMENTS_STORAGE_KEY = 'stealth_payments_';
 
-function loadPaymentsFromStorage(address: string): StealthPayment[] {
-  if (typeof window === 'undefined') return [];
+function paymentsKey(address: string, chainId: number): string {
+  return `${PAYMENTS_STORAGE_KEY}${chainId}_${address.toLowerCase()}`;
+}
+
+// Migrate legacy (non-chain-scoped) payment data to new key format
+function migrateLegacyPayments(address: string, chainId: number): void {
+  if (typeof window === 'undefined') return;
+  const legacyKey = `${PAYMENTS_STORAGE_KEY}${address.toLowerCase()}`;
+  const newKey = paymentsKey(address, chainId);
   try {
-    const raw = localStorage.getItem(PAYMENTS_STORAGE_KEY + address.toLowerCase());
+    const legacy = localStorage.getItem(legacyKey);
+    if (legacy && !localStorage.getItem(newKey)) {
+      localStorage.setItem(newKey, legacy);
+      localStorage.removeItem(legacyKey);
+    }
+  } catch { /* ignore */ }
+}
+
+function loadPaymentsFromStorage(address: string, chainId: number): StealthPayment[] {
+  if (typeof window === 'undefined') return [];
+  migrateLegacyPayments(address, chainId);
+  try {
+    const raw = localStorage.getItem(paymentsKey(address, chainId));
     if (!raw) return [];
     // Strip transient UI state (autoClaiming) on load
     return JSON.parse(raw).map((p: StealthPayment) => ({ ...p, autoClaiming: false }));
@@ -40,10 +65,10 @@ function loadPaymentsFromStorage(address: string): StealthPayment[] {
   }
 }
 
-function savePaymentsToStorage(address: string, payments: StealthPayment[]): void {
+function savePaymentsToStorage(address: string, chainId: number, payments: StealthPayment[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(PAYMENTS_STORAGE_KEY + address.toLowerCase(), JSON.stringify(payments));
+    localStorage.setItem(paymentsKey(address, chainId), JSON.stringify(payments));
   } catch { /* quota exceeded etc */ }
 }
 
@@ -146,12 +171,9 @@ async function autoClaimLegacy(
         chainId,
       };
     } else {
-      body = {
-        stealthAddress: payment.announcement.stealthAddress,
-        stealthPrivateKey: payment.stealthPrivateKey,
-        recipient,
-        chainId,
-      };
+      // Legacy EOA path no longer supported — private keys must never be sent to server
+      if (process.env.NODE_ENV === 'development') console.warn('[AutoClaim] Legacy EOA claim skipped — use CREATE2 or ERC-4337');
+      return null;
     }
 
     const res = await fetch('/api/sponsor-claim', {
@@ -187,12 +209,25 @@ async function autoClaim7702(
     // 1. Build signed EIP-7702 authorization (delegates code to implementation)
     const authorization = await buildSignedAuthorization(payment.stealthPrivateKey, chainId);
 
-    // 2. Sign drain message (nonce=0, first drain)
+    // 2. Read current drain nonce from contract (may be >0 if prior drain failed/was replayed)
+    const provider = getChainProvider(chainId);
+    let drainNonce = 0;
+    try {
+      const code = await provider.getCode(stealthAddress);
+      if (code !== '0x') {
+        const contract = new ethers.Contract(stealthAddress, ['function drainNonce() view returns (uint256)'], provider);
+        drainNonce = (await contract.drainNonce()).toNumber();
+      }
+    } catch {
+      // If read fails (not yet delegated), nonce is 0
+    }
+
+    // 3. Sign drain message with current nonce
     const drainSig = await signDrain7702(
       payment.stealthPrivateKey,
       stealthAddress,
       recipient,
-      0, // nonce
+      drainNonce,
       chainId,
     );
 
@@ -239,6 +274,65 @@ async function autoClaimPayment(
   return autoClaimLegacy(payment, recipient, chainId);
 }
 
+// Sweep ERC-20 tokens from a deployed CREATE2 stealth wallet
+async function sweepTokensFromWallet(
+  payment: ScanResult,
+  recipient: string,
+  chainId: number,
+): Promise<{ swept: { token: string; txHash: string; amount: string }[] } | null> {
+  if (payment.walletType !== 'create2') return null;
+  if (!payment.tokenBalances || payment.tokenBalances.length === 0) return null;
+
+  try {
+    const ownerEOA = getAddressFromPrivateKey(payment.stealthPrivateKey);
+
+    // Build signatures for each token sweep via signWalletExecute
+    const tokenSweeps = await Promise.all(
+      payment.tokenBalances.map(async (tb) => {
+        const erc20Iface = new ethers.utils.Interface(ERC20_BALANCE_ABI.concat([
+          'function transfer(address to, uint256 amount) returns (bool)',
+        ]));
+        const provider = getChainProvider(chainId);
+        const tokenContract = new ethers.Contract(tb.token, ERC20_BALANCE_ABI, provider);
+        const balance: ethers.BigNumber = await tokenContract.balanceOf(payment.announcement.stealthAddress);
+
+        const transferData = erc20Iface.encodeFunctionData('transfer', [recipient, balance]);
+
+        const signature = await signWalletExecute(
+          payment.stealthPrivateKey,
+          payment.announcement.stealthAddress,
+          tb.token,
+          ethers.BigNumber.from(0),
+          transferData,
+          chainId,
+        );
+        return { tokenAddress: tb.token, signature };
+      })
+    );
+
+    const res = await fetch('/api/sponsor-claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        stealthAddress: payment.announcement.stealthAddress,
+        owner: ownerEOA,
+        recipient,
+        tokenSweeps,
+        chainId,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (process.env.NODE_ENV === 'development') console.warn('[TokenSweep] Failed:', data.error);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    if (process.env.NODE_ENV === 'development') console.warn('[TokenSweep] Error:', e);
+    return null;
+  }
+}
+
 // Stealth wallet deposits DIRECTLY into DustPool (privacy-preserving).
 // Each deposit comes from the unique stealth address, not the sponsor wallet.
 // ERC-4337: UserOp with execute(DustPool, balance, deposit(commitment))
@@ -274,7 +368,7 @@ async function claimToPoolDeposit(
 
     // Encode DustPool.deposit(commitment) calldata
     const poolIface = new ethers.utils.Interface(DUST_POOL_ABI);
-    const depositCalldata = poolIface.encodeFunctionData('deposit', [deposit.commitmentHex]);
+    const depositCalldata = poolIface.encodeFunctionData('deposit', [deposit.commitmentHex, balance]);
 
     let txHash: string;
     let leafIndex: number;
@@ -390,9 +484,9 @@ async function claimToPoolDeposit(
       withdrawn: false,
     };
 
-    const existing = loadDeposits(userAddress);
+    const existing = loadDeposits(userAddress, chainId);
     existing.push(storedDeposit);
-    saveDeposits(userAddress, existing);
+    saveDeposits(userAddress, existing, chainId);
 
     if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] Success, leafIndex:', leafIndex);
 
@@ -442,7 +536,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
   // Load persisted payments on mount / address change
   useEffect(() => {
     if (address) {
-      const stored = loadPaymentsFromStorage(address);
+      const stored = loadPaymentsFromStorage(address, chainId);
       if (stored.length > 0) {
         // Extract keys to ref, strip from state
         stored.forEach(p => {
@@ -453,18 +547,14 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         setPayments(stored.map(stripKey));
       }
     }
-  }, [address]);
+  }, [address, chainId]);
 
-  // Persist payments whenever they change — re-inject keys for storage only
+  // Persist payments whenever they change — keys are NOT persisted (security fix)
   useEffect(() => {
     if (address && payments.length > 0) {
-      const withKeys = payments.map(p => ({
-        ...p,
-        stealthPrivateKey: getKeyForPayment(p.announcement.txHash),
-      }));
-      savePaymentsToStorage(address, withKeys);
+      savePaymentsToStorage(address, chainId, payments);
     }
-  }, [address, payments]);
+  }, [address, chainId, payments]);
 
   // Auto-claim: when new unclaimed payments appear and we have a recipient or pool mode
   const tryAutoClaim = useCallback(async (newPayments: StealthPayment[]) => {
@@ -482,7 +572,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       if (poolMode && (p.walletType === 'create2' || p.walletType === 'account')) return false;
       // 30-second cooldown after a failed attempt
       const lastAttempt = autoClaimCooldownRef.current.get(txHash);
-      if (lastAttempt && now - lastAttempt < 3000) return false;
+      if (lastAttempt && now - lastAttempt < 30_000) return false;
       return true;
     });
 
@@ -546,7 +636,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       }
       autoClaimingRef.current.delete(txHash);
     }
-  }, [address]);
+  }, [address, chainId]);
 
   const isBgScanningRef = useRef(false);
 
@@ -597,21 +687,50 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       const results = await scanAnnouncements(provider, stealthKeys, startBlock, latestBlock, config.contracts.announcer, chainId);
 
       // Batch all balance queries via JsonRpcBatchProvider
+      const tokens = getTokensForChain(chainId);
       const enriched: StealthPayment[] = await Promise.all(
         results.map(async (r) => {
           try {
+            const addr = r.announcement.stealthAddress;
             const [bal, historicalBal] = await Promise.all([
-              batchProvider.getBalance(r.announcement.stealthAddress),
-              batchProvider.getBalance(r.announcement.stealthAddress, r.announcement.blockNumber),
+              batchProvider.getBalance(addr),
+              batchProvider.getBalance(addr, r.announcement.blockNumber),
             ]);
             const balance = ethers.utils.formatEther(bal);
             const originalAmount = ethers.utils.formatEther(historicalBal);
+
+            // Fetch ERC-20 token balances
+            let tokenBalances: TokenBalance[] | undefined;
+            if (tokens.length > 0) {
+              const balResults = await Promise.allSettled(
+                tokens.map(async (t) => {
+                  const erc20 = new ethers.Contract(t.address, ERC20_BALANCE_ABI, batchProvider);
+                  const tokenBal: ethers.BigNumber = await erc20.balanceOf(addr);
+                  return {
+                    token: t.address,
+                    symbol: t.symbol,
+                    balance: ethers.utils.formatUnits(tokenBal, t.decimals),
+                    decimals: t.decimals,
+                  };
+                })
+              );
+              const nonZero = balResults
+                .filter((r): r is PromiseFulfilledResult<TokenBalance> => r.status === 'fulfilled')
+                .map(r => r.value)
+                .filter(b => parseFloat(b.balance) > 0);
+              if (nonZero.length > 0) tokenBalances = nonZero;
+            }
+
+            const hasNativeBalance = parseFloat(balance) > 0;
+            const hasTokenBalance = !!tokenBalances && tokenBalances.length > 0;
+
             return {
               ...r,
               balance,
               originalAmount,
-              claimed: parseFloat(balance) === 0,
+              claimed: !hasNativeBalance && !hasTokenBalance,
               keyMismatch: r.privateKeyVerified === false,
+              tokenBalances,
             };
           } catch {
             return {
@@ -642,6 +761,7 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
               balance: p.balance,
               originalAmount: existing.originalAmount || p.originalAmount,
               claimed: existing.claimed || p.claimed,
+              tokenBalances: p.tokenBalances ?? existing.tokenBalances,
             });
           } else {
             existingMap.set(p.announcement.txHash, stripKey(p));
@@ -818,5 +938,37 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     return { deposited, skipped, failed };
   }, [address, payments, chainId]);
 
-  return { payments, scan, scanInBackground, stopBackgroundScan, claimPayment, depositToPool, isScanning, progress, error };
+  // Sweep ERC-20 tokens from a stealth payment (CREATE2 wallets only)
+  const claimTokens = useCallback(async (payment: StealthPayment, recipient: string): Promise<boolean> => {
+    setError(null);
+    try {
+      const key = getKeyForPayment(payment.announcement.txHash);
+      if (!key) throw new Error('Private key not found for this payment');
+      const paymentWithKey = { ...payment, stealthPrivateKey: key };
+      const result = await sweepTokensFromWallet(paymentWithKey, recipient, chainId);
+      if (!result || result.swept.length === 0) return false;
+
+      // Update tokenBalances to remove swept tokens
+      setPayments(prev => prev.map(p => {
+        if (p.announcement.txHash !== payment.announcement.txHash) return p;
+        const sweptAddrs = new Set(result.swept.map(s => s.token.toLowerCase()));
+        const remaining = (p.tokenBalances ?? []).filter(
+          tb => !sweptAddrs.has(tb.token.toLowerCase())
+        );
+        return {
+          ...p,
+          tokenBalances: remaining.length > 0 ? remaining : undefined,
+          claimed: parseFloat(p.balance || '0') === 0 && remaining.length === 0,
+        };
+      }));
+
+      return true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Token sweep failed';
+      setError(msg);
+      return false;
+    }
+  }, [chainId]);
+
+  return { payments, scan, scanInBackground, stopBackgroundScan, claimPayment, claimTokens, depositToPool, isScanning, progress, error };
 }

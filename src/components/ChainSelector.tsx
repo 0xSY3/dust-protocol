@@ -5,21 +5,12 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSupportedChains, type ChainConfig } from "@/config/chains";
 import { colors, radius } from "@/lib/design/tokens";
+import { ChainIcon as ChainTokenIcon } from "@/components/stealth/icons";
 
 const chains = getSupportedChains();
 
-function ChainIcon({ chain, size = 16 }: { chain: ChainConfig; size?: number }) {
-  // Simple colored dot indicator per chain
-  const color = chain.id === 111551119090 ? "#6366f1" : "#3b82f6";
-  return (
-    <Box
-      w={`${size}px`}
-      h={`${size}px`}
-      borderRadius="50%"
-      bgColor={color}
-      flexShrink={0}
-    />
-  );
+function ChainIcon({ chain, size = 20 }: { chain: ChainConfig; size?: number }) {
+  return <ChainTokenIcon size={size} chainId={chain.id} />;
 }
 
 export function ChainSelector() {

@@ -673,3 +673,21 @@ export const TONIcon = ({ size = 24 }: IconProps) => (
     <path d="M0.00159912 11.804C0.00159912 11.8688 0.00159912 11.9328 0.00159912 11.9968C0.0191991 12.3312 0.047204 12.776 0.081604 13.108C-0.026396 10.94 3.2656 9.53922 6.288 9.63842C5.9107 9.27247 5.59033 8.85206 5.33758 8.3912C2.78239 8.0632 1.3856 8.72242 0.663196 9.33202C0.243019 10.0892 0.015535 10.9382 0.000793457 11.804" fill="#2A72E5"/>
   </svg>
 );
+
+export const ETHIcon = ({ size = 24 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+    <path d="M16 2L6 16.5L16 22L26 16.5L16 2Z" fill="#627EEA"/>
+    <path d="M16 2L6 16.5L16 12.5V2Z" fill="#627EEA" opacity="0.6"/>
+    <path d="M16 2L26 16.5L16 12.5V2Z" fill="#627EEA"/>
+    <path d="M16 24L6 18.5L16 30L26 18.5L16 24Z" fill="#627EEA"/>
+    <path d="M16 24L6 18.5L16 30V24Z" fill="#627EEA" opacity="0.6"/>
+    <path d="M16 24L26 18.5L16 30V24Z" fill="#627EEA"/>
+    <path d="M16 22L6 16.5L16 12.5V22Z" fill="#627EEA" opacity="0.2"/>
+    <path d="M16 22L26 16.5L16 12.5V22Z" fill="#627EEA" opacity="0.5"/>
+  </svg>
+);
+
+export const ChainIcon = ({ size = 24, chainId }: IconProps & { chainId?: number }) => {
+  if (chainId === 11155111) return <ETHIcon size={size} />;
+  return <TONIcon size={size} />;
+};

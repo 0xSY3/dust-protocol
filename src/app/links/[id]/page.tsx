@@ -6,18 +6,18 @@ import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePaymentLinks } from "@/hooks/stealth/usePaymentLinks";
 import { useStealthScanner } from "@/hooks/stealth";
-import { colors, radius, shadows, EXPLORER_BASE } from "@/lib/design/tokens";
+import { colors, radius, shadows, getExplorerBase } from "@/lib/design/tokens";
 import {
   ArrowLeftIcon, MoreHorizontalIcon, LinkIcon, CopyIcon, CheckIcon,
   QRIcon, ActivityIcon, TrashIcon,
-  ArrowDownLeftIcon, ArrowUpRightIcon, TONIcon,
+  ArrowDownLeftIcon, ArrowUpRightIcon, ChainIcon,
 } from "@/components/stealth/icons";
 import { QRModal } from "@/components/links/QRModal";
 
 export default function LinkDetailPage({ params }: { params: { id: string } }) {
   const { id } = params;
   const router = useRouter();
-  const { ownedNames, stealthKeys } = useAuth();
+  const { ownedNames, stealthKeys, activeChainId } = useAuth();
   const { getLink, deleteLink } = usePaymentLinks();
   const { payments, scanInBackground, stopBackgroundScan, isScanning } = useStealthScanner(stealthKeys);
   const [copied, setCopied] = useState(false);
@@ -193,7 +193,7 @@ export default function LinkDetailPage({ params }: { params: { id: string } }) {
           <Box w="1px" h="40px" bgColor={colors.border.default} />
           <VStack flex={1} gap="4px">
             <HStack gap="6px" justify="center">
-              <TONIcon size={20} />
+              <ChainIcon size={20} chainId={activeChainId} />
               <Text fontSize="24px" fontWeight={700} color={colors.accent.indigo}>
                 {totalReceived.toFixed(2)}
               </Text>
@@ -272,7 +272,7 @@ export default function LinkDetailPage({ params }: { params: { id: string } }) {
                       <Text fontSize="14px" fontWeight={600} color={colors.accent.indigo}>
                         +{displayAmount.toFixed(4)}
                       </Text>
-                      <a href={`${EXPLORER_BASE}/tx/${payment.announcement.txHash}`} target="_blank" rel="noopener noreferrer"
+                      <a href={`${getExplorerBase(activeChainId)}/tx/${payment.announcement.txHash}`} target="_blank" rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}>
                         <Box p="5px" borderRadius={radius.full} _hover={{ bgColor: colors.bg.elevated }}>
                           <ArrowUpRightIcon size={13} color={colors.text.muted} />

@@ -31,6 +31,7 @@ contract DustPool is MerkleTree {
     error InvalidProof();
     error TransferFailed();
     error ZeroRecipient();
+    error AmountMismatch();
 
     constructor(address _verifier) {
         verifier = IGroth16Verifier(_verifier);
@@ -38,8 +39,11 @@ contract DustPool is MerkleTree {
 
     /// @notice Deposit native tokens into the pool with a Poseidon commitment
     /// @param commitment Poseidon(Poseidon(nullifier, secret), amount)
-    function deposit(bytes32 commitment) external payable {
+    /// @param amount The deposit amount — must match msg.value exactly.
+    ///        This is verified on-chain to prevent commitment/value mismatch attacks.
+    function deposit(bytes32 commitment, uint256 amount) external payable {
         if (msg.value == 0) revert ZeroDeposit();
+        if (msg.value != amount) revert AmountMismatch();
         if (commitments[commitment]) revert DuplicateCommitment();
 
         commitments[commitment] = true;

@@ -3,8 +3,10 @@
 import { useEffect, useRef } from "react";
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
 import { colors, radius, shadows } from "@/lib/design/tokens";
+import { getChainConfig } from "@/config/chains";
+import { useAuth } from "@/contexts/AuthContext";
 import type { StealthPayment } from "@/lib/design/types";
-import { RefreshIcon, InfoIcon, TONIcon } from "@/components/stealth/icons";
+import { RefreshIcon, InfoIcon, ChainIcon } from "@/components/stealth/icons";
 
 interface StealthBalanceCardProps {
   payments: StealthPayment[];
@@ -13,6 +15,9 @@ interface StealthBalanceCardProps {
 }
 
 export function StealthBalanceCard({ payments, isScanning, scan }: StealthBalanceCardProps) {
+  const { activeChainId } = useAuth();
+  const chainConfig = getChainConfig(activeChainId);
+  const symbol = chainConfig.nativeCurrency.symbol;
   const hasMounted = useRef(false);
   useEffect(() => {
     if (!hasMounted.current) { hasMounted.current = true; scan(); }
@@ -62,7 +67,7 @@ export function StealthBalanceCard({ payments, isScanning, scan }: StealthBalanc
               <Text fontSize="42px" fontWeight={800} color={colors.text.primary} lineHeight="1" letterSpacing="-0.03em">
                 {totalBalance.toFixed(4)}
               </Text>
-              <Text fontSize="18px" fontWeight={500} color={colors.text.muted}>TON</Text>
+              <Text fontSize="18px" fontWeight={500} color={colors.text.muted}>{symbol}</Text>
             </HStack>
           </Box>
 
@@ -78,11 +83,11 @@ export function StealthBalanceCard({ payments, isScanning, scan }: StealthBalanc
                     border="1.5px solid rgba(42, 114, 229, 0.2)"
                     display="flex" alignItems="center" justifyContent="center"
                   >
-                    <TONIcon size={28} />
+                    <ChainIcon size={28} chainId={activeChainId} />
                   </Box>
                   <VStack align="flex-start" gap="2px">
-                    <Text fontSize="16px" fontWeight={700} color={colors.text.primary}>TON</Text>
-                    <Text fontSize="13px" color={colors.text.muted}>Thanos Network</Text>
+                    <Text fontSize="16px" fontWeight={700} color={colors.text.primary}>{symbol}</Text>
+                    <Text fontSize="13px" color={colors.text.muted}>{chainConfig.name}</Text>
                   </VStack>
                 </HStack>
                 <VStack align="flex-end" gap="2px">

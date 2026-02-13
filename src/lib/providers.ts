@@ -16,16 +16,32 @@ export async function getProviderWithAccounts(): Promise<ethers.providers.Web3Pr
   return provider;
 }
 
-/** Get read-only JSON-RPC provider for any supported chain */
+// Provider caches — avoid creating a new provider on every call
+const providerCache = new Map<number, ethers.providers.JsonRpcProvider>();
+const batchProviderCache = new Map<number, ethers.providers.JsonRpcBatchProvider>();
+
+/** Get read-only JSON-RPC provider for any supported chain (cached) */
 export function getChainProvider(chainId?: number): ethers.providers.JsonRpcProvider {
-  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID);
-  return new ethers.providers.JsonRpcProvider(config.rpcUrl);
+  const id = chainId ?? DEFAULT_CHAIN_ID;
+  let provider = providerCache.get(id);
+  if (!provider) {
+    const config = getChainConfig(id);
+    provider = new ethers.providers.JsonRpcProvider(config.rpcUrl);
+    providerCache.set(id, provider);
+  }
+  return provider;
 }
 
-/** Get batch provider for parallel balance queries on any supported chain */
+/** Get batch provider for parallel balance queries on any supported chain (cached) */
 export function getChainBatchProvider(chainId?: number): ethers.providers.JsonRpcBatchProvider {
-  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID);
-  return new ethers.providers.JsonRpcBatchProvider(config.rpcUrl);
+  const id = chainId ?? DEFAULT_CHAIN_ID;
+  let provider = batchProviderCache.get(id);
+  if (!provider) {
+    const config = getChainConfig(id);
+    provider = new ethers.providers.JsonRpcBatchProvider(config.rpcUrl);
+    batchProviderCache.set(id, provider);
+  }
+  return provider;
 }
 
 /** @deprecated Use getChainProvider() instead */

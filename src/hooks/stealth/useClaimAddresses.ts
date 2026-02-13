@@ -7,15 +7,12 @@ import {
   saveSignatureHash, verifySignatureHash, updateClaimAddressLabel,
   CLAIM_ADDRESS_DERIVATION_MESSAGE, type DerivedClaimAddress,
 } from '@/lib/stealth';
+import { getChainProvider } from '@/lib/providers';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ClaimAddressWithBalance extends DerivedClaimAddress {
   balance?: string;
   isLoadingBalance?: boolean;
-}
-
-function getProvider() {
-  if (typeof window === 'undefined' || !window.ethereum) return null;
-  return new ethers.providers.Web3Provider(window.ethereum as ethers.providers.ExternalProvider);
 }
 
 const LABELS = ['Primary', 'Secondary', 'Tertiary'];
@@ -24,6 +21,7 @@ const getLabel = (i: number) => LABELS[i] || `Address ${i + 1}`;
 export function useClaimAddresses() {
   const { address, isConnected } = useAccount();
   const { signMessageAsync, isPending: isSigningMessage } = useSignMessage();
+  const { activeChainId } = useAuth();
 
   const [claimAddresses, setClaimAddresses] = useState<ClaimAddressWithBalance[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -35,15 +33,14 @@ export function useClaimAddresses() {
   const selectedAddress = claimAddresses[selectedIndex] || null;
 
   const fetchBalance = useCallback(async (addr: string): Promise<string> => {
-    const provider = getProvider();
-    if (!provider) return '0';
     try {
+      const provider = getChainProvider(activeChainId);
       const bal = await provider.getBalance(addr);
       return ethers.utils.formatEther(bal);
     } catch {
       return '0';
     }
-  }, []);
+  }, [activeChainId]);
 
   const refreshBalances = useCallback(async () => {
     if (!claimAddresses.length) return;

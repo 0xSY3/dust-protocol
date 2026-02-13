@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
 import { colors, radius } from "@/lib/design/tokens";
+import { getChainConfig } from "@/config/chains";
+import { useAuth } from "@/contexts/AuthContext";
 import { useBalancePoller } from "@/hooks/stealth/useBalancePoller";
 import { AddressDisplay } from "./AddressDisplay";
 import {
@@ -28,6 +30,8 @@ export function NoOptInPayment({
   externalPaymentSent,
   externalPaymentAmount,
 }: NoOptInPaymentProps) {
+  const { activeChainId } = useAuth();
+  const symbol = getChainConfig(activeChainId).nativeCurrency.symbol;
   const [status, setStatus] = useState<Status>("resolving");
   const [stealthAddress, setStealthAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +151,7 @@ export function NoOptInPayment({
             Payment Received!
           </Text>
           <Text fontSize="15px" color={colors.text.secondary} fontFamily="'JetBrains Mono', monospace">
-            {depositAmount !== "0" ? depositAmount : externalPaymentAmount || ""} TON
+            {depositAmount !== "0" ? depositAmount : externalPaymentAmount || ""} {symbol}
           </Text>
           <Text fontSize="13px" color={colors.text.muted}>
             Sent to {displayName}
@@ -186,7 +190,7 @@ export function NoOptInPayment({
       {stealthAddress && (
         <AddressDisplay
           address={stealthAddress}
-          label="Send TON to this address"
+          label={`Send ${symbol} to this address`}
         />
       )}
 
@@ -204,7 +208,7 @@ export function NoOptInPayment({
             <ShieldIcon size={14} color={colors.accent.indigo} />
           </Box>
           <Text fontSize="12px" color={colors.text.tertiary}>
-            This is a one-time stealth address. Send any amount of TON from any wallet.
+            This is a one-time stealth address. Send any amount of {symbol} from any wallet.
           </Text>
         </HStack>
 

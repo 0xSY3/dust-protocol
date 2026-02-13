@@ -46,8 +46,9 @@ export function useRelayer() {
 
   const withdraw = useCallback(async (
     stealthAddress: string,
-    stealthPrivateKey: string,
-    recipient: string
+    signature: string,
+    recipient: string,
+    owner: string,
   ): Promise<JobStatus | null> => {
     if (!isAvailable) {
       setError('Relayer not available');
@@ -60,7 +61,7 @@ export function useRelayer() {
     setCurrentJobId(null);
 
     try {
-      const response = await submitRelayerWithdraw(stealthAddress, stealthPrivateKey, recipient);
+      const response = await submitRelayerWithdraw(stealthAddress, signature, recipient, owner);
       if (!response) throw new Error('Failed to submit withdrawal');
 
       setCurrentJobId(response.jobId);

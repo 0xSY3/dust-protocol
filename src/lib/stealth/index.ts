@@ -1,7 +1,7 @@
 // Stealth address library (ERC-5564/6538)
 
-export type { StealthKeyPair, StealthMetaAddress, GeneratedStealthAddress, StealthAnnouncement, ScanResult, StealthContractAddresses } from './types';
-export { SCHEME_ID, CANONICAL_ADDRESSES, DEPLOYMENT_BLOCK, STEALTH_WALLET_FACTORY, STEALTH_WALLET_FACTORY_ABI, ENTRY_POINT_ADDRESS, STEALTH_ACCOUNT_FACTORY, DUST_PAYMASTER_ADDRESS, STEALTH_ACCOUNT_FACTORY_ABI, ENTRY_POINT_ABI, DUST_PAYMASTER_ABI, DUST_POOL_ADDRESS, DUST_POOL_DEPLOYMENT_BLOCK, DUST_POOL_ABI } from './types';
+export type { StealthKeyPair, StealthMetaAddress, GeneratedStealthAddress, StealthAnnouncement, ScanResult, StealthContractAddresses, TokenBalance } from './types';
+export { SCHEME_ID, CANONICAL_ADDRESSES, STEALTH_WALLET_FACTORY, STEALTH_WALLET_FACTORY_ABI, ENTRY_POINT_ADDRESS, STEALTH_ACCOUNT_FACTORY, STEALTH_ACCOUNT_FACTORY_ABI, ENTRY_POINT_ABI, DUST_PAYMASTER_ABI, DUST_POOL_ABI } from './types';
 
 export { generateStealthKeyPair, deriveStealthKeyPairFromSignature, deriveStealthKeyPairFromSignatureAndPin, formatStealthMetaAddress, parseStealthMetaAddress, isValidCompressedPublicKey, getPublicKeyFromPrivate, decompressPublicKey, STEALTH_KEY_DERIVATION_MESSAGE } from './keys';
 

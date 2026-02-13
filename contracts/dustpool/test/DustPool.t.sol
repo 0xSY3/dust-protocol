@@ -71,7 +71,7 @@ contract DustPoolTest is Test {
 
         // Deposit
         vm.prank(alice);
-        pool.deposit{value: amount}(commitment);
+        pool.deposit{value: amount}(commitment, amount);
 
         assertEq(pool.nextIndex(), 1);
         assertTrue(pool.commitments(commitment));
@@ -97,7 +97,7 @@ contract DustPoolTest is Test {
         bytes32 nullifierHash = _makeNullifierHash(nullifier);
 
         vm.prank(alice);
-        pool.deposit{value: amount}(commitment);
+        pool.deposit{value: amount}(commitment, amount);
 
         bytes32 root = pool.getLastRoot();
         pool.withdraw(_dummyProof(), root, nullifierHash, bob, amount);
@@ -117,7 +117,7 @@ contract DustPoolTest is Test {
         bytes32 nullifierHash = _makeNullifierHash(nullifier);
 
         vm.prank(alice);
-        pool.deposit{value: amount}(commitment);
+        pool.deposit{value: amount}(commitment, amount);
 
         mockVerifier.setResult(false);
 
@@ -133,13 +133,13 @@ contract DustPoolTest is Test {
 
         // First deposit to get a root
         vm.prank(alice);
-        pool.deposit{value: amount}(_makeCommitment(1, 1, amount));
+        pool.deposit{value: amount}(_makeCommitment(1, 1, amount), amount);
         bytes32 oldRoot = pool.getLastRoot();
 
         // Push ROOT_HISTORY_SIZE more deposits to evict the old root
-        for (uint256 i = 2; i <= 31; i++) {
+        for (uint256 i = 2; i <= 101; i++) {
             vm.prank(alice);
-            pool.deposit{value: amount}(_makeCommitment(i * 1000, i * 2000, amount));
+            pool.deposit{value: amount}(_makeCommitment(i * 1000, i * 2000, amount), amount);
         }
 
         // Old root should no longer be known
@@ -156,7 +156,16 @@ contract DustPoolTest is Test {
         bytes32 commitment = _makeCommitment(555, 666, 0);
         vm.prank(alice);
         vm.expectRevert(DustPool.ZeroDeposit.selector);
-        pool.deposit{value: 0}(commitment);
+        pool.deposit{value: 0}(commitment, 0);
+    }
+
+    // ========== Amount mismatch ==========
+
+    function test_RevertAmountMismatch() public {
+        bytes32 commitment = _makeCommitment(444, 555, 1 ether);
+        vm.prank(alice);
+        vm.expectRevert(DustPool.AmountMismatch.selector);
+        pool.deposit{value: 1 ether}(commitment, 2 ether);
     }
 
     // ========== Duplicate commitment ==========
@@ -165,11 +174,11 @@ contract DustPoolTest is Test {
         bytes32 commitment = _makeCommitment(777, 888, 1 ether);
 
         vm.prank(alice);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.deposit{value: 1 ether}(commitment, 1 ether);
 
         vm.prank(bob);
         vm.expectRevert(DustPool.DuplicateCommitment.selector);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.deposit{value: 1 ether}(commitment, 1 ether);
     }
 
     // ========== Multiple deposits + withdrawals ==========
@@ -183,7 +192,7 @@ contract DustPoolTest is Test {
         for (uint256 i = 0; i < 3; i++) {
             bytes32 commitment = _makeCommitment(nullifiers[i], secrets[i], amounts[i]);
             vm.prank(alice);
-            pool.deposit{value: amounts[i]}(commitment);
+            pool.deposit{value: amounts[i]}(commitment, amounts[i]);
         }
 
         assertEq(pool.nextIndex(), 3);
@@ -208,7 +217,7 @@ contract DustPoolTest is Test {
         bytes32 commitment = _makeCommitment(999, 888, amount);
 
         vm.prank(alice);
-        pool.deposit{value: amount}(commitment);
+        pool.deposit{value: amount}(commitment, amount);
 
         bytes32 root = pool.getLastRoot();
         bytes32 nullifierHash = _makeNullifierHash(999);
@@ -226,7 +235,7 @@ contract DustPoolTest is Test {
         vm.prank(alice);
         vm.expectEmit(true, false, false, true);
         emit Deposit(commitment, 0, amount, block.timestamp);
-        pool.deposit{value: amount}(commitment);
+        pool.deposit{value: amount}(commitment, amount);
     }
 
     function test_WithdrawEmitsEvent() public {
@@ -235,7 +244,7 @@ contract DustPoolTest is Test {
         bytes32 nullifierHash = _makeNullifierHash(70);
 
         vm.prank(alice);
-        pool.deposit{value: amount}(commitment);
+        pool.deposit{value: amount}(commitment, amount);
         bytes32 root = pool.getLastRoot();
 
         vm.expectEmit(true, false, false, true);

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
 import { colors, radius, getExplorerBase } from "@/lib/design/tokens";
+import { getChainConfig } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
 import type { StealthPayment, ClaimAddress, OutgoingPayment } from "@/lib/design/types";
 import {
@@ -38,6 +39,7 @@ export function ActivityList({
 }: ActivityListProps) {
   const { activeChainId } = useAuth();
   const explorerBase = getExplorerBase(activeChainId);
+  const symbol = getChainConfig(activeChainId).nativeCurrency.symbol;
   const [filter, setFilter] = useState<Filter>("all");
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
 
@@ -126,7 +128,7 @@ export function ActivityList({
             onClick={() => {
               if (filtered.length === 0) return;
               const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-              const header = "Type,Status,From/To,Amount (TON),Tx Hash\n";
+              const header = `Type,Status,From/To,Amount (${symbol}),Tx Hash\n`;
               const rows = filtered.map(item => {
                 if (item.type === "incoming") {
                   const p = item.payment;
@@ -273,6 +275,7 @@ function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, c
 }) {
   const { activeChainId } = useAuth();
   const explorerBase = getExplorerBase(activeChainId);
+  const symbol = getChainConfig(activeChainId).nativeCurrency.symbol;
   const payment = item.payment;
   const index = item.index;
   const displayAmount = parseFloat(payment.originalAmount || payment.balance || "0");
@@ -307,14 +310,14 @@ function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, c
               Received from {payment.announcement.caller?.slice(0, 6)}...{payment.announcement.caller?.slice(-4) || "unknown"}
             </Text>
             <Text fontSize="12px" color={colors.text.muted}>
-              TON &middot; Block #{payment.announcement.blockNumber.toLocaleString()}
+              {symbol} &middot; Block #{payment.announcement.blockNumber.toLocaleString()}
             </Text>
           </VStack>
         </HStack>
 
         <HStack gap="12px">
           <Text fontSize="15px" fontWeight={600} color={colors.accent.indigo}>
-            +{displayAmount.toFixed(4)} TON
+            +{displayAmount.toFixed(4)} {symbol}
           </Text>
         </HStack>
       </HStack>
@@ -362,6 +365,7 @@ function OutgoingRow({ item, expandedTx, setExpandedTx }: {
 }) {
   const { activeChainId } = useAuth();
   const explorerBase = getExplorerBase(activeChainId);
+  const symbol = getChainConfig(activeChainId).nativeCurrency.symbol;
   const payment = item.payment;
   const isExpanded = expandedTx === payment.txHash;
   const displayAmount = parseFloat(payment.amount);
@@ -396,14 +400,14 @@ function OutgoingRow({ item, expandedTx, setExpandedTx }: {
               Sent to {payment.to.includes(".tok") ? payment.to : `${payment.to.slice(0, 10)}...`}
             </Text>
             <Text fontSize="12px" color={colors.text.muted}>
-              TON &middot; {timeStr}
+              {symbol} &middot; {timeStr}
             </Text>
           </VStack>
         </HStack>
 
         <HStack gap="12px">
           <Text fontSize="15px" fontWeight={600} color={colors.accent.red}>
-            -{displayAmount.toFixed(4)} TON
+            -{displayAmount.toFixed(4)} {symbol}
           </Text>
         </HStack>
       </HStack>

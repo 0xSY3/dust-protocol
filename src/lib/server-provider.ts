@@ -53,9 +53,18 @@ class ServerJsonRpcProvider extends ethers.providers.JsonRpcProvider {
   }
 }
 
+// Server-side provider cache — avoids recreating providers on every API request
+const serverProviderCache = new Map<number, ethers.providers.JsonRpcProvider>();
+
 export function getServerProvider(chainId?: number): ethers.providers.JsonRpcProvider {
-  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID);
-  return new ServerJsonRpcProvider(config.rpcUrl, { name: config.name, chainId: config.id });
+  const id = chainId ?? DEFAULT_CHAIN_ID;
+  let provider = serverProviderCache.get(id);
+  if (!provider) {
+    const config = getChainConfig(id);
+    provider = new ServerJsonRpcProvider(config.rpcUrl, { name: config.name, chainId: config.id });
+    serverProviderCache.set(id, provider);
+  }
+  return provider;
 }
 
 export function getServerSponsor(chainId?: number): ethers.Wallet {
@@ -66,7 +75,10 @@ export function getServerSponsor(chainId?: number): ethers.Wallet {
 
 export function parseChainId(body: Record<string, unknown>): number {
   const chainId = body.chainId;
-  if (typeof chainId === 'number') return chainId;
-  if (typeof chainId === 'string') return parseInt(chainId, 10);
+  if (typeof chainId === 'number' && Number.isFinite(chainId)) return chainId;
+  if (typeof chainId === 'string') {
+    const parsed = parseInt(chainId, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
   return DEFAULT_CHAIN_ID;
 }

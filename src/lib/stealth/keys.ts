@@ -3,7 +3,7 @@
 import { ec as EC } from 'elliptic';
 import { ethers } from 'ethers';
 import type { StealthKeyPair, StealthMetaAddress } from './types';
-import { deriveSpendingSeed, deriveViewingSeed } from './pin';
+import { deriveSpendingSeed, deriveViewingSeed, deriveSpendingSeedV1, deriveViewingSeedV1 } from './pin';
 
 const secp256k1 = new EC('secp256k1');
 
@@ -46,12 +46,44 @@ export function deriveStealthKeyPairFromSignature(signature: string): StealthKey
   };
 }
 
-export function deriveStealthKeyPairFromSignatureAndPin(signature: string, pin: string): StealthKeyPair {
+const KEY_VERSION_STORAGE = 'dust_key_version_';
+
+function getKeyVersion(address?: string): number {
+  if (typeof window === 'undefined' || !address) return 2;
+  const stored = localStorage.getItem(KEY_VERSION_STORAGE + address.toLowerCase());
+  if (stored === '1') return 1;
+  return 2;
+}
+
+function setKeyVersion(address: string, version: number): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(KEY_VERSION_STORAGE + address.toLowerCase(), String(version));
+}
+
+export function deriveStealthKeyPairFromSignatureAndPin(signature: string, pin: string, walletAddress?: string): StealthKeyPair {
+  const version = getKeyVersion(walletAddress);
+
+  // Legacy v1 user — use old salts for backwards compat
+  if (version === 1) {
+    const spendingSeed = deriveSpendingSeedV1(signature, pin);
+    const viewingSeed = deriveViewingSeedV1(signature, pin);
+    const spending = secp256k1.keyFromPrivate(spendingSeed, 'hex');
+    const viewing = secp256k1.keyFromPrivate(viewingSeed, 'hex');
+    return {
+      spendingPrivateKey: spending.getPrivate('hex').padStart(64, '0'),
+      spendingPublicKey: spending.getPublic(true, 'hex'),
+      viewingPrivateKey: viewing.getPrivate('hex').padStart(64, '0'),
+      viewingPublicKey: viewing.getPublic(true, 'hex'),
+    };
+  }
+
+  // v2 (default for new users)
   const spendingSeed = deriveSpendingSeed(signature, pin);
   const viewingSeed = deriveViewingSeed(signature, pin);
-
   const spending = secp256k1.keyFromPrivate(spendingSeed, 'hex');
   const viewing = secp256k1.keyFromPrivate(viewingSeed, 'hex');
+
+  if (walletAddress) setKeyVersion(walletAddress, 2);
 
   return {
     spendingPrivateKey: spending.getPrivate('hex').padStart(64, '0'),

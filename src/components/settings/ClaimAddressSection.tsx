@@ -2,6 +2,8 @@
 
 import { Box, Text, VStack, HStack } from "@chakra-ui/react";
 import { colors, radius, shadows } from "@/lib/design/tokens";
+import { getChainConfig } from "@/config/chains";
+import { useAuth } from "@/contexts/AuthContext";
 import type { ClaimAddress } from "@/lib/design/types";
 import { WalletIcon } from "@/components/stealth/icons";
 
@@ -11,6 +13,8 @@ interface ClaimAddressSectionProps {
 }
 
 export function ClaimAddressSection({ claimAddresses, claimAddressesInitialized }: ClaimAddressSectionProps) {
+  const { activeChainId } = useAuth();
+  const symbol = getChainConfig(activeChainId).nativeCurrency.symbol;
   if (!claimAddressesInitialized) return null;
 
   return (
@@ -35,7 +39,7 @@ export function ClaimAddressSection({ claimAddresses, claimAddressesInitialized 
                 </Text>
               </VStack>
               <Text fontSize="14px" fontWeight={500} color={colors.accent.indigo} fontFamily="'JetBrains Mono', monospace">
-                {parseFloat(addr.balance || "0").toFixed(4)} TON
+                {parseFloat(addr.balance || "0").toFixed(4)} {symbol}
               </Text>
             </HStack>
           ))}

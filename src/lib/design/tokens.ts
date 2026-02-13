@@ -80,8 +80,6 @@ export const cardAccents = [
 // Minimum balance needed to cover gas for a claim transaction
 export const MIN_CLAIMABLE_BALANCE = 0.0001;
 
-export const EXPLORER_BASE = "https://explorer.thanos-sepolia.tokamak.network";
-
 import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
 
 /** Chain-aware explorer URL */

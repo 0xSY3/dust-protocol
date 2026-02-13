@@ -73,11 +73,12 @@ function toBytes(metaAddress: string): string {
   return metaAddress.startsWith('0x') ? metaAddress : '0x' + metaAddress;
 }
 
-import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
+import { getChainConfig, DEFAULT_CHAIN_ID, getSupportedChains } from '@/config/chains';
+
+import { getChainProvider } from '@/lib/providers';
 
 function getReadOnlyProvider(chainId?: number): ethers.providers.JsonRpcProvider {
-  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID);
-  return new ethers.providers.JsonRpcProvider(config.rpcUrl);
+  return getChainProvider(chainId ?? DEFAULT_CHAIN_ID);
 }
 
 function getNameRegistryForChain(chainId?: number): string {
@@ -91,6 +92,113 @@ function getRegistry(signerOrProvider: ethers.Signer | ethers.providers.Provider
   return new ethers.Contract(addr, NAME_REGISTRY_ABI, signerOrProvider);
 }
 
+// ─── Merkle Proof Resolution ──────────────────────────────────────────────────
+
+const NAME_VERIFIER_ABI = [
+  'function isKnownRoot(bytes32 root) view returns (bool)',
+];
+
+interface TreeCacheEntry {
+  root: string;
+  entries: Array<{
+    name: string;
+    nameHash: string;
+    metaAddress: string;
+    leafIndex: number;
+    version: number;
+  }>;
+  fetchedAt: number;
+}
+
+const TREE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let treeCache: TreeCacheEntry | null = null;
+
+async function fetchNameTree(): Promise<TreeCacheEntry | null> {
+  // Return cached tree if still valid
+  if (treeCache && Date.now() - treeCache.fetchedAt < TREE_CACHE_TTL_MS) {
+    return treeCache;
+  }
+
+  try {
+    const res = await fetch('/api/name-tree');
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    treeCache = {
+      root: data.root,
+      entries: data.entries ?? [],
+      fetchedAt: Date.now(),
+    };
+    return treeCache;
+  } catch (e) {
+    console.error('[names] Failed to fetch name tree:', e);
+    return null;
+  }
+}
+
+/**
+ * Resolve a .tok name via the Merkle proof tree (privacy mode).
+ * Fetches the full tree from /api/name-tree, finds the name locally,
+ * and verifies the root is known on the destination chain's NameVerifier.
+ */
+export async function resolveViaMerkleProof(name: string, chainId?: number): Promise<string | null> {
+  const stripped = stripNameSuffix(name);
+
+  try {
+    const tree = await fetchNameTree();
+    if (!tree || !tree.entries.length) return null;
+
+    // Find the name entry in the tree
+    const entry = tree.entries.find(e => e.name.toLowerCase() === stripped.toLowerCase());
+    if (!entry) return null;
+
+    // Determine which chain to verify on. If the active chain has a nameVerifier, use it.
+    // Otherwise try the canonical chain's nameRegistryMerkle for isKnownRoot.
+    const activeChainId = chainId ?? DEFAULT_CHAIN_ID;
+    const activeConfig = getChainConfig(activeChainId);
+
+    let verifierAddress: string | null = null;
+    let verifyChainId: number = activeChainId;
+
+    if (activeConfig.contracts.nameVerifier) {
+      // Destination chain — use NameVerifier
+      verifierAddress = activeConfig.contracts.nameVerifier;
+      verifyChainId = activeChainId;
+    } else if (activeConfig.canonicalForNaming && activeConfig.contracts.nameRegistryMerkle) {
+      // We're on the canonical chain — verify against NameRegistryMerkle (same isKnownRoot interface)
+      verifierAddress = activeConfig.contracts.nameRegistryMerkle;
+      verifyChainId = activeChainId;
+    } else {
+      // Try to find any chain with a nameVerifier
+      const destChain = getSupportedChains().find(c => c.contracts.nameVerifier);
+      if (destChain) {
+        verifierAddress = destChain.contracts.nameVerifier;
+        verifyChainId = destChain.id;
+      }
+    }
+
+    // If verifier address is the zero address (placeholder), skip on-chain check
+    // but still return the entry since we trust the server-side tree
+    const isPlaceholder = verifierAddress === '0x0000000000000000000000000000000000000000';
+
+    if (verifierAddress && !isPlaceholder) {
+      const provider = getReadOnlyProvider(verifyChainId);
+      const verifier = new ethers.Contract(verifierAddress, NAME_VERIFIER_ABI, provider);
+      const isKnown: boolean = await verifier.isKnownRoot(tree.root);
+      if (!isKnown) {
+        console.warn('[names] Merkle root not recognized on-chain, falling back');
+        return null;
+      }
+    }
+
+    // Root is known (or contracts not yet deployed) — return the metaAddress
+    return entry.metaAddress;
+  } catch (e) {
+    console.error('[names] resolveViaMerkleProof error:', e);
+    return null;
+  }
+}
+
 export async function registerStealthName(signer: ethers.Signer, name: string, metaAddress: string): Promise<string> {
   const normalized = stripNameSuffix(name);
   if (!isValidName(normalized)) throw new Error('Invalid name');
@@ -100,29 +208,46 @@ export async function registerStealthName(signer: ethers.Signer, name: string, m
   return (await tx.wait()).transactionHash;
 }
 
-export async function resolveStealthName(_provider: ethers.providers.Provider, name: string): Promise<string | null> {
-  const addr = getNameRegistryAddress();
-  if (!addr) return null;
+export async function resolveStealthName(_provider: ethers.providers.Provider | null, name: string, chainId?: number): Promise<string | null> {
+  const stripped = stripNameSuffix(name);
 
+  // 1. Try privacy tree cache (Merkle proof) first
   try {
-    // Use direct RPC provider for read-only calls
-    const rpcProvider = getReadOnlyProvider();
-    const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
-    const result = await registry.resolveName(stripNameSuffix(name));
-    return result && result !== '0x' && result.length > 4 ? result : null;
+    const merkleResult = await resolveViaMerkleProof(stripped, chainId);
+    if (merkleResult) return merkleResult;
   } catch (e) {
-    console.error('[names] resolveStealthName error:', e);
+    console.warn('[names] Merkle resolution failed, trying legacy:', e);
+  }
+
+  // 2. Legacy on-chain nameRegistry fallback — try active chain first
+  if (chainId) {
+    const result = await resolveOnChain(chainId, stripped);
+    if (result) return result;
+  }
+
+  // Fall back to canonical chain
+  const result = await resolveOnChain(undefined, stripped);
+  return result;
+}
+
+async function resolveOnChain(chainId: number | undefined, stripped: string): Promise<string | null> {
+  try {
+    const addr = chainId ? getNameRegistryForChain(chainId) : getNameRegistryAddress();
+    if (!addr) return null;
+    const rpcProvider = getReadOnlyProvider(chainId);
+    const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
+    const result = await registry.resolveName(stripped);
+    return result && result !== '0x' && result.length > 4 ? result : null;
+  } catch {
     return null;
   }
 }
 
-export async function isNameAvailable(_provider: ethers.providers.Provider, name: string): Promise<boolean | null> {
-  const addr = getNameRegistryAddress();
-  if (!addr) return null;
-
+export async function isNameAvailable(_provider: ethers.providers.Provider | null, name: string, chainId?: number): Promise<boolean | null> {
   try {
-    // Use direct RPC provider for read-only calls (more reliable than wallet provider)
-    const rpcProvider = getReadOnlyProvider();
+    const addr = chainId ? getNameRegistryForChain(chainId) : getNameRegistryAddress();
+    if (!addr) return null;
+    const rpcProvider = getReadOnlyProvider(chainId);
     const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
     return await registry.isNameAvailable(stripNameSuffix(name));
   } catch (e) {
@@ -131,13 +256,11 @@ export async function isNameAvailable(_provider: ethers.providers.Provider, name
   }
 }
 
-export async function getNameOwner(_provider: ethers.providers.Provider, name: string): Promise<string | null> {
-  const addr = getNameRegistryAddress();
-  if (!addr) return null;
-
+export async function getNameOwner(_provider: ethers.providers.Provider | null, name: string, chainId?: number): Promise<string | null> {
   try {
-    // Use direct RPC provider for read-only calls
-    const rpcProvider = getReadOnlyProvider();
+    const addr = chainId ? getNameRegistryForChain(chainId) : getNameRegistryAddress();
+    if (!addr) return null;
+    const rpcProvider = getReadOnlyProvider(chainId);
     const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
     const owner = await registry.getOwner(stripNameSuffix(name));
     return owner === ethers.constants.AddressZero ? null : owner;
@@ -147,17 +270,25 @@ export async function getNameOwner(_provider: ethers.providers.Provider, name: s
   }
 }
 
-export async function getNamesOwnedBy(_provider: ethers.providers.Provider, address: string): Promise<string[]> {
-  const addr = getNameRegistryAddress();
-  if (!addr) return [];
+export async function getNamesOwnedBy(_provider: ethers.providers.Provider | null, address: string, chainId?: number): Promise<string[]> {
+  // Try the requested chain first
+  if (chainId) {
+    const names = await getNamesOnChain(chainId, address);
+    if (names.length > 0) return names;
+  }
 
+  // Fall back to canonical chain
+  return getNamesOnChain(undefined, address);
+}
+
+async function getNamesOnChain(chainId: number | undefined, address: string): Promise<string[]> {
   try {
-    // Use direct RPC provider for read-only calls
-    const rpcProvider = getReadOnlyProvider();
+    const addr = chainId ? getNameRegistryForChain(chainId) : getNameRegistryAddress();
+    if (!addr) return [];
+    const rpcProvider = getReadOnlyProvider(chainId);
     const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
     return await registry.getNamesOwnedBy(address);
-  } catch (e) {
-    console.error('[names] getNamesOwnedBy error:', e);
+  } catch {
     return [];
   }
 }
@@ -179,7 +310,7 @@ export async function transferStealthName(signer: ethers.Signer, name: string, n
  * Checks names owned by the deployer/sponsor (who may have registered on user's behalf).
  */
 export async function discoverNameByMetaAddress(
-  _provider: ethers.providers.Provider,
+  _provider: ethers.providers.Provider | null,
   metaAddressHex: string
 ): Promise<string | null> {
   const addr = getNameRegistryAddress();

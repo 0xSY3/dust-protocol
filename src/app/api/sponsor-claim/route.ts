@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { NextResponse } from 'next/server';
 import { getChainConfig } from '@/config/chains';
 import { getServerProvider, getServerSponsor, parseChainId } from '@/lib/server-provider';
+import { canUseGelato, sponsoredRelay, waitForRelay } from '@/lib/relay/gelato';
 
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
@@ -50,15 +51,16 @@ const FACTORY_ABI = [
 ];
 const STEALTH_WALLET_ABI = [
   'function drain(address to, bytes sig)',
+  'function execute(address to, uint256 value, bytes data, bytes sig)',
+];
+
+const ERC20_ABI = [
+  'function transfer(address to, uint256 amount) returns (bool)',
+  'function balanceOf(address) view returns (uint256)',
 ];
 
 function isValidAddress(addr: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(addr);
-}
-
-function isValidPrivateKey(key: string): boolean {
-  const cleaned = key.replace(/^0x/, '');
-  return /^[0-9a-fA-F]{64}$/.test(cleaned);
 }
 
 export async function POST(req: Request) {
@@ -83,13 +85,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 503 });
     }
 
-    // Detect claim mode: signature-based (CREATE2) vs private-key-based (legacy EOA)
+    // Token sweep for already-deployed CREATE2 wallets
+    if (body.tokenSweeps && body.stealthAddress && body.owner) {
+      return handleTokenSweep(body, chainId);
+    }
+
+    // Signature-based claim (CREATE2)
     if (body.signature && body.owner) {
       return handleCreate2Claim(body, chainId);
     }
-    // DEPRECATED: Legacy EOA claim — private key should not be sent to server
-    console.warn('[Sponsor] DEPRECATED: Legacy EOA claim used — migrate to CREATE2/ERC-4337');
-    return handleLegacyEOAClaim(body, chainId);
+    // Legacy EOA claim path REMOVED — private keys must never be sent to the server.
+    // EOA stealth addresses should be claimed via CREATE2 or ERC-4337 flows.
+    return NextResponse.json(
+      { error: 'Legacy EOA claims are no longer supported. Use CREATE2 or ERC-4337 claim flow.' },
+      { status: 400 }
+    );
   } catch (e) {
     console.error('[Sponsor] Error:', e);
     return NextResponse.json({ error: 'Withdrawal failed' }, { status: 500 });
@@ -146,9 +156,56 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
   const existingCode = await provider.getCode(stealthAddress);
   const alreadyDeployed = existingCode !== '0x';
 
-  let tx;
+  // Build calldata and target for both Gelato and sponsor wallet paths
+  const factoryIface = new ethers.utils.Interface(FACTORY_ABI);
+  const walletIface = new ethers.utils.Interface(STEALTH_WALLET_ABI);
+
+  let target: string;
+  let calldata: string;
+
   if (alreadyDeployed) {
     console.log('[Sponsor/CREATE2] Wallet already deployed, calling drain directly');
+    target = stealthAddress;
+    calldata = walletIface.encodeFunctionData('drain', [recipient, signature]);
+  } else {
+    // Determine which factory deployed the CREATE2 address
+    const newFactory = new ethers.Contract(config.contracts.walletFactory, FACTORY_ABI, provider);
+    const newFactoryAddr = await newFactory.computeAddress(owner);
+    if (newFactoryAddr.toLowerCase() === stealthAddress.toLowerCase()) {
+      target = config.contracts.walletFactory;
+    } else if (config.contracts.legacyWalletFactory) {
+      target = config.contracts.legacyWalletFactory;
+    } else {
+      return NextResponse.json({ error: 'Stealth address does not match wallet factory' }, { status: 400 });
+    }
+    calldata = factoryIface.encodeFunctionData('deployAndDrain', [owner, recipient, signature]);
+  }
+
+  // Primary path: Gelato Relay (gasless via 1Balance)
+  if (canUseGelato(chainId)) {
+    try {
+      console.log('[Claim] Using Gelato relay');
+      const relayResult = await sponsoredRelay(chainId, target, calldata);
+      const { txHash } = await waitForRelay(relayResult.taskId);
+
+      console.log('[Sponsor/CREATE2] Claim complete via Gelato');
+
+      return NextResponse.json({
+        success: true,
+        txHash,
+        amount: ethers.utils.formatEther(balance),
+        gasFunded: '0',
+      });
+    } catch (gelatoError) {
+      console.warn('[Claim] Gelato relay failed, falling back to sponsor wallet:', gelatoError);
+    }
+  }
+
+  // Fallback path: sponsor wallet sends tx directly
+  console.log('[Claim] Using sponsor wallet');
+
+  let tx;
+  if (alreadyDeployed) {
     const wallet = new ethers.Contract(stealthAddress, STEALTH_WALLET_ABI, sponsor);
     tx = await wallet.drain(recipient, signature, {
       gasLimit,
@@ -157,17 +214,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
       maxPriorityFeePerGas: maxPriorityFee,
     });
   } else {
-    // Determine which factory deployed the CREATE2 address
-    const newFactory = new ethers.Contract(config.contracts.walletFactory, FACTORY_ABI, sponsor);
-    const newFactoryAddr = await newFactory.computeAddress(owner);
-    let factory;
-    if (newFactoryAddr.toLowerCase() === stealthAddress.toLowerCase()) {
-      factory = newFactory;
-    } else if (config.contracts.legacyWalletFactory) {
-      factory = new ethers.Contract(config.contracts.legacyWalletFactory, FACTORY_ABI, sponsor);
-    } else {
-      return NextResponse.json({ error: 'Stealth address does not match wallet factory' }, { status: 400 });
-    }
+    const factory = new ethers.Contract(target, FACTORY_ABI, sponsor);
     tx = await factory.deployAndDrain(owner, recipient, signature, {
       gasLimit,
       type: 2,
@@ -177,7 +224,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
   }
   const receipt = await tx.wait();
 
-  console.log('[Sponsor/CREATE2] Claim complete');
+  console.log('[Sponsor/CREATE2] Claim complete via sponsor wallet');
 
   return NextResponse.json({
     success: true,
@@ -187,109 +234,131 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
   });
 }
 
-// Legacy EOA claim: server reconstructs stealth wallet and sends funds
-async function handleLegacyEOAClaim(body: { stealthAddress: string; stealthPrivateKey: string; recipient: string }, chainId: number) {
-  const { stealthAddress, stealthPrivateKey, recipient } = body;
+// Sweep ERC-20 tokens from a deployed CREATE2 stealth wallet via execute()
+interface TokenSweepEntry {
+  tokenAddress: string;
+  signature: string; // signature for execute(tokenAddr, 0, transfer(recipient, amount))
+}
 
-  if (!stealthAddress || !stealthPrivateKey || !recipient) {
+async function handleTokenSweep(
+  body: {
+    stealthAddress: string;
+    owner: string;
+    recipient: string;
+    tokenSweeps: TokenSweepEntry[];
+    chainId?: number;
+  },
+  chainId: number,
+) {
+  const { stealthAddress, owner, recipient, tokenSweeps } = body;
+
+  if (!stealthAddress || !owner || !recipient || !Array.isArray(tokenSweeps) || tokenSweeps.length === 0) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
-
-  // Input validation
-  if (!isValidAddress(stealthAddress)) {
-    return NextResponse.json({ error: 'Invalid stealth address format' }, { status: 400 });
+  if (!isValidAddress(stealthAddress) || !isValidAddress(owner) || !isValidAddress(recipient)) {
+    return NextResponse.json({ error: 'Invalid address format' }, { status: 400 });
   }
-  if (!isValidAddress(recipient)) {
-    return NextResponse.json({ error: 'Invalid recipient address format' }, { status: 400 });
-  }
-  if (!isValidPrivateKey(stealthPrivateKey)) {
-    return NextResponse.json({ error: 'Invalid key format' }, { status: 400 });
+  if (tokenSweeps.length > 10) {
+    return NextResponse.json({ error: 'Too many tokens (max 10)' }, { status: 400 });
   }
 
-  // Rate limiting per stealth address
-  const addrKey = stealthAddress.toLowerCase();
+  // Rate limiting
+  const addrKey = `sweep_${stealthAddress.toLowerCase()}`;
   const lastClaim = claimCooldowns.get(addrKey);
   if (lastClaim && Date.now() - lastClaim < CLAIM_COOLDOWN_MS) {
-    return NextResponse.json({ error: 'Please wait before claiming again' }, { status: 429 });
+    return NextResponse.json({ error: 'Please wait before sweeping again' }, { status: 429 });
   }
   claimCooldowns.set(addrKey, Date.now());
 
   const provider = getServerProvider(chainId);
   const sponsor = getServerSponsor(chainId);
-  const stealthWallet = new ethers.Wallet(stealthPrivateKey, provider);
 
-  // Verify key matches stealth address
-  if (stealthWallet.address.toLowerCase() !== stealthAddress.toLowerCase()) {
-    return NextResponse.json({ error: 'Key does not match stealth address' }, { status: 400 });
+  // Wallet must already be deployed for token sweeps
+  const code = await provider.getCode(stealthAddress);
+  if (code === '0x') {
+    return NextResponse.json({ error: 'Wallet not deployed — drain native balance first' }, { status: 400 });
   }
 
-  // Check balance first (cheap RPC call) before doing expensive gas calculations
-  const [balance, feeData, block] = await Promise.all([
-    provider.getBalance(stealthAddress),
+  const [feeData, block] = await Promise.all([
     provider.getFeeData(),
     provider.getBlock('latest'),
   ]);
-  if (balance.isZero()) {
-    return NextResponse.json({ error: 'No funds in stealth address' }, { status: 400 });
-  }
   const baseFee = block.baseFeePerGas || feeData.gasPrice || ethers.utils.parseUnits('1', 'gwei');
   const maxPriorityFee = feeData.maxPriorityFeePerGas || ethers.utils.parseUnits('1.5', 'gwei');
-  // maxFeePerGas must be >= maxPriorityFeePerGas (EIP-1559 rule)
   const maxFeePerGas = baseFee.mul(3).lt(baseFee.add(maxPriorityFee))
     ? baseFee.add(maxPriorityFee).mul(2)
     : baseFee.mul(3);
 
-  // Gas price safety cap — refuse if network gas is abnormally high
   if (maxFeePerGas.gt(MAX_GAS_PRICE)) {
     return NextResponse.json({ error: 'Gas price too high, try again later' }, { status: 503 });
   }
 
-  const gasLimit = ethers.BigNumber.from(21000);
-  const gasNeeded = gasLimit.mul(maxFeePerGas);
-  const gasWithBuffer = gasNeeded.mul(150).div(100); // 50% buffer
+  const walletIface = new ethers.utils.Interface(STEALTH_WALLET_ABI);
+  const erc20Iface = new ethers.utils.Interface(ERC20_ABI);
+  const results: { token: string; txHash: string; amount: string }[] = [];
+  const useGelato = canUseGelato(chainId);
 
-  console.log('[Sponsor/EOA] Processing legacy claim');
+  for (const sweep of tokenSweeps) {
+    if (!isValidAddress(sweep.tokenAddress)) continue;
 
-  // Step 1: Sponsor sends gas to stealth address (simple transfer = 21000 gas)
-  const gasTx = await sponsor.sendTransaction({
-    to: stealthAddress,
-    value: gasWithBuffer,
-    gasLimit,
-    type: 2,
-    maxFeePerGas,
-    maxPriorityFeePerGas: maxPriorityFee,
-  });
-  await gasTx.wait();
-  console.log('[Sponsor/EOA] Gas funded');
+    try {
+      const token = new ethers.Contract(sweep.tokenAddress, ERC20_ABI, provider);
+      const balance: ethers.BigNumber = await token.balanceOf(stealthAddress);
+      if (balance.isZero()) continue;
 
-  // Step 2: Stealth wallet sends full balance to recipient
-  const newBalance = await provider.getBalance(stealthAddress);
-  const gasCost = gasLimit.mul(maxFeePerGas);
-  const safetyBuffer = gasCost.mul(5).div(100);
-  const sendAmount = newBalance.sub(gasCost).sub(safetyBuffer);
+      const transferData = erc20Iface.encodeFunctionData('transfer', [recipient, balance]);
+      let txHash: string;
 
-  if (sendAmount.lte(0)) {
-    return NextResponse.json({ error: 'Balance too low after gas calculation' }, { status: 400 });
+      // Primary: Gelato relay
+      if (useGelato) {
+        try {
+          const calldata = walletIface.encodeFunctionData('execute', [
+            sweep.tokenAddress, 0, transferData, sweep.signature,
+          ]);
+          const relayResult = await sponsoredRelay(chainId, stealthAddress, calldata);
+          const result = await waitForRelay(relayResult.taskId);
+          txHash = result.txHash;
+        } catch (gelatoErr) {
+          console.warn(`[TokenSweep/Gelato] Failed for ${sweep.tokenAddress}, falling back:`, gelatoErr);
+          // Fallback to sponsor wallet
+          const wallet = new ethers.Contract(stealthAddress, STEALTH_WALLET_ABI, sponsor);
+          const tx = await wallet.execute(sweep.tokenAddress, 0, transferData, sweep.signature, {
+            gasLimit: ethers.BigNumber.from(200_000),
+            type: 2,
+            maxFeePerGas,
+            maxPriorityFeePerGas: maxPriorityFee,
+          });
+          const receipt = await tx.wait();
+          txHash = receipt.transactionHash;
+        }
+      } else {
+        // Sponsor wallet path
+        const wallet = new ethers.Contract(stealthAddress, STEALTH_WALLET_ABI, sponsor);
+        const tx = await wallet.execute(sweep.tokenAddress, 0, transferData, sweep.signature, {
+          gasLimit: ethers.BigNumber.from(200_000),
+          type: 2,
+          maxFeePerGas,
+          maxPriorityFeePerGas: maxPriorityFee,
+        });
+        const receipt = await tx.wait();
+        txHash = receipt.transactionHash;
+      }
+
+      results.push({
+        token: sweep.tokenAddress,
+        txHash,
+        amount: balance.toString(),
+      });
+    } catch (e) {
+      console.warn(`[Sponsor/TokenSweep] Failed for ${sweep.tokenAddress}:`, e);
+    }
   }
 
-  console.log('[Sponsor/EOA] Sending withdrawal');
-
-  const withdrawTx = await stealthWallet.sendTransaction({
-    to: recipient,
-    value: sendAmount,
-    gasLimit,
-    maxFeePerGas,
-    maxPriorityFeePerGas: maxPriorityFee,
-    type: 2,
-  });
-  const receipt = await withdrawTx.wait();
-
-  console.log('[Sponsor/EOA] Withdraw complete');
+  console.log(`[Sponsor/TokenSweep] Swept ${results.length}/${tokenSweeps.length} tokens`);
 
   return NextResponse.json({
     success: true,
-    txHash: receipt.transactionHash,
-    amount: ethers.utils.formatEther(sendAmount),
-    gasFunded: ethers.utils.formatEther(gasWithBuffer),
+    swept: results,
   });
 }
+

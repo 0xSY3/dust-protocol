@@ -11,17 +11,22 @@ import { getChainProvider } from '@/lib/providers';
 
 const OUTGOING_STORAGE_KEY = 'dust_outgoing_payments_';
 
-function saveOutgoingPayment(senderAddress: string, payment: OutgoingPayment) {
-  const key = OUTGOING_STORAGE_KEY + senderAddress.toLowerCase();
+function outgoingKey(senderAddress: string, chainId: number): string {
+  return `${OUTGOING_STORAGE_KEY}${chainId}_${senderAddress.toLowerCase()}`;
+}
+
+function saveOutgoingPayment(senderAddress: string, chainId: number, payment: OutgoingPayment) {
+  const key = outgoingKey(senderAddress, chainId);
   const existing: OutgoingPayment[] = JSON.parse(localStorage.getItem(key) || '[]');
   existing.unshift(payment);
   // Keep last 100
   localStorage.setItem(key, JSON.stringify(existing.slice(0, 100)));
 }
 
-export function loadOutgoingPayments(senderAddress: string): OutgoingPayment[] {
+export function loadOutgoingPayments(senderAddress: string, chainId?: number): OutgoingPayment[] {
   if (typeof window === 'undefined') return [];
-  const key = OUTGOING_STORAGE_KEY + senderAddress.toLowerCase();
+  const cid = chainId ?? DEFAULT_CHAIN_ID;
+  const key = outgoingKey(senderAddress, cid);
   try {
     return JSON.parse(localStorage.getItem(key) || '[]');
   } catch {
@@ -283,7 +288,7 @@ export function useStealthSend(chainId?: number) {
       }
 
       // Persist outgoing payment for Activities
-      saveOutgoingPayment(signerAddress, {
+      saveOutgoingPayment(signerAddress, activeChainId, {
         txHash: sendTxHash,
         to: linkSlug || metaAddress.slice(0, 20),
         amount,
@@ -346,14 +351,26 @@ export function useStealthSend(chainId?: number) {
       const sendTxHash = receipt.transactionHash;
 
       // Announce via sponsored API (deployer pays gas)
+      // Encode token info in metadata: viewTag + 'T' marker + token address (20 bytes) + amount (32 bytes)
       try {
         const ephPubKey = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
-        const metadata = '0x' + generated.viewTag;
+        const tokenAddrHex = tokenAddress.replace(/^0x/, '').toLowerCase();
+        const amountHex = amountWei.toHexString().replace(/^0x/, '').padStart(64, '0');
+        const metadata = '0x' + generated.viewTag + '54' + tokenAddrHex + amountHex; // 0x54 = 'T'
         await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata, activeChainId);
       } catch (announceErr) {
         console.warn('Sponsored announcement failed but token sent:', announceErr);
         setError(`Sent successfully but announcement failed. Recipient may need to scan manually.`);
       }
+
+      // Persist outgoing payment for Activities
+      saveOutgoingPayment(signerAddress, activeChainId, {
+        txHash: sendTxHash,
+        to: metaAddress.slice(0, 20),
+        amount,
+        timestamp: Date.now(),
+        stealthAddress: generated.stealthAddress,
+      });
 
       return sendTxHash;
     } catch (e) {

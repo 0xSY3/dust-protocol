@@ -3,26 +3,38 @@
 import { useState, useEffect, ChangeEvent } from "react";
 import { Box, Text, VStack, HStack, Input, Spinner } from "@chakra-ui/react";
 import { Button } from "@/components/ui/button";
-import { colors, radius, EXPLORER_BASE } from "@/lib/design/tokens";
+import { colors, radius, getExplorerBase } from "@/lib/design/tokens";
+import { getChainConfig } from "@/config/chains";
+import { getTokensForChain, NATIVE_TOKEN_ADDRESS, type TokenConfig } from "@/config/tokens";
 import { useStealthSend, useStealthName } from "@/hooks/stealth";
 import { isStealthName, NAME_SUFFIX } from "@/lib/stealth";
+import { useAuth } from "@/contexts/AuthContext";
 import { AlertCircleIcon as AlertIcon } from "@/components/stealth/icons";
 import {
   CheckCircleIcon, AlertCircleIcon, LockIcon, ArrowUpRightIcon,
 } from "@/components/stealth/icons";
 
 export function SendForm() {
-  const { generateAddressFor, sendEthToStealth, lastGeneratedAddress, isLoading, error: sendError } = useStealthSend();
+  const { activeChainId } = useAuth();
+  const chainConfig = getChainConfig(activeChainId);
+  const symbol = chainConfig.nativeCurrency.symbol;
+  const tokens = getTokensForChain(activeChainId);
+  const { generateAddressFor, sendEthToStealth, sendTokenToStealth, lastGeneratedAddress, isLoading, error: sendError } = useStealthSend();
   const { resolveName, isConfigured: nameRegistryConfigured } = useStealthName();
 
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
+  const [selectedToken, setSelectedToken] = useState<string>(NATIVE_TOKEN_ADDRESS);
   const [sendStep, setSendStep] = useState<"input" | "confirm" | "success">("input");
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
   const [resolvedLinkSlug, setResolvedLinkSlug] = useState<string | undefined>(undefined);
   const [isResolving, setIsResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [sendTxHash, setSendTxHash] = useState<string | null>(null);
+
+  const isNativeToken = selectedToken === NATIVE_TOKEN_ADDRESS;
+  const selectedTokenConfig: TokenConfig | undefined = tokens.find(t => t.address === selectedToken);
+  const displaySymbol = isNativeToken ? symbol : (selectedTokenConfig?.symbol ?? symbol);
 
   useEffect(() => {
     const resolve = async () => {
@@ -66,12 +78,18 @@ export function SendForm() {
   };
 
   const handleSend = async () => {
-    const hash = await sendEthToStealth(resolvedAddress || recipient, amount, resolvedLinkSlug);
+    const addr = resolvedAddress || recipient;
+    let hash: string | null;
+    if (isNativeToken) {
+      hash = await sendEthToStealth(addr, amount, resolvedLinkSlug);
+    } else {
+      hash = await sendTokenToStealth(addr, selectedToken, amount);
+    }
     if (hash) { setSendTxHash(hash); setSendStep("success"); }
   };
 
   const reset = () => {
-    setRecipient(""); setAmount(""); setSendStep("input");
+    setRecipient(""); setAmount(""); setSelectedToken(NATIVE_TOKEN_ADDRESS); setSendStep("input");
     setSendTxHash(null); setResolvedAddress(null); setResolvedLinkSlug(undefined); setResolveError(null);
   };
 
@@ -102,6 +120,35 @@ export function SendForm() {
                 )}
               </Box>
             </Box>
+            {tokens.length > 0 && (
+              <Box>
+                <Text fontSize="12px" color={colors.text.tertiary} mb="8px" fontWeight={500}>Token</Text>
+                <HStack gap="6px" flexWrap="wrap">
+                  <Box as="button" px="12px" py="6px" borderRadius={radius.xs} fontSize="13px" fontWeight={500}
+                    bgColor={isNativeToken ? colors.accent.indigoDark : colors.bg.input}
+                    color={isNativeToken ? "#fff" : colors.text.secondary}
+                    border={`1px solid ${isNativeToken ? colors.accent.indigo : colors.border.default}`}
+                    cursor="pointer" transition="all 0.15s"
+                    onClick={() => setSelectedToken(NATIVE_TOKEN_ADDRESS)}>
+                    {symbol}
+                  </Box>
+                  {tokens.map(t => {
+                    const isActive = selectedToken === t.address;
+                    return (
+                      <Box as="button" key={t.address} px="12px" py="6px" borderRadius={radius.xs}
+                        fontSize="13px" fontWeight={500}
+                        bgColor={isActive ? colors.accent.indigoDark : colors.bg.input}
+                        color={isActive ? "#fff" : colors.text.secondary}
+                        border={`1px solid ${isActive ? colors.accent.indigo : colors.border.default}`}
+                        cursor="pointer" transition="all 0.15s"
+                        onClick={() => setSelectedToken(t.address)}>
+                        {t.symbol}
+                      </Box>
+                    );
+                  })}
+                </HStack>
+              </Box>
+            )}
             <Box>
               <Text fontSize="12px" color={colors.text.tertiary} mb="8px" fontWeight={500}>Amount</Text>
               <Input placeholder="0.0" type="number" step="0.001" value={amount}
@@ -111,7 +158,7 @@ export function SendForm() {
                 fontFamily="'JetBrains Mono', monospace" px="14px"
                 _placeholder={{ color: colors.text.muted }}
                 _focus={{ borderColor: colors.accent.indigo, boxShadow: colors.glow.indigo }} />
-              <Text fontSize="11px" color={colors.text.muted} mt="6px">TON on Thanos</Text>
+              <Text fontSize="11px" color={colors.text.muted} mt="6px">{displaySymbol} on {chainConfig.name}</Text>
             </Box>
           </VStack>
           <Button h="48px" bgColor={colors.accent.indigoDark} borderRadius={radius.sm}
@@ -129,7 +176,7 @@ export function SendForm() {
             <VStack gap="16px" align="stretch">
               <HStack justify="space-between">
                 <Text fontSize="13px" color={colors.text.muted}>Amount</Text>
-                <Text fontSize="18px" fontWeight={600} color={colors.text.primary} fontFamily="'JetBrains Mono', monospace">{amount} TON</Text>
+                <Text fontSize="18px" fontWeight={600} color={colors.text.primary} fontFamily="'JetBrains Mono', monospace">{amount} {displaySymbol}</Text>
               </HStack>
               <Box h="1px" bgColor={colors.border.default} />
               <HStack justify="space-between">
@@ -165,10 +212,10 @@ export function SendForm() {
           </Box>
           <VStack gap="6px">
             <Text fontSize="18px" fontWeight={600} color={colors.text.primary}>Payment Sent</Text>
-            <Text fontSize="13px" color={colors.text.muted} textAlign="center">{amount} TON sent privately</Text>
+            <Text fontSize="13px" color={colors.text.muted} textAlign="center">{amount} {displaySymbol} sent privately</Text>
           </VStack>
           {sendTxHash && (
-            <a href={`${EXPLORER_BASE}/tx/${sendTxHash}`} target="_blank" rel="noopener noreferrer">
+            <a href={`${getExplorerBase(activeChainId)}/tx/${sendTxHash}`} target="_blank" rel="noopener noreferrer">
               <HStack gap="6px" px="12px" py="6px" bgColor={colors.bg.elevated} borderRadius={radius.xs}
                 border={`1px solid ${colors.border.light}`} _hover={{ borderColor: colors.accent.indigo }}>
                 <ArrowUpRightIcon size={13} color={colors.accent.indigo} />

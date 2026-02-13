@@ -39,6 +39,13 @@ export interface StealthAnnouncement {
   txHash: string;
 }
 
+export interface TokenBalance {
+  token: string;
+  symbol: string;
+  balance: string;
+  decimals: number;
+}
+
 export interface ScanResult {
   announcement: StealthAnnouncement;
   stealthPrivateKey: string;
@@ -46,6 +53,7 @@ export interface ScanResult {
   privateKeyVerified?: boolean;
   derivedAddress?: string;
   walletType?: 'eoa' | 'create2' | 'account' | 'eip7702';
+  tokenBalances?: TokenBalance[];
 }
 
 export const SCHEME_ID = { SECP256K1: 1 } as const;
@@ -66,8 +74,6 @@ export const CANONICAL_ADDRESSES: StealthContractAddresses = {
   registry: defaultConfig.contracts.registry,
 };
 
-export const DEPLOYMENT_BLOCK = defaultConfig.deploymentBlock;
-
 export const STEALTH_WALLET_FACTORY = defaultConfig.contracts.walletFactory;
 export const STEALTH_WALLET_CREATION_CODE = defaultConfig.creationCodes.wallet;
 
@@ -82,7 +88,6 @@ export const STEALTH_WALLET_FACTORY_ABI = [
 
 export const ENTRY_POINT_ADDRESS = defaultConfig.contracts.entryPoint;
 export const STEALTH_ACCOUNT_FACTORY = defaultConfig.contracts.accountFactory;
-export const DUST_PAYMASTER_ADDRESS = defaultConfig.contracts.paymaster;
 export const STEALTH_ACCOUNT_CREATION_CODE = defaultConfig.creationCodes.account;
 
 export const LEGACY_STEALTH_ACCOUNT_FACTORY = defaultConfig.contracts.legacyAccountFactory;
@@ -106,9 +111,6 @@ export const DUST_PAYMASTER_ABI = [
   'function verifyingSigner() view returns (address)',
 ];
 
-export const DUST_POOL_ADDRESS = defaultConfig.contracts.dustPool ?? '';
-export const DUST_POOL_DEPLOYMENT_BLOCK = defaultConfig.dustPoolDeploymentBlock ?? 0;
-
 export const STEALTH_SUB_ACCOUNT_7702_ABI = [
   'function initialize(address _owner, bytes sig) external',
   'function drain(address to, bytes sig) external',
@@ -131,7 +133,7 @@ export const STEALTH_SUB_ACCOUNT_7702_ABI = [
 ];
 
 export const DUST_POOL_ABI = [
-  'function deposit(bytes32 commitment) payable',
+  'function deposit(bytes32 commitment, uint256 amount) payable',
   'function withdraw(bytes proof, bytes32 root, bytes32 nullifierHash, address recipient, uint256 amount)',
   'function commitments(bytes32) view returns (bool)',
   'function nullifierHashes(bytes32) view returns (bool)',

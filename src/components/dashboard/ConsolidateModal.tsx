@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Box, Text, VStack, HStack, Input } from "@chakra-ui/react";
 import { colors, radius, shadows } from "@/lib/design/tokens";
+import { getChainConfig } from "@/config/chains";
+import { useAuth } from "@/contexts/AuthContext";
 import type { ConsolidateProgress } from "@/hooks/stealth/useDustPool";
 import type { StoredDeposit } from "@/lib/dustpool";
 import { ethers } from "ethers";
@@ -28,6 +30,8 @@ export function ConsolidateModal({
   onReset,
   isConsolidating,
 }: ConsolidateModalProps) {
+  const { activeChainId } = useAuth();
+  const symbol = getChainConfig(activeChainId).nativeCurrency.symbol;
   const [recipient, setRecipient] = useState("");
 
   if (!isOpen) return null;
@@ -88,7 +92,7 @@ export function ConsolidateModal({
           >
             <Text fontSize="13px" color={colors.text.tertiary} mb="4px">Pool Balance</Text>
             <Text fontSize="24px" fontWeight={800} color={colors.text.primary}>
-              {parseFloat(poolBalance).toFixed(6)} TON
+              {parseFloat(poolBalance).toFixed(6)} {symbol}
             </Text>
             <Text fontSize="12px" color={colors.text.muted} mt="4px">
               {unwithdrawable.length} deposit{unwithdrawable.length !== 1 ? "s" : ""} in pool
@@ -110,7 +114,7 @@ export function ConsolidateModal({
                     Deposit #{i + 1}
                   </Text>
                   <Text fontSize="12px" fontWeight={600} color={colors.text.primary}>
-                    {parseFloat(ethers.utils.formatEther(d.amount)).toFixed(6)} TON
+                    {parseFloat(ethers.utils.formatEther(d.amount)).toFixed(6)} {symbol}
                   </Text>
                 </HStack>
               ))}

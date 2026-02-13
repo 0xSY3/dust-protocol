@@ -2,7 +2,9 @@
 
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
 import { colors, radius, shadows } from "@/lib/design/tokens";
-import { RefreshIcon, TONIcon } from "@/components/stealth/icons";
+import { getChainConfig } from "@/config/chains";
+import { useAuth } from "@/contexts/AuthContext";
+import { RefreshIcon, ChainIcon } from "@/components/stealth/icons";
 
 interface UnifiedBalanceCardProps {
   total: number;
@@ -23,6 +25,9 @@ export function UnifiedBalanceCard({
   isLoading,
   onRefresh,
 }: UnifiedBalanceCardProps) {
+  const { activeChainId } = useAuth();
+  const chainConfig = getChainConfig(activeChainId);
+  const symbol = chainConfig.nativeCurrency.symbol;
   const loading = isScanning || isLoading;
   const hasBalance = total > 0;
   const stealthPct = hasBalance ? (stealthTotal / total) * 100 : 0;
@@ -69,7 +74,7 @@ export function UnifiedBalanceCard({
             >
               {total.toFixed(4)}
             </Text>
-            <Text fontSize="14px" fontWeight={500} color={colors.text.muted}>TON</Text>
+            <Text fontSize="14px" fontWeight={500} color={colors.text.muted}>{symbol}</Text>
           </HStack>
 
           {/* Breakdown bar + labels */}
@@ -134,11 +139,11 @@ export function UnifiedBalanceCard({
                   border="1.5px solid rgba(42, 114, 229, 0.2)"
                   display="flex" alignItems="center" justifyContent="center"
                 >
-                  <TONIcon size={22} />
+                  <ChainIcon size={22} chainId={activeChainId} />
                 </Box>
                 <VStack align="flex-start" gap="1px">
-                  <Text fontSize="13px" fontWeight={700} color={colors.text.primary}>TON</Text>
-                  <Text fontSize="11px" color={colors.text.muted}>Thanos Network</Text>
+                  <Text fontSize="13px" fontWeight={700} color={colors.text.primary}>{symbol}</Text>
+                  <Text fontSize="11px" color={colors.text.muted}>{chainConfig.name}</Text>
                 </VStack>
               </HStack>
               <VStack align="flex-end" gap="1px">

@@ -62,14 +62,13 @@ export async function buildSignedAuthorization(
   // Dynamic import viem to avoid bundling it on chains that don't use 7702
   const { privateKeyToAccount } = await import('viem/accounts');
   const { createWalletClient, http } = await import('viem');
-  const { sepolia } = await import('viem/chains');
 
   const key = stealthPrivateKey.startsWith('0x') ? stealthPrivateKey : `0x${stealthPrivateKey}`;
   const account = privateKeyToAccount(key as `0x${string}`);
 
   const client = createWalletClient({
     account,
-    chain: sepolia,
+    chain: config.viemChain,
     transport: http(config.rpcUrl),
   });
 
