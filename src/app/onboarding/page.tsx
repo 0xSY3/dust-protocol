@@ -10,14 +10,17 @@ import { DustLogo } from "@/components/DustLogo";
 import { FlickeringGrid } from "@/components/FlickeringGrid";
 
 export default function OnboardingPage() {
-  const { isConnected, isOnboarded, isHydrated } = useAuth();
+  const { isConnected, isOnboarded, isHydrated, address } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!isHydrated) return;
     if (!isConnected) router.replace("/");
+    // Wait for address before checking isOnboarded — avoids flash of onboarding wizard
+    // when wallet is connected but address hasn't populated yet
+    if (isConnected && !address) return;
     if (isOnboarded) router.replace("/dashboard");
-  }, [isConnected, isOnboarded, isHydrated, router]);
+  }, [isConnected, isOnboarded, isHydrated, address, router]);
 
   if (!isConnected || !isHydrated) return null;
 

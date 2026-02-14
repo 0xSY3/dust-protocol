@@ -71,7 +71,7 @@ const FarcasterIcon = ({ size = 18 }: { size?: number }) => (
 );
 
 export default function Home() {
-  const { isConnected, isOnboarded, isHydrated } = useAuth();
+  const { isConnected, isOnboarded, isHydrated, address } = useAuth();
   const { login: privyLogin } = useLogin();
   const { connect } = useConnect();
   const router = useRouter();
@@ -82,12 +82,15 @@ export default function Home() {
 
   useEffect(() => {
     if (!isHydrated) return;
+    // Wait for address to be populated — isConnected can be true before address is available,
+    // which causes all isOnboarded checks to fail and incorrectly routes to /onboarding
+    if (isConnected && !address) return;
     if (isConnected && isOnboarded) {
       router.replace("/dashboard");
     } else if (isConnected && !isOnboarded) {
       router.replace("/onboarding");
     }
-  }, [isConnected, isOnboarded, isHydrated, router]);
+  }, [isConnected, isOnboarded, isHydrated, address, router]);
 
   const handlePaySearch = () => {
     const name = searchName.trim().toLowerCase().replace(/\.tok$/, "");
@@ -95,7 +98,7 @@ export default function Home() {
     router.push(`/pay/${name}`);
   };
 
-  if (!isHydrated || (isConnected && isOnboarded)) {
+  if (!isHydrated || (isConnected && !address) || (isConnected && isOnboarded)) {
     return (
       <Box minH="100vh" bg={colors.bg.page} display="flex" alignItems="center" justifyContent="center">
         <VStack gap="16px">

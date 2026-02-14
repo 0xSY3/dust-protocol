@@ -8,7 +8,7 @@ import { Sidebar } from "./Sidebar";
 import { colors } from "@/lib/design/tokens";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isConnected, isOnboarded, isHydrated } = useAuth();
+  const { isConnected, isOnboarded, isHydrated, address } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -22,11 +22,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Wait for address to be populated — isConnected can be true before address is available,
+    // which causes all isOnboarded checks to fail and incorrectly routes to /onboarding
+    if (!address) return;
+
     if (!isOnboarded) {
       router.replace("/onboarding");
       return;
     }
-  }, [isConnected, isOnboarded, isHydrated, pathname, router]);
+  }, [isConnected, isOnboarded, isHydrated, address, pathname, router]);
 
   // For landing, onboarding, and public pay pages — no sidebar
   if (pathname === "/" || pathname === "/onboarding" || pathname.startsWith("/pay/")) {
@@ -34,7 +38,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   // Show minimal loading until hydration completes to prevent content flash
-  if (!isHydrated || !isConnected) {
+  if (!isHydrated || !isConnected || !address) {
     return (
       <Box minH="100vh" bg={colors.bg.page} display="flex" alignItems="center" justifyContent="center">
         <Box w="24px" h="24px" border="2px solid" borderColor={colors.accent.indigo} borderTopColor="transparent" borderRadius="50%"
