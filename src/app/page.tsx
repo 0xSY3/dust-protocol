@@ -546,10 +546,12 @@ export default function Home() {
             <Text fontSize="11px" color={colors.border.light}>·</Text>
             <Box
               as="a"
+              // @ts-ignore - Chakra UI v3 polymorphic typing issue with href
               href="mailto:support@dustprotocol.app"
               cursor="pointer"
               transition={transitions.base}
               _hover={{ opacity: 0.7 }}
+              textDecoration="none"
             >
               <HStack gap="6px">
                 <MailIcon size={12} color={colors.text.muted} />
