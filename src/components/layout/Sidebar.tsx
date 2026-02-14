@@ -4,10 +4,12 @@ import { Box, Text, VStack, HStack } from "@chakra-ui/react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useAccount, useDisconnect } from "wagmi";
+import { useAuth } from "@/contexts/AuthContext";
 import { colors, radius, shadows } from "@/lib/design/tokens";
 import {
   GridIcon, LinkIcon, ActivityIcon, SettingsIcon, LogOutIcon, StarIcon,
 } from "@/components/stealth/icons";
+import { DustLogo } from "@/components/DustLogo";
 import { ChainSelector } from "@/components/ChainSelector";
 
 interface NavItem {
@@ -28,6 +30,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const { address } = useAccount();
   const { disconnect } = useDisconnect();
+  const { ownedNames } = useAuth();
+  const displayName = ownedNames.length > 0 ? `${ownedNames[0].name}.tok` : null;
 
   return (
     <>
@@ -47,9 +51,10 @@ export function Sidebar() {
       >
         {/* Logo */}
         <Box p="28px 24px 24px">
-          <HStack gap="8px" align="baseline">
+          <HStack gap="10px" align="center">
+            <DustLogo size={28} color={colors.accent.indigo} />
             <Text fontSize="20px" fontWeight={800} color={colors.text.primary} letterSpacing="-0.03em">
-              Dust Protocol
+              Dust
             </Text>
             <Box
               px="7px" py="2px"
@@ -101,9 +106,15 @@ export function Sidebar() {
                 bgColor={colors.bg.input}
                 borderRadius={radius.xs}
               >
-                <Text fontSize="12px" color={colors.text.muted} fontFamily="'JetBrains Mono', monospace">
-                  {address.slice(0, 8)}...{address.slice(-6)}
-                </Text>
+                {displayName ? (
+                  <Text fontSize="13px" fontWeight={600} color={colors.text.primary}>
+                    {displayName}
+                  </Text>
+                ) : (
+                  <Text fontSize="12px" color={colors.text.muted} fontFamily="'JetBrains Mono', monospace">
+                    {address.slice(0, 8)}...{address.slice(-6)}
+                  </Text>
+                )}
               </Box>
               <Box
                 as="button"
