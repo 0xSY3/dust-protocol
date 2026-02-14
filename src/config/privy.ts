@@ -9,7 +9,7 @@ export const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID || '';
 export const isPrivyEnabled = !!PRIVY_APP_ID;
 
 export const PRIVY_CONFIG: PrivyClientConfig = {
-  loginMethods: ['google', 'email', 'farcaster', 'wallet'],
+  loginMethods: ['google', 'twitter', 'farcaster', 'email', 'wallet'],
   appearance: {
     theme: 'dark',
     accentColor: '#7c7fff', // matches PrivateWallet indigo accent
