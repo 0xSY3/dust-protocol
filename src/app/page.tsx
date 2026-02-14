@@ -209,24 +209,28 @@ export default function Home() {
         {/* Header */}
         <Box as="header" position="relative" zIndex={10} px="24px" py="24px">
           <Box maxW="1200px" mx="auto" display="flex" alignItems="center" justifyContent="space-between">
-            <HStack gap="10px" align="center">
-              <DustLogo size={28} color="white" />
-              <Text
-                fontSize="22px"
-                fontWeight="800"
-                color={colors.text.primary}
-                fontFamily={typography.fontFamily.heading}
-                letterSpacing="-0.03em"
-              >
-                Dust
-              </Text>
-              <Text
-                {...typography.label.sm}
-                color={colors.text.muted}
-                letterSpacing="0.1em"
-              >
-                Protocol
-              </Text>
+            <HStack gap="12px" align="center">
+              <DustLogo size={28} color={colors.accent.indigoBright} />
+              <HStack gap="6px" align="baseline">
+                <Text
+                  fontSize="22px"
+                  fontWeight="700"
+                  color={colors.text.primary}
+                  fontFamily={typography.fontFamily.heading}
+                  letterSpacing="-0.02em"
+                >
+                  Dust
+                </Text>
+                <Text
+                  fontSize="22px"
+                  fontWeight="500"
+                  color={colors.text.secondary}
+                  fontFamily={typography.fontFamily.heading}
+                  letterSpacing="-0.02em"
+                >
+                  Protocol
+                </Text>
+              </HStack>
             </HStack>
             <HStack gap="6px">
               <Box w="6px" h="6px" borderRadius="50%" bg="rgba(74,117,240,0.6)" />
