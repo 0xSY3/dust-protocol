@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
 /// @title StealthSubAccount7702 — EIP-7702 delegation target for stealth addresses
 /// @notice This contract is NOT deployed per-user. A single instance is deployed, and
 ///         stealth EOAs delegate their code to it via EIP-7702 (type-4 transaction).
@@ -10,7 +12,7 @@ pragma solidity ^0.8.20;
 ///         Key security model: drain() and initialize() verify signatures from
 ///         address(this) — the delegated stealth EOA — not msg.sender, because the
 ///         type-4 tx is submitted by a sponsor relayer, not the stealth key holder.
-contract StealthSubAccount7702 {
+contract StealthSubAccount7702 is ReentrancyGuard {
     address public owner;
     bool public initialized;
     uint256 private _drainNonce;
@@ -43,9 +45,6 @@ contract StealthSubAccount7702 {
     error TransferFailed();
     error InvalidSignature();
     error CallFailed();
-    error Reentrancy();
-
-    uint256 private _reentrancyGuard = 1;
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -55,13 +54,6 @@ contract StealthSubAccount7702 {
     modifier whenInitialized() {
         if (!initialized) revert NotInitialized();
         _;
-    }
-
-    modifier nonReentrant() {
-        if (_reentrancyGuard != 1) revert Reentrancy();
-        _reentrancyGuard = 2;
-        _;
-        _reentrancyGuard = 1;
     }
 
     receive() external payable {}

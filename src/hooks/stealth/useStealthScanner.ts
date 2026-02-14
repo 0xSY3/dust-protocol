@@ -665,6 +665,9 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       }
 
       if (claimResult) {
+        // Zeroize private key — no longer needed after successful drain
+        privateKeysRef.current.delete(txHash);
+        keysSnapshot.delete(txHash);
         setPayments(prev => prev.map(p =>
           p.announcement.txHash === txHash ? { ...p, claimed: true, balance: '0', autoClaiming: false } : p
         ));
@@ -902,6 +905,9 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
         throw new Error('Claim failed');
       }
 
+      // Zeroize private key — no longer needed after successful drain
+      privateKeysRef.current.delete(payment.announcement.txHash);
+
       setPayments(prev => prev.map(p =>
         p.announcement.txHash === payment.announcement.txHash ? { ...p, claimed: true, balance: '0' } : p
       ));
@@ -983,6 +989,9 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
 
       if (result) {
         deposited++;
+        // Zeroize private key — no longer needed after successful pool deposit
+        privateKeysRef.current.delete(payment.announcement.txHash);
+        keysSnapshot.delete(payment.announcement.txHash);
         setPayments(prev => prev.map(p =>
           p.announcement.txHash === payment.announcement.txHash
             ? { ...p, claimed: true, balance: '0' }
@@ -1014,6 +1023,12 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       if (!result || result.swept.length === 0) return false;
 
       // Update tokenBalances to remove swept tokens
+      const fullyClaimedAfterSweep = parseFloat(payment.balance || '0') === 0 &&
+        result.swept.length === (payment.tokenBalances ?? []).length;
+      if (fullyClaimedAfterSweep) {
+        // Zeroize private key — no tokens or native balance remain
+        privateKeysRef.current.delete(payment.announcement.txHash);
+      }
       setPayments(prev => prev.map(p => {
         if (p.announcement.txHash !== payment.announcement.txHash) return p;
         const sweptAddrs = new Set(result.swept.map(s => s.token.toLowerCase()));
