@@ -544,19 +544,20 @@ export default function Home() {
               </Text>
             </HStack>
             <Text fontSize="11px" color={colors.border.light}>·</Text>
-            <HStack
-              gap="6px"
+            <Box
               as="a"
               href="mailto:support@dustprotocol.app"
               cursor="pointer"
               transition={transitions.base}
               _hover={{ opacity: 0.7 }}
             >
-              <MailIcon size={12} color={colors.text.muted} />
-              <Text fontSize="11px" color={colors.text.muted} letterSpacing="0.02em" fontFamily={typography.fontFamily.mono}>
-                support@dustprotocol.app
-              </Text>
-            </HStack>
+              <HStack gap="6px">
+                <MailIcon size={12} color={colors.text.muted} />
+                <Text fontSize="11px" color={colors.text.muted} letterSpacing="0.02em" fontFamily={typography.fontFamily.mono}>
+                  support@dustprotocol.app
+                </Text>
+              </HStack>
+            </Box>
           </HStack>
         </Box>
       </Box>
