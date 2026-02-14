@@ -3,7 +3,7 @@
 export type { StealthKeyPair, StealthMetaAddress, GeneratedStealthAddress, StealthAnnouncement, ScanResult, StealthContractAddresses, TokenBalance } from './types';
 export { SCHEME_ID, CANONICAL_ADDRESSES, STEALTH_WALLET_FACTORY, STEALTH_WALLET_FACTORY_ABI, ENTRY_POINT_ADDRESS, STEALTH_ACCOUNT_FACTORY, STEALTH_ACCOUNT_FACTORY_ABI, ENTRY_POINT_ABI, DUST_PAYMASTER_ABI, DUST_POOL_ABI } from './types';
 
-export { generateStealthKeyPair, deriveStealthKeyPairFromSignature, deriveStealthKeyPairFromSignatureAndPin, formatStealthMetaAddress, parseStealthMetaAddress, isValidCompressedPublicKey, getPublicKeyFromPrivate, decompressPublicKey, STEALTH_KEY_DERIVATION_MESSAGE } from './keys';
+export { generateStealthKeyPair, deriveStealthKeyPairFromSignature, deriveStealthKeyPairFromSignatureAndPin, formatStealthMetaAddress, parseStealthMetaAddress, isValidCompressedPublicKey, getPublicKeyFromPrivate, decompressPublicKey, getKeyVersion, setKeyVersion, STEALTH_KEY_DERIVATION_MESSAGE } from './keys';
 
 export { generateStealthAddress, computeStealthPrivateKey, verifyStealthAddress, computeViewTag, getAddressFromPrivateKey, computeStealthWalletAddress, computeStealthAccountAddress, signWalletDrain, signWalletExecute, signUserOp } from './address';
 

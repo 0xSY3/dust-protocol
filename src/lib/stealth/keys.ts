@@ -3,7 +3,11 @@
 import { ec as EC } from 'elliptic';
 import { ethers } from 'ethers';
 import type { StealthKeyPair, StealthMetaAddress } from './types';
-import { deriveSpendingSeed, deriveViewingSeed, deriveSpendingSeedV1, deriveViewingSeedV1 } from './pin';
+import {
+  deriveSpendingSeed, deriveViewingSeed,
+  deriveSpendingSeedV0, deriveViewingSeedV0,
+  deriveSpendingSeedV1, deriveViewingSeedV1,
+} from './pin';
 
 const secp256k1 = new EC('secp256k1');
 
@@ -48,14 +52,27 @@ export function deriveStealthKeyPairFromSignature(signature: string): StealthKey
 
 const KEY_VERSION_STORAGE = 'dust_key_version_';
 
-function getKeyVersion(address?: string): number {
+/**
+ * Detect key derivation version for a wallet address.
+ * - v0: Original SHA-512 derivation (pre-audit users)
+ * - v1: PBKDF2 with old salts (intermediate, rarely used)
+ * - v2: PBKDF2 with "v2" salts (current, post-audit)
+ *
+ * If no version is stored, existing users (who have a PIN) are assumed v0.
+ * New users (no PIN) default to v2.
+ */
+export function getKeyVersion(address?: string): number {
   if (typeof window === 'undefined' || !address) return 2;
   const stored = localStorage.getItem(KEY_VERSION_STORAGE + address.toLowerCase());
+  if (stored === '2') return 2;
   if (stored === '1') return 1;
-  return 2;
+  if (stored === '0') return 0;
+  // No version stored — check if this is a pre-audit user (has stored PIN)
+  const hasPin = !!localStorage.getItem('dust_pin_' + address.toLowerCase());
+  return hasPin ? 0 : 2;
 }
 
-function setKeyVersion(address: string, version: number): void {
+export function setKeyVersion(address: string, version: number): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(KEY_VERSION_STORAGE + address.toLowerCase(), String(version));
 }
@@ -63,27 +80,28 @@ function setKeyVersion(address: string, version: number): void {
 export function deriveStealthKeyPairFromSignatureAndPin(signature: string, pin: string, walletAddress?: string): StealthKeyPair {
   const version = getKeyVersion(walletAddress);
 
-  // Legacy v1 user — use old salts for backwards compat
-  if (version === 1) {
-    const spendingSeed = deriveSpendingSeedV1(signature, pin);
-    const viewingSeed = deriveViewingSeedV1(signature, pin);
-    const spending = secp256k1.keyFromPrivate(spendingSeed, 'hex');
-    const viewing = secp256k1.keyFromPrivate(viewingSeed, 'hex');
-    return {
-      spendingPrivateKey: spending.getPrivate('hex').padStart(64, '0'),
-      spendingPublicKey: spending.getPublic(true, 'hex'),
-      viewingPrivateKey: viewing.getPrivate('hex').padStart(64, '0'),
-      viewingPublicKey: viewing.getPublic(true, 'hex'),
-    };
+  let spendingSeed: string;
+  let viewingSeed: string;
+
+  if (version === 0) {
+    // True original derivation — SHA-512 (pre-audit users)
+    spendingSeed = deriveSpendingSeedV0(signature, pin);
+    viewingSeed = deriveViewingSeedV0(signature, pin);
+    if (walletAddress) setKeyVersion(walletAddress, 0);
+  } else if (version === 1) {
+    // Legacy v1 — PBKDF2 with old salts
+    spendingSeed = deriveSpendingSeedV1(signature, pin);
+    viewingSeed = deriveViewingSeedV1(signature, pin);
+    if (walletAddress) setKeyVersion(walletAddress, 1);
+  } else {
+    // v2 (default for new users) — PBKDF2 with "v2" salts
+    spendingSeed = deriveSpendingSeed(signature, pin);
+    viewingSeed = deriveViewingSeed(signature, pin);
+    if (walletAddress) setKeyVersion(walletAddress, 2);
   }
 
-  // v2 (default for new users)
-  const spendingSeed = deriveSpendingSeed(signature, pin);
-  const viewingSeed = deriveViewingSeed(signature, pin);
   const spending = secp256k1.keyFromPrivate(spendingSeed, 'hex');
   const viewing = secp256k1.keyFromPrivate(viewingSeed, 'hex');
-
-  if (walletAddress) setKeyVersion(walletAddress, 2);
 
   return {
     spendingPrivateKey: spending.getPrivate('hex').padStart(64, '0'),

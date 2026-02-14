@@ -1,7 +1,8 @@
 // HD wallet derivation for claim addresses
 
 import { ethers } from 'ethers';
-import { deriveClaimSeed } from './pin';
+import { deriveClaimSeed, deriveClaimSeedV0 } from './pin';
+import { getKeyVersion } from './keys';
 
 export interface DerivedClaimAddress {
   address: string;
@@ -40,12 +41,16 @@ export function deriveClaimAddresses(signature: string, count: number): DerivedC
   return Array.from({ length: count }, (_, i) => deriveClaimAddressAtIndex(seed, i));
 }
 
-export function deriveSeedFromSignatureAndPin(signature: string, pin: string): string {
+export function deriveSeedFromSignatureAndPin(signature: string, pin: string, walletAddress?: string): string {
+  const version = getKeyVersion(walletAddress);
+  if (version === 0) {
+    return '0x' + deriveClaimSeedV0(signature, pin);
+  }
   return '0x' + deriveClaimSeed(signature, pin);
 }
 
-export function deriveClaimAddressesWithPin(signature: string, pin: string, count: number): DerivedClaimAddress[] {
-  const seed = deriveSeedFromSignatureAndPin(signature, pin);
+export function deriveClaimAddressesWithPin(signature: string, pin: string, count: number, walletAddress?: string): DerivedClaimAddress[] {
+  const seed = deriveSeedFromSignatureAndPin(signature, pin, walletAddress);
   return Array.from({ length: count }, (_, i) => deriveClaimAddressAtIndex(seed, i));
 }
 

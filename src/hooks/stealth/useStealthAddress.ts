@@ -134,7 +134,7 @@ export function useStealthAddress() {
       // Derive claim addresses — PIN-based if PIN provided
       const stored = loadClaimAddressesFromStorage(address);
       const derived = pin
-        ? deriveClaimAddressesWithPin(sig, pin, 3)
+        ? deriveClaimAddressesWithPin(sig, pin, 3, address)
         : deriveClaimAddresses(sig, 3);
       const withLabels: ClaimAddressWithBalance[] = derived.map(a => ({
         ...a,

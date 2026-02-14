@@ -28,7 +28,24 @@ export function deriveClaimSeed(signature: string, pin: string): string {
   return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
 }
 
-// Legacy v1 derivation — used for migration fallback only
+// True original v0 derivation — plain SHA-512, pre-audit (before H2 PBKDF2 change)
+// Existing users who registered before the audit have keys derived this way.
+export function deriveSpendingSeedV0(signature: string, pin: string): string {
+  const input = new TextEncoder().encode(signature + pin + 'Dust Spend Authority');
+  return bytesToHex(sha512(input).slice(0, 32));
+}
+
+export function deriveViewingSeedV0(signature: string, pin: string): string {
+  const input = new TextEncoder().encode(signature + pin + 'Dust View Authority');
+  return bytesToHex(sha512(input).slice(0, 32));
+}
+
+export function deriveClaimSeedV0(signature: string, pin: string): string {
+  const input = new TextEncoder().encode(signature + pin + 'Dust Claim Authority');
+  return bytesToHex(sha512(input).slice(0, 32));
+}
+
+// Legacy v1 derivation — PBKDF2 with old salts (intermediate, rarely used)
 export function deriveSpendingSeedV1(signature: string, pin: string): string {
   const password = new TextEncoder().encode(signature + pin);
   const salt = new TextEncoder().encode('Dust Spend Authority');
