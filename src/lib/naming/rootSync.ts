@@ -35,7 +35,8 @@ export async function syncRootToAllChains(): Promise<{
   errors: { chainId: number; error: string }[];
 }> {
   const canonicalConfig = getChainConfig(CANONICAL_CHAIN_ID);
-  if (!canonicalConfig.contracts.nameRegistryMerkle) {
+  const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+  if (!canonicalConfig.contracts.nameRegistryMerkle || canonicalConfig.contracts.nameRegistryMerkle === ZERO_ADDRESS) {
     return { root: ethers.constants.HashZero, synced: [], errors: [{ chainId: CANONICAL_CHAIN_ID, error: 'No nameRegistryMerkle configured' }] };
   }
 
@@ -51,7 +52,6 @@ export async function syncRootToAllChains(): Promise<{
     return { root: currentRoot, synced: [], errors: [] };
   }
 
-  const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
   const destinationChains = getSupportedChains().filter(
     c => c.id !== CANONICAL_CHAIN_ID
       && c.contracts.nameVerifier

@@ -48,10 +48,20 @@ export function getServerProvider(chainId?: number): ethers.providers.JsonRpcPro
   return provider;
 }
 
+// Sponsor wallet cache — reusing the same Wallet instance per chain prevents
+// concurrent requests from getting stale EVM nonces
+const sponsorCache = new Map<number, ethers.Wallet>();
+
 export function getServerSponsor(chainId?: number): ethers.Wallet {
   const key = process.env.RELAYER_PRIVATE_KEY;
   if (!key) throw new Error('Sponsor not configured');
-  return new ethers.Wallet(key, getServerProvider(chainId));
+  const id = chainId ?? DEFAULT_CHAIN_ID;
+  let sponsor = sponsorCache.get(id);
+  if (!sponsor) {
+    sponsor = new ethers.Wallet(key, getServerProvider(id));
+    sponsorCache.set(id, sponsor);
+  }
+  return sponsor;
 }
 
 export function parseChainId(body: Record<string, unknown>): number {

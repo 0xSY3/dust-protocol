@@ -153,7 +153,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
 
   console.log('[Sponsor/CREATE2] Processing claim');
 
-  const gasLimit = ethers.BigNumber.from(300_000);
+  const gasLimit = ethers.BigNumber.from(600_000);
 
   // Check if wallet is already deployed (e.g. from a previous partial claim)
   const existingCode = await provider.getCode(stealthAddress);
