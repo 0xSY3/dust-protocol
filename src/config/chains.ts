@@ -120,7 +120,7 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
     paymaster: '0x20C28cbF9bc462Fb361C8DAB0C0375011b81BEb2',
     dustPool: '0xc95a359E66822d032A6ADA81ec410935F3a88bcD',
     dustPoolVerifier: '0x17f52f01ffcB6d3C376b2b789314808981cebb16',
-    subAccount7702: '0x29365d51Ff8007dCC7ae6c62aF450e5c8C3263f7',
+    subAccount7702: '0xdf34D138d1E0beC7127c32E9Aa1273E8B4DE7dFF', // OZ ReentrancyGuard fixed version
     nameRegistryMerkle: '0x0000000000000000000000000000000000000000', // placeholder — deploy pending
     nameVerifier: null,
   },
