@@ -67,6 +67,7 @@ body {
   font-family: var(--font-body);
   background: var(--bg-page);
   color: var(--text-primary);
+  color-scheme: dark;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -130,4 +131,34 @@ button {
 /* ─── Code / mono elements ────────────────────────────────────────────────── */
 code, pre, kbd, samp {
   font-family: var(--font-mono);
+}
+
+/* ─── Chakra UI Dark Mode Overrides ──────────────────────────────────────── */
+/* Force dark theme for all Chakra components regardless of OS preference */
+[data-theme="dark"],
+.chakra-ui-dark,
+:root {
+  --chakra-colors-bg: var(--bg-page);
+  --chakra-colors-fg: var(--text-primary);
+  --chakra-colors-border: var(--border-default);
+}
+
+/* Chakra Button — suppress default light variant styles */
+button[class*="chakra-button"] {
+  background-image: inherit;
+}
+
+/* Chakra Input / Textarea — ensure dark backgrounds */
+input[class*="chakra-input"],
+textarea[class*="chakra-textarea"] {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+/* Chakra Spinner — ensure visibility on dark bg */
+[class*="chakra-spinner"] {
+  border-color: currentColor;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
 }

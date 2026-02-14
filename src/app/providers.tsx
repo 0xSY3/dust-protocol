@@ -1,6 +1,6 @@
 "use client";
 
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { WagmiProvider, createConfig } from "@privy-io/wagmi";
 import { http } from "wagmi";
@@ -22,12 +22,23 @@ const config = createConfig({
 
 const queryClient = new QueryClient();
 
+// Custom Chakra system — force dark theme for all components
+const darkSystem = createSystem(defaultConfig, {
+  globalCss: {
+    "html, body": {
+      bg: "#06080F",
+      color: "rgba(255,255,255,0.92)",
+      colorScheme: "dark",
+    },
+  },
+});
+
 export function Providers({ children }: { children: React.ReactNode }) {
   // Skip Privy wrapping when appId is not configured (prevents crash)
   if (!isPrivyEnabled) {
     return (
       <QueryClientProvider client={queryClient}>
-        <ChakraProvider value={defaultSystem}>{children}</ChakraProvider>
+        <ChakraProvider value={darkSystem}>{children}</ChakraProvider>
       </QueryClientProvider>
     );
   }
@@ -36,7 +47,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <PrivyProvider appId={PRIVY_APP_ID} config={PRIVY_CONFIG}>
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={config}>
-          <ChakraProvider value={defaultSystem}>{children}</ChakraProvider>
+          <ChakraProvider value={darkSystem}>{children}</ChakraProvider>
         </WagmiProvider>
       </QueryClientProvider>
     </PrivyProvider>

@@ -38,7 +38,7 @@ export function UsernameStep({ onNext, initialName = "" }: UsernameStepProps) {
   return (
     <VStack gap="20px" align="stretch">
       <VStack gap="4px" align="flex-start">
-        <Text fontSize="20px" fontWeight={600} color="white" letterSpacing="-0.01em">
+        <Text fontSize="20px" fontWeight={600} color={colors.text.primary} letterSpacing="-0.01em">
           Choose a username
         </Text>
         <Text fontSize="13px" color={colors.text.muted}>
@@ -118,13 +118,13 @@ export function UsernameStep({ onNext, initialName = "" }: UsernameStepProps) {
       <Button
         w="100%"
         h="44px"
-        bgColor={canContinue ? buttonVariants.primary.bg : inputStates.disabled.bg}
+        bg={canContinue ? buttonVariants.primary.bg : colors.bg.elevated}
         borderRadius={radius.sm}
-        border={canContinue ? `1px solid ${colors.border.accent}` : `1px solid ${colors.border.default}`}
+        border={canContinue ? "none" : `1px solid ${colors.border.default}`}
         boxShadow={canContinue ? buttonVariants.primary.boxShadow : "none"}
-        fontWeight={500}
+        fontWeight={600}
         fontSize="14px"
-        color={canContinue ? colors.text.primary : colors.text.muted}
+        color={canContinue ? "#fff" : colors.text.muted}
         _hover={
           canContinue
             ? {
