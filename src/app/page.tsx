@@ -454,7 +454,7 @@ export default function Home() {
               <Box flex={1} h="1px" bg={`linear-gradient(90deg, transparent, ${colors.border.default}, transparent)`} />
             </HStack>
 
-            {/* Pay someone search — glass style */}
+            {/* Pay someone search — enhanced visibility */}
             <HStack gap="8px" w="100%" maxW="380px" className="fade-up d5">
               <Input
                 placeholder="username.tok"
@@ -463,20 +463,25 @@ export default function Home() {
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handlePaySearch(); }}
                 h="52px"
                 flex={1}
-                bgColor={glass.input.bg}
-                border={glass.input.border}
+                bgColor="rgba(20, 20, 40, 0.6)"
+                border="1px solid rgba(74, 117, 240, 0.25)"
                 borderRadius={radius.md}
                 color={colors.text.primary}
                 fontSize="15px"
                 fontWeight={500}
                 fontFamily={typography.fontFamily.body}
                 px="18px"
-                backdropFilter={glass.input.backdropFilter}
-                _placeholder={{ color: colors.text.muted }}
+                backdropFilter="blur(12px)"
+                boxShadow="inset 0 1px 2px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(74, 117, 240, 0.08)"
+                _placeholder={{ color: "rgba(160, 174, 192, 0.7)" }}
+                _hover={{
+                  borderColor: "rgba(74, 117, 240, 0.4)",
+                  bgColor: "rgba(25, 25, 45, 0.7)",
+                }}
                 _focus={{
                   borderColor: colors.border.focus,
-                  boxShadow: shadows.inputFocus,
-                  bgColor: inputStates.focus.bg,
+                  boxShadow: `${shadows.inputFocus}, inset 0 1px 2px rgba(0, 0, 0, 0.2)`,
+                  bgColor: "rgba(25, 25, 45, 0.8)",
                 }}
                 transition={transitions.base}
               />
