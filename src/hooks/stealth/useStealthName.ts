@@ -6,6 +6,7 @@ import {
   formatNameWithSuffix, isValidName, getNameOwner, discoverNameByMetaAddress,
   discoverNameByWalletHistory, CANONICAL_ADDRESSES,
 } from '@/lib/stealth';
+import { DEFAULT_CHAIN_ID } from '@/config/chains';
 
 interface OwnedName {
   name: string;
@@ -14,15 +15,34 @@ interface OwnedName {
 
 const USERNAME_KEY = 'dust_username_';
 
-function getStoredUsername(addr: string): string | null {
-  try { return localStorage.getItem(USERNAME_KEY + addr.toLowerCase()); } catch { return null; }
+function getScopedKey(chainId: number, addr: string): string {
+  return `${USERNAME_KEY}${chainId}_${addr.toLowerCase()}`;
 }
 
-function storeUsername(addr: string, name: string): void {
-  try { localStorage.setItem(USERNAME_KEY + addr.toLowerCase(), name); } catch {}
+function getStoredUsername(addr: string, chainId: number = DEFAULT_CHAIN_ID): string | null {
+  try {
+    // Try chain-scoped key first
+    const scoped = localStorage.getItem(getScopedKey(chainId, addr));
+    if (scoped) return scoped;
+
+    // Migrate from legacy unscoped key (C4/C5 audit fix)
+    const legacyKey = USERNAME_KEY + addr.toLowerCase();
+    const legacy = localStorage.getItem(legacyKey);
+    if (legacy) {
+      localStorage.setItem(getScopedKey(chainId, addr), legacy);
+      localStorage.removeItem(legacyKey);
+      return legacy;
+    }
+
+    return null;
+  } catch { return null; }
 }
 
-export function useStealthName(userMetaAddress?: string | null) {
+function storeUsername(addr: string, name: string, chainId: number = DEFAULT_CHAIN_ID): void {
+  try { localStorage.setItem(getScopedKey(chainId, addr), name); } catch {}
+}
+
+export function useStealthName(userMetaAddress?: string | null, chainId?: number) {
   const { address, isConnected } = useAccount();
   const [ownedNames, setOwnedNames] = useState<OwnedName[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,6 +51,7 @@ export function useStealthName(userMetaAddress?: string | null) {
   const metaRef = useRef(userMetaAddress);
   metaRef.current = userMetaAddress;
 
+  const activeChainId = chainId ?? DEFAULT_CHAIN_ID;
   const isConfigured = isNameRegistryConfigured();
 
   const validateName = useCallback((name: string): { valid: boolean; error?: string } => {
@@ -52,17 +73,17 @@ export function useStealthName(userMetaAddress?: string | null) {
     setError(null);
 
     try {
-      const names = await getNamesOwnedBy(null, address);
+      const names = await getNamesOwnedBy(null, address, chainId);
 
       if (names.length > 0) {
         setOwnedNames(names.reverse().map(name => ({ name, fullName: formatNameWithSuffix(name) })));
         // Also persist to localStorage for future resilience
-        storeUsername(address, names[0]);
+        storeUsername(address, names[0], activeChainId);
         return;
       }
 
       // On-chain empty — check localStorage
-      const storedName = getStoredUsername(address);
+      const storedName = getStoredUsername(address, activeChainId);
       if (storedName) {
         setOwnedNames([{ name: storedName, fullName: formatNameWithSuffix(storedName) }]);
         // Try background recovery
@@ -72,7 +93,7 @@ export function useStealthName(userMetaAddress?: string | null) {
         }
       }
     } catch (e) {
-      const storedName = address ? getStoredUsername(address) : null;
+      const storedName = address ? getStoredUsername(address, activeChainId) : null;
       if (storedName) {
         setOwnedNames([{ name: storedName, fullName: formatNameWithSuffix(storedName) }]);
       }
@@ -80,7 +101,7 @@ export function useStealthName(userMetaAddress?: string | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [address, isConnected, isConfigured]);
+  }, [address, isConnected, isConfigured, chainId, activeChainId]);
 
   // Initial load
   useEffect(() => {
@@ -97,7 +118,8 @@ export function useStealthName(userMetaAddress?: string | null) {
         // First try: match by current meta-address
         let discovered = await discoverNameByMetaAddress(
           null,
-          userMetaAddress
+          userMetaAddress,
+          chainId,
         );
 
         // Second try: check ERC-6538 registration history for old meta-addresses
@@ -106,11 +128,12 @@ export function useStealthName(userMetaAddress?: string | null) {
             address,
             userMetaAddress,
             CANONICAL_ADDRESSES.registry,
+            chainId,
           );
         }
 
         if (cancelled || !discovered) return;
-        storeUsername(address, discovered);
+        storeUsername(address, discovered, activeChainId);
         setOwnedNames([{ name: discovered, fullName: formatNameWithSuffix(discovered) }]);
         // Try to recover ownership
         if (!recoveryAttempted.current) {
@@ -122,21 +145,21 @@ export function useStealthName(userMetaAddress?: string | null) {
       }
     })();
     return () => { cancelled = true; };
-  }, [userMetaAddress, address, isConfigured, ownedNames.length]);
+  }, [userMetaAddress, address, isConfigured, ownedNames.length, chainId, activeChainId]);
 
   // Background recovery: transfer name from deployer to user if needed
   const tryRecoverName = useCallback(async (name: string, userAddress: string) => {
     try {
-      const owner = await getNameOwner(null, name);
+      const owner = await getNameOwner(null, name, chainId);
       if (!owner || owner.toLowerCase() === userAddress.toLowerCase()) return; // already owned or free
       // Try sponsored transfer from deployer
       const res = await fetch('/api/sponsor-name-transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, newOwner: userAddress }),
+        body: JSON.stringify({ name, newOwner: userAddress, chainId }),
       });
       if (res.ok) {
-        const refreshedNames = await getNamesOwnedBy(null, userAddress);
+        const refreshedNames = await getNamesOwnedBy(null, userAddress, chainId);
         if (refreshedNames.length > 0) {
           setOwnedNames(refreshedNames.reverse().map(n => ({ name: n, fullName: formatNameWithSuffix(n) })));
         }
@@ -144,7 +167,7 @@ export function useStealthName(userMetaAddress?: string | null) {
     } catch {
       // Silent — recovery is best-effort
     }
-  }, []);
+  }, [chainId]);
 
   const registerName = useCallback(async (name: string, metaAddress: string): Promise<string | null> => {
     if (!isConnected || !isConfigured) {
@@ -166,12 +189,12 @@ export function useStealthName(userMetaAddress?: string | null) {
       const res = await fetch('/api/sponsor-name-register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: stripNameSuffix(name), metaAddress }),
+        body: JSON.stringify({ name: stripNameSuffix(name), metaAddress, chainId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Name registration failed');
 
-      if (address) storeUsername(address, stripNameSuffix(name));
+      if (address) storeUsername(address, stripNameSuffix(name), activeChainId);
       await loadOwnedNames();
       return data.txHash;
     } catch (e) {
@@ -181,21 +204,21 @@ export function useStealthName(userMetaAddress?: string | null) {
     } finally {
       setIsLoading(false);
     }
-  }, [address, isConnected, isConfigured, validateName, loadOwnedNames]);
+  }, [address, isConnected, isConfigured, validateName, loadOwnedNames, chainId, activeChainId]);
 
   const checkAvailability = useCallback(async (name: string): Promise<boolean | null> => {
     if (!isConfigured) return null;
     try {
-      return await isNameAvailable(null, name);
+      return await isNameAvailable(null, name, chainId);
     } catch { return null; }
-  }, [isConfigured]);
+  }, [isConfigured, chainId]);
 
   const resolveName = useCallback(async (name: string): Promise<string | null> => {
     if (!isConfigured) return null;
     try {
-      return await resolveStealthName(null, name);
+      return await resolveStealthName(null, name, chainId);
     } catch { return null; }
-  }, [isConfigured]);
+  }, [isConfigured, chainId]);
 
   const updateMetaAddress = useCallback(async (_name: string, _newMetaAddress: string): Promise<string | null> => {
     // Name meta-address updates are handled by the deployer (name owner)
