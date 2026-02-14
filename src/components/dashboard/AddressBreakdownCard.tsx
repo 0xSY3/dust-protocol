@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Box, Text, VStack, HStack } from "@chakra-ui/react";
-import { colors, radius, shadows, getExplorerBase } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, transitions, getExplorerBase } from "@/lib/design/tokens";
 import { useAuth } from "@/contexts/AuthContext";
 import { getChainConfig } from "@/config/chains";
 import { WalletIcon, ChevronDownIcon, ChevronUpIcon } from "@/components/stealth/icons";
@@ -42,10 +42,11 @@ export function AddressBreakdownCard({ claimAddresses, unclaimedPayments }: Addr
   return (
     <Box
       p="16px"
-      bgColor={colors.bg.card}
+      bg={glass.card.bg}
       borderRadius={radius.lg}
-      border={`2px solid ${colors.border.default}`}
+      border={glass.card.border}
       boxShadow={shadows.card}
+      backdropFilter={glass.card.backdropFilter}
     >
       <VStack gap="0" align="stretch">
         {/* Header — always visible */}

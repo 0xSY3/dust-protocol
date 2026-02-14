@@ -1,20 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Text, HStack } from "@chakra-ui/react";
+import { Box, HStack } from "@chakra-ui/react";
+import { colors, radius, shadows, transitions } from "@/lib/design/tokens";
 import { useRouter } from "next/navigation";
-import { colors, radius } from "@/lib/design/tokens";
 import { UsernameStep } from "./steps/UsernameStep";
 import { PinStep } from "./steps/PinStep";
 import { ActivateStep } from "./steps/ActivateStep";
 
 type Step = "username" | "pin" | "activate";
-
-const STEPS: { id: Step; label: string }[] = [
-  { id: "username", label: "Username" },
-  { id: "pin", label: "PIN" },
-  { id: "activate", label: "Activate" },
-];
+const STEPS: Step[] = ["username", "pin", "activate"];
 
 export function OnboardingWizard() {
   const router = useRouter();
@@ -22,68 +17,57 @@ export function OnboardingWizard() {
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
 
-  const currentIndex = STEPS.findIndex(s => s.id === step);
-
-  const handleUsernameNext = (name: string) => {
-    setUsername(name);
-    setStep("pin");
-  };
-
-  const handlePinNext = (p: string) => {
-    setPin(p);
-    setStep("activate");
-  };
-
-  const handleComplete = () => {
-    router.replace("/dashboard");
-  };
+  const currentIndex = STEPS.indexOf(step);
 
   return (
-    <Box w="100%" maxW="440px" mx="auto">
-      {/* Progress indicator */}
-      <HStack gap="8px" mb="32px" justify="center">
-        {STEPS.map((s, i) => (
-          <HStack key={s.id} gap="8px" align="center">
-            <Box
-              w="28px"
-              h="28px"
-              borderRadius="50%"
-              bgColor={i <= currentIndex ? colors.accent.indigo : colors.bg.elevated}
-              border={`1.5px solid ${i <= currentIndex ? colors.accent.indigo : colors.border.default}`}
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-            >
-              <Text fontSize="12px" fontWeight={700} color={i <= currentIndex ? "#fff" : colors.text.muted}>
-                {i + 1}
-              </Text>
-            </Box>
-            <Text
-              fontSize="13px"
-              fontWeight={i === currentIndex ? 600 : 400}
-              color={i === currentIndex ? colors.text.primary : colors.text.muted}
-              display={{ base: i === currentIndex ? "block" : "none", md: "block" }}
-            >
-              {s.label}
-            </Text>
-            {i < STEPS.length - 1 && (
-              <Box w="24px" h="1px" bgColor={i < currentIndex ? colors.accent.indigo : colors.border.default} />
-            )}
-          </HStack>
-        ))}
-      </HStack>
-
-      {/* Step content */}
+    <Box w="100%" maxW="420px" mx="auto">
       <Box
-        p="32px"
-        bgColor={colors.bg.card}
-        borderRadius={radius.xl}
-        border={`1.5px solid ${colors.border.default}`}
-        boxShadow="0 4px 24px rgba(0, 0, 0, 0.08)"
+        borderRadius={radius.lg}
+        bg={colors.bg.cardSolid}
+        border={`1px solid ${colors.border.default}`}
+        borderTop={`1px solid ${colors.border.light}`}
+        boxShadow={shadows.modal}
+        overflow="hidden"
       >
-        {step === "username" && <UsernameStep onNext={handleUsernameNext} initialName={username} />}
-        {step === "pin" && <PinStep onNext={handlePinNext} />}
-        {step === "activate" && <ActivateStep username={username} pin={pin} onComplete={handleComplete} />}
+        {/* Dots */}
+        <HStack gap="6px" justify="center" pt="20px">
+          {STEPS.map((_, i) => (
+            <Box
+              key={i}
+              w="6px"
+              h="6px"
+              borderRadius="full"
+              bg={
+                i < currentIndex
+                  ? "rgba(74,117,240,0.5)"
+                  : i === currentIndex
+                  ? "rgba(255,255,255,0.8)"
+                  : "rgba(255,255,255,0.1)"
+              }
+              transition={transitions.spring}
+            />
+          ))}
+        </HStack>
+
+        {/* Content */}
+        <Box px={{ base: "28px", md: "36px" }} pt="24px" pb="32px">
+          {step === "username" && (
+            <UsernameStep
+              onNext={(name) => { setUsername(name); setStep("pin"); }}
+              initialName={username}
+            />
+          )}
+          {step === "pin" && (
+            <PinStep onNext={(p) => { setPin(p); setStep("activate"); }} />
+          )}
+          {step === "activate" && (
+            <ActivateStep
+              username={username}
+              pin={pin}
+              onComplete={() => router.replace("/dashboard")}
+            />
+          )}
+        </Box>
       </Box>
     </Box>
   );

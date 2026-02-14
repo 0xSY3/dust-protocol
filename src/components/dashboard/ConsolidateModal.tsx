@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Box, Text, VStack, HStack, Input } from "@chakra-ui/react";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, buttonVariants, inputStates, transitions } from "@/lib/design/tokens";
 import { getChainConfig } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ConsolidateProgress } from "@/hooks/stealth/useDustPool";
@@ -58,13 +58,15 @@ export function ConsolidateModal({
       onClick={handleClose}
     >
       {/* Backdrop */}
-      <Box position="absolute" top={0} left={0} right={0} bottom={0} bg="rgba(0,0,0,0.4)" />
+      <Box position="absolute" top={0} left={0} right={0} bottom={0} bg={colors.bg.overlay} />
 
       {/* Modal */}
       <Box
-        bg={colors.bg.card}
+        bg={glass.modal.bg}
         borderRadius={radius.lg}
+        border={glass.modal.border}
         boxShadow={shadows.modal}
+        backdropFilter={glass.modal.backdropFilter}
         p="24px"
         maxW="440px"
         w="90%"
@@ -133,12 +135,15 @@ export function ConsolidateModal({
                   value={recipient}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRecipient(e.target.value)}
                   fontSize="13px"
-                  bg={colors.bg.input}
-                  border={`1px solid ${colors.border.default}`}
+                  bg={inputStates.default.bg}
+                  border={inputStates.default.border}
+                  color={inputStates.default.color}
                   borderRadius={radius.sm}
-                  _focus={{ borderColor: colors.accent.indigo }}
+                  _placeholder={{ color: inputStates.default.placeholder }}
+                  _focus={{ borderColor: inputStates.focus.borderColor, boxShadow: inputStates.focus.boxShadow }}
                   fontFamily="mono"
                   px="12px"
+                  transition={transitions.fast}
                 />
                 <Text fontSize="11px" color={colors.text.muted} mt="4px">
                   Use a fresh address with no on-chain history for maximum privacy
@@ -148,12 +153,13 @@ export function ConsolidateModal({
               <Box
                 as="button"
                 p="12px"
-                bg={canConsolidate ? colors.accent.indigo : colors.bg.elevated}
+                bg={canConsolidate ? buttonVariants.primary.bg : colors.bg.elevated}
                 borderRadius={radius.md}
+                boxShadow={canConsolidate ? buttonVariants.primary.boxShadow : "none"}
                 cursor={canConsolidate ? "pointer" : "not-allowed"}
                 opacity={canConsolidate ? 1 : 0.5}
-                _hover={canConsolidate ? { opacity: 0.9 } : {}}
-                transition="all 0.15s ease"
+                _hover={canConsolidate ? { boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform } : {}}
+                transition={transitions.fast}
                 onClick={() => canConsolidate && onConsolidate(recipient)}
                 textAlign="center"
               >
@@ -190,8 +196,8 @@ export function ConsolidateModal({
 
           {/* Done */}
           {progress.phase === 'done' && (
-            <Box p="12px" bg="#E8F5E9" borderRadius={radius.md}>
-              <Text fontSize="13px" fontWeight={600} color="#2E7D32" textAlign="center">
+            <Box p="12px" bg={buttonVariants.success.bg} border={buttonVariants.success.border} borderRadius={radius.md}>
+              <Text fontSize="13px" fontWeight={600} color={colors.accent.green} textAlign="center">
                 {progress.message}
               </Text>
             </Box>
@@ -199,7 +205,7 @@ export function ConsolidateModal({
 
           {/* Error */}
           {progress.phase === 'error' && (
-            <Box p="12px" bg="#FFEBEE" borderRadius={radius.md}>
+            <Box p="12px" bg={buttonVariants.danger.bg} border={buttonVariants.danger.border} borderRadius={radius.md}>
               <Text fontSize="13px" fontWeight={600} color={colors.accent.red} textAlign="center">
                 {progress.message}
               </Text>

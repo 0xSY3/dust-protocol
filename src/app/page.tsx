@@ -4,21 +4,18 @@ import { useState, useEffect, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Box, Text, VStack, HStack, Input } from "@chakra-ui/react";
 import { useAuth } from "@/contexts/AuthContext";
-import { colors } from "@/lib/design/tokens";
+import { colors, glass, typography, transitions, shadows, radius, buttonVariants, inputStates } from "@/lib/design/tokens";
 import { ShieldIcon, LockIcon, WalletIcon, UserIcon, ZapIcon, ArrowUpRightIcon, MailIcon } from "@/components/stealth/icons";
+import { DustLogo } from "@/components/DustLogo";
+import { FlickeringGrid } from "@/components/FlickeringGrid";
 import { useLogin } from "@privy-io/react-auth";
 import { isPrivyEnabled } from "@/config/privy";
 import { useConnect } from "wagmi";
 import { injected } from "wagmi/connectors";
-import { Instrument_Serif } from "next/font/google";
 
-const heroFont = Instrument_Serif({
-  weight: "400",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-// One-time cleanup of corrupted stealth data from previous sessions
+// One-time cleanup of stale cache data from previous sessions
+// NOTE: Do NOT delete tokamak_stealth_keys_* or stealth_claim_* here —
+// those contain valid user data that isOnboarded detection depends on.
 function cleanupCorruptedStorage() {
   if (typeof window === "undefined") return;
   const CURRENT_VERSION = 5;
@@ -29,10 +26,8 @@ function cleanupCorruptedStorage() {
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key && (
-      key.startsWith("tokamak_stealth_keys_") ||
       key.startsWith("stealth_last_scanned_") ||
       key.startsWith("stealth_payments_") ||
-      key.startsWith("stealth_claim_") ||
       key === "stealth_storage_v2_cleaned"
     )) {
       keysToRemove.push(key);
@@ -41,23 +36,6 @@ function cleanupCorruptedStorage() {
   keysToRemove.forEach(k => localStorage.removeItem(k));
   localStorage.setItem(flag, String(CURRENT_VERSION));
 }
-
-// Enhanced dust particles — more, varied sizes
-const particles = [
-  { left: "5%", size: 2, dur: "14s", delay: "0s", opacity: 0.4 },
-  { left: "12%", size: 3, dur: "18s", delay: "1s", opacity: 0.6 },
-  { left: "20%", size: 1, dur: "11s", delay: "2s", opacity: 0.3 },
-  { left: "28%", size: 2, dur: "16s", delay: "0.5s", opacity: 0.5 },
-  { left: "35%", size: 3, dur: "13s", delay: "3s", opacity: 0.7 },
-  { left: "42%", size: 1, dur: "19s", delay: "1.5s", opacity: 0.3 },
-  { left: "50%", size: 2, dur: "15s", delay: "2.5s", opacity: 0.5 },
-  { left: "58%", size: 3, dur: "12s", delay: "0.8s", opacity: 0.6 },
-  { left: "65%", size: 1, dur: "17s", delay: "3.5s", opacity: 0.4 },
-  { left: "72%", size: 2, dur: "14s", delay: "1.2s", opacity: 0.5 },
-  { left: "80%", size: 3, dur: "16s", delay: "2.8s", opacity: 0.6 },
-  { left: "88%", size: 1, dur: "13s", delay: "0.3s", opacity: 0.3 },
-  { left: "94%", size: 2, dur: "18s", delay: "2s", opacity: 0.5 },
-];
 
 // Inline SVG icons for social providers (not in icon library)
 const GoogleIcon = ({ size = 18 }: { size?: number }) => (
@@ -103,12 +81,12 @@ export default function Home() {
 
   if (!isHydrated || (isConnected && isOnboarded)) {
     return (
-      <Box minH="100vh" bg="#06080F" display="flex" alignItems="center" justifyContent="center">
+      <Box minH="100vh" bg={colors.bg.page} display="flex" alignItems="center" justifyContent="center">
         <VStack gap="16px">
-          <Box color={colors.accent.indigoBright} opacity={0.6}>
-            <ShieldIcon size={40} />
+          <Box opacity={0.6}>
+            <DustLogo size={40} color={colors.accent.indigoBright} />
           </Box>
-          <Text fontSize="14px" color="rgba(255,255,255,0.35)">Loading...</Text>
+          <Text fontSize="14px" color={colors.text.muted} fontFamily={typography.fontFamily.body}>Loading...</Text>
         </VStack>
       </Box>
     );
@@ -117,13 +95,6 @@ export default function Home() {
   return (
     <>
       <style>{`
-        @keyframes dust-rise {
-          0% { transform: translateY(0) translateX(0) scale(1); opacity: 0; }
-          8% { opacity: var(--p-opacity, 0.5); }
-          50% { transform: translateY(-50vh) translateX(20px) scale(1.2); }
-          85% { opacity: var(--p-opacity, 0.5); }
-          100% { transform: translateY(-100vh) translateX(-10px) scale(0.8); opacity: 0; }
-        }
         @keyframes orb-pulse {
           0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
           50% { transform: translate(-50%, -50%) scale(1.05); opacity: 0.9; }
@@ -164,19 +135,29 @@ export default function Home() {
 
       <Box
         minH="100vh"
-        bg="#06080F"
+        bg={colors.bg.page}
         display="flex"
         flexDirection="column"
         position="relative"
         overflow="hidden"
       >
-        {/* Subtle grid overlay */}
-        <Box
-          position="absolute"
-          inset="0"
-          backgroundImage="linear-gradient(rgba(43,90,226,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(43,90,226,0.02) 1px, transparent 1px)"
-          backgroundSize="80px 80px"
-          pointerEvents="none"
+        {/* Flickering grid background */}
+        <FlickeringGrid
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+            zIndex: 0,
+            maskImage: "radial-gradient(ellipse 80% 70% at 50% 40%, white, transparent)",
+            WebkitMaskImage: "radial-gradient(ellipse 80% 70% at 50% 40%, white, transparent)",
+          }}
+          squareSize={5}
+          gridGap={6}
+          color="#4A75F0"
+          maxOpacity={0.25}
+          flickerChance={0.3}
         />
 
         {/* Large ambient glow — top center */}
@@ -206,46 +187,31 @@ export default function Home() {
           pointerEvents="none"
         />
 
-        {/* Dust particles — enhanced */}
-        {particles.map((p, i) => (
-          <Box
-            key={i}
-            position="absolute"
-            bottom="-4px"
-            left={p.left}
-            w={`${p.size}px`}
-            h={`${p.size}px`}
-            bg={p.size >= 3 ? "rgba(74,117,240,0.6)" : "rgba(74,117,240,0.4)"}
-            borderRadius="50%"
-            pointerEvents="none"
-            boxShadow={p.size >= 3 ? "0 0 6px rgba(74,117,240,0.3)" : "none"}
-            style={{
-              animation: `dust-rise ${p.dur} linear ${p.delay} infinite`,
-              ["--p-opacity" as string]: p.opacity,
-            }}
-          />
-        ))}
-
         {/* Header */}
         <Box as="header" position="relative" zIndex={10} px="24px" py="24px">
           <Box maxW="1200px" mx="auto" display="flex" alignItems="center" justifyContent="space-between">
-            <HStack gap="10px" align="baseline">
-              <Text fontSize="22px" fontWeight="800" color="white" letterSpacing="-0.03em">
+            <HStack gap="10px" align="center">
+              <DustLogo size={28} color="white" />
+              <Text
+                fontSize="22px"
+                fontWeight="800"
+                color={colors.text.primary}
+                fontFamily={typography.fontFamily.heading}
+                letterSpacing="-0.03em"
+              >
                 Dust
               </Text>
               <Text
-                fontSize="11px"
-                fontWeight="500"
-                color="rgba(255,255,255,0.3)"
+                {...typography.label.sm}
+                color={colors.text.muted}
                 letterSpacing="0.1em"
-                textTransform="uppercase"
               >
                 Protocol
               </Text>
             </HStack>
             <HStack gap="6px">
               <Box w="6px" h="6px" borderRadius="50%" bg="rgba(74,117,240,0.6)" />
-              <Text fontSize="12px" color="rgba(255,255,255,0.25)" fontWeight="500">
+              <Text fontSize="12px" color={colors.text.muted} fontWeight="500" fontFamily={typography.fontFamily.body}>
                 Thanos Network
               </Text>
             </HStack>
@@ -322,18 +288,18 @@ export default function Home() {
                 backdropFilter="blur(20px)"
                 style={{ animation: "orb-pulse 4s ease-in-out infinite" }}
               >
-                <ShieldIcon size={38} />
+                <DustLogo size={42} color="#4A75F0" />
               </Box>
             </Box>
 
             {/* Title + subtitle */}
             <VStack gap="20px" className="fade-up d2">
               <Text
-                fontFamily={heroFont.style.fontFamily}
+                fontFamily={typography.fontFamily.heading}
                 fontSize={{ base: "48px", md: "64px" }}
-                fontWeight={400}
+                fontWeight={700}
                 lineHeight="1.0"
-                letterSpacing="-0.03em"
+                letterSpacing="-0.04em"
                 bgGradient="linear(to-b, white 30%, rgba(74,117,240,0.7))"
                 bgClip="text"
                 color="transparent"
@@ -342,10 +308,11 @@ export default function Home() {
               </Text>
               <Text
                 fontSize="17px"
-                color="rgba(255,255,255,0.4)"
+                color={colors.text.tertiary}
                 lineHeight="1.7"
                 maxW="380px"
                 fontWeight="400"
+                fontFamily={typography.fontFamily.body}
               >
                 Send and receive payments that dissolve into the blockchain.
                 Untraceable. Powered by stealth addresses.
@@ -368,27 +335,27 @@ export default function Home() {
                         as="button"
                         flex={1}
                         py="14px"
-                        bg="rgba(255,255,255,0.04)"
-                        border="1px solid rgba(255,255,255,0.08)"
-                        borderRadius="14px"
+                        bg={glass.card.bg}
+                        border={glass.card.border}
+                        borderRadius={radius.md}
                         cursor="pointer"
                         display="flex"
                         alignItems="center"
                         justifyContent="center"
                         gap="8px"
-                        backdropFilter="blur(12px)"
-                        transition="all 0.2s ease"
+                        backdropFilter={glass.card.backdropFilter}
+                        transition={transitions.base}
                         _hover={{
-                          bg: "rgba(255,255,255,0.08)",
+                          bg: glass.cardHover.bg,
                           borderColor: "rgba(74,117,240,0.3)",
                           transform: "translateY(-2px)",
-                          boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+                          boxShadow: shadows.card,
                         }}
                         _active={{ transform: "translateY(0)" }}
                         onClick={() => privyLogin({ loginMethods: [opt.method] })}
                       >
                         <opt.icon size={18} />
-                        <Text fontSize="13px" color="rgba(255,255,255,0.7)" fontWeight="500">
+                        <Text fontSize="13px" color={colors.text.secondary} fontWeight="500" fontFamily={typography.fontFamily.body}>
                           {opt.label}
                         </Text>
                       </Box>
@@ -397,11 +364,11 @@ export default function Home() {
 
                   {/* Divider between social and wallet */}
                   <HStack w="100%" gap="16px" align="center">
-                    <Box flex={1} h="1px" bg="linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)" />
-                    <Text fontSize="11px" color="rgba(255,255,255,0.2)" fontWeight="500" textTransform="uppercase" letterSpacing="0.12em">
+                    <Box flex={1} h="1px" bg={`linear-gradient(90deg, transparent, ${colors.border.default}, transparent)`} />
+                    <Text {...typography.label.sm} color={colors.text.muted} letterSpacing="0.12em">
                       or
                     </Text>
-                    <Box flex={1} h="1px" bg="linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)" />
+                    <Box flex={1} h="1px" bg={`linear-gradient(90deg, transparent, ${colors.border.default}, transparent)`} />
                   </HStack>
                 </>
               )}
@@ -422,24 +389,31 @@ export default function Home() {
                     w="100%"
                     py="18px"
                     px="36px"
-                    bg="linear-gradient(135deg, #2B5AE2 0%, #4A75F0 50%, #633CFF 100%)"
-                    borderRadius="16px"
+                    bg={buttonVariants.primary.bg}
+                    borderRadius={radius.md}
                     cursor="pointer"
                     display="flex"
                     alignItems="center"
                     justifyContent="center"
                     gap="10px"
                     position="relative"
-                    transition="all 0.3s cubic-bezier(0.16,1,0.3,1)"
+                    boxShadow={shadows.buttonPrimary}
+                    transition={transitions.smooth}
                     _hover={{
                       transform: "translateY(-3px)",
-                      boxShadow: "0 12px 40px rgba(43,90,226,0.4), 0 0 0 1px rgba(74,117,240,0.3)",
+                      boxShadow: `${shadows.buttonPrimaryHover}, 0 0 0 1px rgba(74,117,240,0.3)`,
                     }}
-                    _active={{ transform: "translateY(0)" }}
+                    _active={{ transform: "translateY(0)", filter: "brightness(0.95)" }}
                     onClick={() => connect({ connector: injected() })}
                   >
                     <WalletIcon size={20} color="white" />
-                    <Text fontSize="16px" color="white" fontWeight="600" letterSpacing="-0.01em">
+                    <Text
+                      fontSize="16px"
+                      color="white"
+                      fontWeight="600"
+                      letterSpacing="-0.01em"
+                      fontFamily={typography.fontFamily.heading}
+                    >
                       Connect Wallet
                     </Text>
                   </Box>
@@ -449,18 +423,16 @@ export default function Home() {
 
             {/* Divider */}
             <HStack w="100%" gap="16px" align="center" className="fade-up d4">
-              <Box flex={1} h="1px" bg="linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)" />
+              <Box flex={1} h="1px" bg={`linear-gradient(90deg, transparent, ${colors.border.default}, transparent)`} />
               <Text
-                fontSize="11px"
-                color="rgba(255,255,255,0.2)"
-                fontWeight="500"
-                textTransform="uppercase"
+                {...typography.label.sm}
+                color={colors.text.muted}
                 letterSpacing="0.12em"
                 whiteSpace="nowrap"
               >
                 or pay someone
               </Text>
-              <Box flex={1} h="1px" bg="linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent)" />
+              <Box flex={1} h="1px" bg={`linear-gradient(90deg, transparent, ${colors.border.default}, transparent)`} />
             </HStack>
 
             {/* Pay someone search — glass style */}
@@ -472,21 +444,22 @@ export default function Home() {
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handlePaySearch(); }}
                 h="52px"
                 flex={1}
-                bgColor="rgba(255,255,255,0.03)"
-                border="1px solid rgba(255,255,255,0.08)"
-                borderRadius="14px"
-                color="white"
+                bgColor={glass.input.bg}
+                border={glass.input.border}
+                borderRadius={radius.md}
+                color={colors.text.primary}
                 fontSize="15px"
                 fontWeight={500}
+                fontFamily={typography.fontFamily.body}
                 px="18px"
-                backdropFilter="blur(12px)"
-                _placeholder={{ color: "rgba(255,255,255,0.2)" }}
+                backdropFilter={glass.input.backdropFilter}
+                _placeholder={{ color: colors.text.muted }}
                 _focus={{
-                  borderColor: "rgba(74,117,240,0.4)",
-                  boxShadow: "0 0 0 3px rgba(43,90,226,0.1), 0 0 20px rgba(43,90,226,0.05)",
-                  bgColor: "rgba(255,255,255,0.05)",
+                  borderColor: colors.border.focus,
+                  boxShadow: shadows.inputFocus,
+                  bgColor: inputStates.focus.bg,
                 }}
-                transition="all 0.25s ease"
+                transition={transitions.base}
               />
               <Box
                 as="button"
@@ -494,22 +467,23 @@ export default function Home() {
                 h="52px"
                 flexShrink={0}
                 bg="rgba(43,90,226,0.12)"
-                border="1px solid rgba(74,117,240,0.15)"
-                borderRadius="14px"
+                border={`1px solid ${colors.border.accent}`}
+                borderRadius={radius.md}
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
                 cursor="pointer"
-                backdropFilter="blur(12px)"
-                transition="all 0.2s ease"
+                backdropFilter={glass.input.backdropFilter}
+                transition={transitions.base}
                 _hover={{
                   bg: "rgba(43,90,226,0.25)",
-                  borderColor: "rgba(74,117,240,0.3)",
+                  borderColor: colors.border.focus,
                   transform: "translateY(-1px)",
+                  boxShadow: shadows.buttonPrimary,
                 }}
                 onClick={handlePaySearch}
               >
-                <ArrowUpRightIcon size={18} color="#4A75F0" />
+                <ArrowUpRightIcon size={18} color={colors.accent.indigo} />
               </Box>
             </HStack>
 
@@ -521,9 +495,9 @@ export default function Home() {
               flexDirection={{ base: "column", md: "row" }}
             >
               {[
-                { icon: WalletIcon, label: "Connect", desc: "Link your wallet", color: "#4A75F0" },
-                { icon: UserIcon, label: "Setup", desc: "Choose name & PIN", color: "#633CFF" },
-                { icon: ZapIcon, label: "Receive", desc: "Get paid privately", color: "#22D3EE" },
+                { icon: WalletIcon, label: "Connect", desc: "Link your wallet", color: colors.accent.indigo },
+                { icon: UserIcon, label: "Setup", desc: "Choose name & PIN", color: colors.accent.violet },
+                { icon: ZapIcon, label: "Receive", desc: "Get paid privately", color: colors.accent.cyan },
               ].map((step, i) => (
                 <Box
                   key={i}
@@ -531,19 +505,19 @@ export default function Home() {
                   w={{ base: "100%", md: "auto" }}
                   py={{ base: "16px", md: "24px" }}
                   px="18px"
-                  bg="rgba(255,255,255,0.02)"
-                  border="1px solid rgba(255,255,255,0.06)"
-                  borderRadius="16px"
+                  bg={glass.card.bg}
+                  border={glass.card.border}
+                  borderRadius={radius.md}
                   textAlign="center"
-                  backdropFilter="blur(16px)"
+                  backdropFilter={glass.card.backdropFilter}
                   position="relative"
                   overflow="hidden"
-                  transition="all 0.3s cubic-bezier(0.16,1,0.3,1)"
+                  transition={transitions.smooth}
                   _hover={{
-                    bg: "rgba(255,255,255,0.04)",
-                    borderColor: "rgba(255,255,255,0.1)",
+                    bg: glass.cardHover.bg,
+                    border: glass.cardHover.border,
                     transform: "translateY(-2px)",
-                    boxShadow: `0 8px 32px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.05)`,
+                    boxShadow: shadows.cardHover,
                   }}
                 >
                   {/* Top accent line */}
@@ -559,7 +533,7 @@ export default function Home() {
                     <Box
                       w="40px"
                       h="40px"
-                      borderRadius="12px"
+                      borderRadius={radius.sm}
                       bg={`${step.color}10`}
                       border={`1px solid ${step.color}18`}
                       display="flex"
@@ -570,10 +544,10 @@ export default function Home() {
                     >
                       <step.icon size={18} />
                     </Box>
-                    <Text fontSize="14px" fontWeight="600" color="rgba(255,255,255,0.85)">
+                    <Text fontSize="14px" fontWeight="600" color={colors.text.primary} fontFamily={typography.fontFamily.heading}>
                       {step.label}
                     </Text>
-                    <Text fontSize="12px" color="rgba(255,255,255,0.3)" lineHeight="1.4">
+                    <Text fontSize="12px" color={colors.text.muted} lineHeight="1.4" fontFamily={typography.fontFamily.body}>
                       {step.desc}
                     </Text>
                   </VStack>
@@ -583,10 +557,10 @@ export default function Home() {
 
             {/* Privacy notice */}
             <HStack gap="8px" className="fade-up d7" py="4px">
-              <Box color="rgba(255,255,255,0.2)" flexShrink={0}>
+              <Box color={colors.text.muted} flexShrink={0}>
                 <LockIcon size={12} />
               </Box>
-              <Text fontSize="12px" color="rgba(255,255,255,0.2)" lineHeight="1.5">
+              <Text fontSize="12px" color={colors.text.muted} lineHeight="1.5" fontFamily={typography.fontFamily.body}>
                 Your keys are derived locally. No data leaves your browser.
               </Text>
             </HStack>
@@ -598,14 +572,14 @@ export default function Home() {
           <HStack justify="center" gap="12px" maxW="1200px" mx="auto">
             <HStack gap="6px">
               <Box w="4px" h="4px" borderRadius="50%" bg="rgba(74,117,240,0.3)" />
-              <Text fontSize="11px" color="rgba(255,255,255,0.15)" letterSpacing="0.02em">
+              <Text fontSize="11px" color={colors.text.muted} letterSpacing="0.02em" fontFamily={typography.fontFamily.mono}>
                 ERC-5564
               </Text>
             </HStack>
-            <Text fontSize="11px" color="rgba(255,255,255,0.06)">·</Text>
+            <Text fontSize="11px" color={colors.border.light}>·</Text>
             <HStack gap="6px">
               <Box w="4px" h="4px" borderRadius="50%" bg="rgba(99,60,255,0.3)" />
-              <Text fontSize="11px" color="rgba(255,255,255,0.15)" letterSpacing="0.02em">
+              <Text fontSize="11px" color={colors.text.muted} letterSpacing="0.02em" fontFamily={typography.fontFamily.mono}>
                 ERC-6538
               </Text>
             </HStack>

@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, transitions } from "@/lib/design/tokens";
 import { getChainConfig } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
 import { RefreshIcon, ChainIcon } from "@/components/stealth/icons";
@@ -40,7 +40,7 @@ export function UnifiedBalanceCard({
       bg="linear-gradient(135deg, #2B5AE2 0%, #4A75F0 50%, #2B5AE2 100%)"
       boxShadow={shadows.card}
     >
-      <Box p="20px" bgColor={colors.bg.card} borderRadius="17px">
+      <Box p="20px" bg={colors.bg.cardSolid} borderRadius="17px">
         <VStack gap="16px" align="stretch">
           {/* Header */}
           <HStack justify="space-between" align="center">
@@ -52,9 +52,9 @@ export function UnifiedBalanceCard({
               p="6px"
               borderRadius={radius.full}
               cursor="pointer"
-              _hover={{ bgColor: colors.bg.input }}
+              _hover={{ bgColor: colors.bg.hover }}
               onClick={onRefresh}
-              transition="all 0.15s ease"
+              transition={transitions.fast}
             >
               {loading
                 ? <Spinner size="xs" color={colors.accent.indigo} />

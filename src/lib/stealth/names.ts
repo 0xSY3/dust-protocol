@@ -353,17 +353,20 @@ async function discoverNameOnChain(chainId: number, chainName: string, targetHex
     const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
     const deployerNames: string[] = await registry.getNamesOwnedBy(DEPLOYER);
 
+    let lastMatch: string | null = null;
     for (const name of deployerNames) {
       try {
         const resolved: string = await registry.resolveName(name);
         if (resolved && resolved.toLowerCase() === targetHex.toLowerCase()) {
-          console.log(`[names] Discovered name "${name}" on ${chainName} (${chainId})`);
-          return name;
+          lastMatch = name;
         }
       } catch { continue; }
     }
 
-    return null;
+    if (lastMatch) {
+      console.log(`[names] Discovered name "${lastMatch}" on ${chainName} (${chainId})`);
+    }
+    return lastMatch;
   } catch (e) {
     console.warn(`[names] discoverNameByMetaAddress failed on ${chainName}:`, e);
     return null;
@@ -433,15 +436,19 @@ export async function discoverNameByWalletHistory(
           const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
           const deployerNames: string[] = await registry.getNamesOwnedBy(DEPLOYER);
 
+          let lastMatch: string | null = null;
           for (const name of deployerNames) {
             try {
               const resolved: string = await registry.resolveName(name);
               if (resolved && historicalMetas.has(resolved.toLowerCase())) {
-                console.log(`[names] Discovered name "${name}" via wallet history on ${chain.name} (${chain.id})`);
-                autoUpdateNameMeta(name, currentMetaAddress);
-                return name;
+                lastMatch = name;
               }
             } catch { continue; }
+          }
+
+          if (lastMatch) {
+            console.log(`[names] Discovered name "${lastMatch}" via wallet history on ${chain.name} (${chain.id})`);
+            return lastMatch;
           }
         } catch (e) {
           console.warn(`[names] Name registry scan failed on ${chain.name}:`, e);
@@ -461,16 +468,3 @@ export async function discoverNameByWalletHistory(
   }
 }
 
-/**
- * Auto-update a name's meta-address via the sponsor endpoint (fire and forget).
- */
-function autoUpdateNameMeta(name: string, newMetaAddress: string): void {
-  fetch('/api/sponsor-name-update-meta', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, newMetaAddress }),
-  }).then(res => {
-    if (res.ok) console.log('[names] Auto-updated meta-address for', name);
-    else console.warn('[names] Failed to auto-update meta-address for', name);
-  }).catch(() => {});
-}

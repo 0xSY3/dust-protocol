@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="g1a" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="g1b" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+  </defs>
+  <!-- V1: Dissolving Cube — isometric cube breaking apart into particles -->
+  <g transform="translate(200,195)">
+    <!-- Top face -->
+    <path d="M 0,-72 L 62,-36 L 0,0 L -62,-36 Z" fill="url(#g1a)"/>
+    <!-- Left face -->
+    <path d="M -62,-36 L 0,0 L 0,72 L -62,36 Z" fill="#6366f1"/>
+    <!-- Right face — fragmenting -->
+    <path d="M 0,0 L 42,-15 L 42,32 L 0,50 Z" fill="url(#g1b)" opacity="0.9"/>
+    <!-- Fragment pieces breaking off right face -->
+    <path d="M 48,-22 L 62,-36 L 62,12 L 48,4 Z" fill="url(#g1b)" opacity="0.65"/>
+    <rect x="52" y="16" width="16" height="16" rx="2" fill="url(#g1b)" opacity="0.5" transform="rotate(-15,60,24)"/>
+    <rect x="46" y="40" width="12" height="12" rx="2" fill="url(#g1b)" opacity="0.4" transform="rotate(8,52,46)"/>
+    <path d="M 10,56 L 0,72 L 0,50 Z" fill="#6366f1" opacity="0.6"/>
+    <!-- Scattered particles -->
+    <circle cx="70" cy="-10" r="5" fill="#c084fc" opacity="0.6"/>
+    <circle cx="74" cy="16" r="4" fill="#c084fc" opacity="0.45"/>
+    <circle cx="66" cy="38" r="3.5" fill="#c084fc" opacity="0.35"/>
+    <circle cx="58" cy="56" r="3" fill="#818cf8" opacity="0.3"/>
+    <circle cx="80" cy="2" r="2.5" fill="#c084fc" opacity="0.25"/>
+    <circle cx="76" cy="48" r="2" fill="#818cf8" opacity="0.18"/>
+    <circle cx="86" cy="26" r="1.5" fill="#c084fc" opacity="0.12"/>
+  </g>
+</svg>

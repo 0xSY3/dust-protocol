@@ -4,7 +4,7 @@ import { Box, Text, HStack, VStack } from "@chakra-ui/react";
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSupportedChains, type ChainConfig } from "@/config/chains";
-import { colors, radius } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, transitions } from "@/lib/design/tokens";
 import { ChainIcon as ChainTokenIcon } from "@/components/stealth/icons";
 
 const chains = getSupportedChains();
@@ -42,7 +42,7 @@ export function ChainSelector() {
         border={`1px solid ${isOpen ? colors.accent.indigo : colors.border.default}`}
         cursor="pointer"
         _hover={{ borderColor: colors.accent.indigo }}
-        transition="all 0.15s ease"
+        transition={transitions.fast}
         onClick={() => setIsOpen(!isOpen)}
       >
         <ChainIcon chain={activeChain} />
@@ -60,10 +60,11 @@ export function ChainSelector() {
           top="calc(100% + 4px)"
           left={0}
           right={0}
-          bgColor={colors.bg.card}
-          border={`1px solid ${colors.border.default}`}
+          bg={glass.modal.bg}
+          backdropFilter={glass.modal.backdropFilter}
+          border={glass.modal.border}
           borderRadius={radius.xs}
-          boxShadow="0 4px 12px rgba(0,0,0,0.08)"
+          boxShadow={shadows.modal}
           zIndex={100}
           p="4px"
           gap="2px"
@@ -81,7 +82,7 @@ export function ChainSelector() {
                 bgColor={isActive ? "rgba(43, 90, 226, 0.06)" : "transparent"}
                 _hover={{ bgColor: isActive ? "rgba(43, 90, 226, 0.06)" : colors.bg.input }}
                 cursor="pointer"
-                transition="all 0.1s"
+                transition={transitions.fast}
                 onClick={() => {
                   setActiveChain(chain.id);
                   setIsOpen(false);

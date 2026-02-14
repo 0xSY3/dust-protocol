@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
 import { Button } from "@/components/ui/button";
-import { colors } from "@/lib/design/tokens";
+import { colors, radius, inputStates, buttonVariants, transitions } from "@/lib/design/tokens";
 import { useAuth } from "@/contexts/AuthContext";
 import { CheckCircleIcon, AlertCircleIcon } from "@/components/stealth/icons";
 
@@ -16,7 +16,7 @@ interface ActivateStepProps {
 type ActivationStatus = "idle" | "signing" | "activating" | "done" | "error";
 
 export function ActivateStep({ username, pin, onComplete }: ActivateStepProps) {
-  const { deriveKeysFromWallet, setPin: storePinEncrypted, registerMetaAddress, registerName, formatName } = useAuth();
+  const { address, deriveKeysFromWallet, setPin: storePinEncrypted, registerMetaAddress, registerName, formatName } = useAuth();
   const [status, setStatus] = useState<ActivationStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +43,10 @@ export function ActivateStep({ username, pin, onComplete }: ActivateStepProps) {
       ]);
       if (!nameTx) throw new Error("Failed to register name");
 
+      if (address) {
+        localStorage.setItem('dust_onboarded_' + address.toLowerCase(), 'true');
+      }
+
       setStatus("done");
       onComplete();
     } catch (e) {
@@ -58,7 +62,7 @@ export function ActivateStep({ username, pin, onComplete }: ActivateStepProps) {
         <Text fontSize="20px" fontWeight={600} color="white" letterSpacing="-0.01em">
           Activate your wallet
         </Text>
-        <Text fontSize="13px" color="rgba(255,255,255,0.35)">
+        <Text fontSize="13px" color={colors.text.muted}>
           Review and activate your private identity
         </Text>
       </VStack>
@@ -67,21 +71,21 @@ export function ActivateStep({ username, pin, onComplete }: ActivateStepProps) {
       <VStack
         gap="0"
         align="stretch"
-        bgColor="rgba(0,0,0,0.25)"
-        borderRadius="10px"
-        border="1px solid rgba(255,255,255,0.08)"
+        bgColor={inputStates.default.bg}
+        borderRadius={radius.sm}
+        border={inputStates.default.border}
         overflow="hidden"
       >
         <HStack justify="space-between" px="16px" py="12px">
-          <Text fontSize="13px" color="rgba(255,255,255,0.35)">Username</Text>
-          <Text fontSize="13px" fontWeight={500} color="rgba(74,117,240,0.8)">
+          <Text fontSize="13px" color={colors.text.muted}>Username</Text>
+          <Text fontSize="13px" fontWeight={500} color={colors.accent.indigoBright}>
             {formatName(username)}
           </Text>
         </HStack>
-        <Box h="1px" bgColor="rgba(255,255,255,0.05)" />
+        <Box h="1px" bgColor={colors.border.default} />
         <HStack justify="space-between" px="16px" py="12px">
-          <Text fontSize="13px" color="rgba(255,255,255,0.35)">PIN</Text>
-          <Text fontSize="13px" fontWeight={500} color="rgba(255,255,255,0.5)" letterSpacing="2px">
+          <Text fontSize="13px" color={colors.text.muted}>PIN</Text>
+          <Text fontSize="13px" fontWeight={500} color={colors.text.secondary} letterSpacing="2px">
             ••••••
           </Text>
         </HStack>
@@ -90,8 +94,8 @@ export function ActivateStep({ username, pin, onComplete }: ActivateStepProps) {
       {/* Status */}
       {(status === "signing" || status === "activating") && (
         <HStack gap="8px" justify="center" py="8px">
-          <Spinner size="sm" color="rgba(74,117,240,0.6)" />
-          <Text fontSize="13px" color="rgba(255,255,255,0.5)">
+          <Spinner size="sm" color={colors.accent.indigo} />
+          <Text fontSize="13px" color={colors.text.secondary}>
             {status === "signing" ? "Approve in wallet..." : "Setting up identity..."}
           </Text>
         </HStack>
@@ -99,7 +103,7 @@ export function ActivateStep({ username, pin, onComplete }: ActivateStepProps) {
       {status === "done" && (
         <HStack gap="6px" justify="center" py="8px">
           <CheckCircleIcon size={14} color="#22C55E" />
-          <Text fontSize="13px" color="rgba(34,197,94,0.8)" fontWeight={500}>Activated</Text>
+          <Text fontSize="13px" color={colors.accent.green} fontWeight={500}>Activated</Text>
         </HStack>
       )}
 
@@ -116,19 +120,18 @@ export function ActivateStep({ username, pin, onComplete }: ActivateStepProps) {
         <Button
           w="100%"
           h="44px"
-          bgColor="rgba(74,117,240,0.08)"
-          borderRadius="10px"
-          border="1px solid rgba(74,117,240,0.35)"
-          boxShadow="0 0 12px rgba(74,117,240,0.06)"
+          bgColor={buttonVariants.primary.bg}
+          borderRadius={radius.sm}
+          border={`1px solid ${colors.border.accent}`}
+          boxShadow={buttonVariants.primary.boxShadow}
           fontWeight={500}
           fontSize="14px"
-          color="rgba(255,255,255,0.9)"
+          color={colors.text.primary}
           _hover={{
-            bgColor: "rgba(74,117,240,0.12)",
-            borderColor: "rgba(74,117,240,0.5)",
-            boxShadow: "0 0 20px rgba(74,117,240,0.1)",
+            boxShadow: buttonVariants.primary.hover.boxShadow,
+            transform: buttonVariants.primary.hover.transform,
           }}
-          transition="all 0.15s ease"
+          transition={transitions.fast}
           onClick={handleActivate}
         >
           Activate

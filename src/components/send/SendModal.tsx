@@ -2,7 +2,7 @@
 
 import { useState, useEffect, ChangeEvent } from "react";
 import { Box, Text, VStack, HStack, Input, Spinner } from "@chakra-ui/react";
-import { colors, radius, shadows, getExplorerBase } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, buttonVariants, inputStates, transitions, getExplorerBase } from "@/lib/design/tokens";
 import { useStealthSend, useStealthName } from "@/hooks/stealth";
 import { useAuth } from "@/contexts/AuthContext";
 import { isStealthName, NAME_SUFFIX, lookupStealthMetaAddress } from "@/lib/stealth";
@@ -117,7 +117,7 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
     <Box
       position="fixed"
       inset={0}
-      bg="rgba(0,0,0,0.3)"
+      bg={colors.bg.overlay}
       display="flex"
       alignItems="center"
       justifyContent="center"
@@ -128,9 +128,11 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
       <Box
         w="100%"
         maxW="440px"
-        bgColor={colors.bg.card}
+        bg={glass.modal.bg}
+        border={glass.modal.border}
         borderRadius={radius.xl}
         boxShadow={shadows.modal}
+        backdropFilter={glass.modal.backdropFilter}
         overflow="hidden"
       >
         {/* Header — hidden on success */}
@@ -151,9 +153,9 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
               </VStack>
             </HStack>
             <Box as="button" onClick={handleClose} cursor="pointer" p="8px" borderRadius={radius.full}
-              border={`1.5px solid ${colors.border.default}`}
-              _hover={{ bgColor: colors.bg.input, borderColor: colors.border.light }}
-              transition="all 0.15s ease">
+              border={`1px solid ${colors.border.default}`}
+              _hover={{ bgColor: colors.bg.hover, borderColor: colors.border.light }}
+              transition={transitions.fast}>
               <XIcon size={15} color={colors.text.muted} />
             </Box>
           </HStack>
@@ -175,13 +177,13 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
                       placeholder={`alice${NAME_SUFFIX} or 0x...`}
                       value={recipient}
                       onChange={(e: ChangeEvent<HTMLInputElement>) => setRecipient(e.target.value)}
-                      h="52px" bgColor={colors.bg.input}
-                      border={`1.5px solid ${resolvedAddress ? colors.accent.indigo : resolveError ? colors.accent.red : "transparent"}`}
+                      h="52px" bg={inputStates.default.bg}
+                      border={`1.5px solid ${resolvedAddress ? colors.accent.indigo : resolveError ? colors.accent.red : colors.border.default}`}
                       borderRadius={radius.md}
-                      color={colors.text.primary} fontSize="15px" fontWeight={500} px="18px"
-                      _placeholder={{ color: colors.text.muted, fontWeight: 400 }}
-                      _focus={{ borderColor: colors.accent.indigo, boxShadow: colors.glow.indigo }}
-                      transition="all 0.15s ease"
+                      color={inputStates.default.color} fontSize="15px" fontWeight={500} px="18px"
+                      _placeholder={{ color: inputStates.default.placeholder, fontWeight: 400 }}
+                      _focus={{ borderColor: inputStates.focus.borderColor, boxShadow: inputStates.focus.boxShadow }}
+                      transition={transitions.fast}
                     />
                     {/* Status indicator inside input */}
                     {!isResolving && resolvedAddress && !recipient.startsWith("st:") && (
@@ -227,14 +229,14 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
                       if (v === "" || /^\d*\.?\d*$/.test(v)) setAmount(v);
                     }}
                     h="60px" px="18px"
-                    bgColor={colors.bg.input}
-                    border="1.5px solid transparent"
+                    bg={inputStates.default.bg}
+                    border={`1.5px solid ${colors.border.default}`}
                     borderRadius={radius.md}
-                    color={colors.text.primary} fontSize="32px" fontWeight={700}
+                    color={inputStates.default.color} fontSize="32px" fontWeight={700}
                     letterSpacing="-0.03em"
-                    _placeholder={{ color: colors.border.default }}
-                    _focus={{ borderColor: colors.accent.indigo, boxShadow: colors.glow.indigo, outline: "none" }}
-                    transition="all 0.15s ease"
+                    _placeholder={{ color: colors.text.muted }}
+                    _focus={{ borderColor: inputStates.focus.borderColor, boxShadow: inputStates.focus.boxShadow, outline: "none" }}
+                    transition={transitions.fast}
                   />
                   <Text fontSize="11px" color={colors.text.muted} mt="8px" fontWeight={500}>{chainConfig.name}</Text>
                 </Box>
@@ -243,13 +245,15 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
                 <Box
                   as="button"
                   p="16px"
-                  bgColor={colors.accent.indigo}
+                  bg={buttonVariants.primary.bg}
                   borderRadius={radius.full}
+                  boxShadow={buttonVariants.primary.boxShadow}
                   cursor="pointer"
-                  _hover={{ bgColor: colors.accent.indigoDark }}
+                  _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
+                  _active={{ transform: buttonVariants.primary.active.transform }}
                   onClick={handlePreview}
                   textAlign="center"
-                  transition="all 0.15s ease"
+                  transition={transitions.fast}
                   opacity={(!resolvedAddress && !recipient.startsWith("st:")) || !amount || isLoading || isResolving ? 0.4 : 1}
                   pointerEvents={(!resolvedAddress && !recipient.startsWith("st:")) || !amount || isLoading || isResolving ? "none" : "auto"}
                 >
@@ -297,15 +301,19 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
 
                 {/* Action buttons */}
                 <HStack gap="10px">
-                  <Box as="button" flex={1} p="14px" bgColor={colors.bg.input} borderRadius={radius.full}
-                    cursor="pointer" _hover={{ bgColor: colors.bg.elevated }} textAlign="center"
-                    transition="all 0.15s ease"
+                  <Box as="button" flex={1} p="14px"
+                    bg={buttonVariants.secondary.bg} border={buttonVariants.secondary.border}
+                    borderRadius={radius.full}
+                    cursor="pointer" _hover={{ bg: buttonVariants.secondary.hover.bg }}
+                    textAlign="center" transition={transitions.fast}
                     onClick={() => setSendStep("input")}>
                     <Text fontSize="14px" fontWeight={600} color={colors.text.primary}>Back</Text>
                   </Box>
-                  <Box as="button" flex={2} p="14px" bgColor={colors.accent.indigo} borderRadius={radius.full}
-                    cursor="pointer" _hover={{ bgColor: colors.accent.indigoDark }} textAlign="center"
-                    transition="all 0.15s ease"
+                  <Box as="button" flex={2} p="14px"
+                    bg={buttonVariants.primary.bg} boxShadow={buttonVariants.primary.boxShadow}
+                    borderRadius={radius.full}
+                    cursor="pointer" _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
+                    textAlign="center" transition={transitions.fast}
                     onClick={handleSend}
                     opacity={isLoading ? 0.7 : 1} pointerEvents={isLoading ? "none" : "auto"}>
                     {isLoading
@@ -407,13 +415,14 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
                     )}
                     <Box
                       as="button" w="100%" p="15px"
-                      bgColor={colors.accent.indigo}
+                      bg={buttonVariants.primary.bg}
+                      boxShadow={buttonVariants.primary.boxShadow}
                       borderRadius={radius.full}
                       cursor="pointer"
-                      _hover={{ bgColor: colors.accent.indigoDark }}
+                      _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
                       onClick={handleClose}
                       textAlign="center"
-                      transition="all 0.15s ease"
+                      transition={transitions.fast}
                     >
                       <Text fontSize="15px" fontWeight={700} color="#fff">Done</Text>
                     </Box>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Box, Text, VStack, HStack } from "@chakra-ui/react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { colors, radius, shadows, getExplorerBase } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, buttonVariants, transitions, getExplorerBase } from "@/lib/design/tokens";
 import { useAuth } from "@/contexts/AuthContext";
 import { getChainConfig } from "@/config/chains";
 import type { StealthPayment } from "@/lib/design/types";
@@ -40,16 +40,17 @@ export function RecentActivityCard({ payments }: RecentActivityCardProps) {
               px="16px"
               py="8px"
               borderRadius={radius.full}
-              bgColor={filter === f ? colors.text.primary : "transparent"}
+              bg={filter === f ? buttonVariants.primary.bg : "transparent"}
               border={filter === f ? "none" : `1px solid ${colors.border.default}`}
+              boxShadow={filter === f ? buttonVariants.primary.boxShadow : "none"}
               cursor="pointer"
               onClick={() => setFilter(f)}
-              transition="all 0.15s ease"
-              _hover={filter !== f ? { bgColor: colors.bg.input } : {}}
+              transition={transitions.fast}
+              _hover={filter !== f ? { bgColor: colors.bg.hover } : {}}
             >
               <Text
                 fontSize="13px"
-                fontWeight={filter === f ? 500 : 400}
+                fontWeight={filter === f ? 600 : 400}
                 color={filter === f ? "#fff" : colors.text.muted}
                 textTransform="capitalize"
               >
@@ -65,7 +66,7 @@ export function RecentActivityCard({ payments }: RecentActivityCardProps) {
 
       {/* Activity list */}
       {recent.length === 0 ? (
-        <Box p="48px" textAlign="center" bgColor={colors.bg.card} borderRadius={radius.lg} border={`2px solid ${colors.border.default}`} boxShadow={shadows.card}>
+        <Box p="48px" textAlign="center" bg={glass.card.bg} borderRadius={radius.lg} border={glass.card.border} boxShadow={shadows.card} backdropFilter={glass.card.backdropFilter}>
           <VStack gap="12px">
             <Text fontSize="16px" fontWeight={700} color={colors.text.primary}>No activities yet</Text>
             <Text fontSize="14px" color={colors.text.muted}>
@@ -81,13 +82,14 @@ export function RecentActivityCard({ payments }: RecentActivityCardProps) {
               <HStack
                 key={p.announcement.txHash}
                 p="16px 20px"
-                bgColor={colors.bg.card}
+                bg={glass.card.bg}
                 borderRadius={radius.md}
-                border={`2px solid ${colors.border.default}`}
+                border={glass.card.border}
+                backdropFilter={glass.card.backdropFilter}
                 justify="space-between"
                 cursor="pointer"
-                _hover={{ borderColor: colors.border.light }}
-                transition="all 0.15s ease"
+                _hover={{ bg: glass.cardHover.bg, border: glass.cardHover.border }}
+                transition={transitions.fast}
                 onClick={() => window.open(`${explorerBase}/tx/${p.announcement.txHash}`, "_blank")}
               >
                 <HStack gap="14px">
@@ -125,13 +127,14 @@ export function RecentActivityCard({ payments }: RecentActivityCardProps) {
       <Link href="/activities" style={{ textDecoration: "none" }}>
         <Box
           p="14px"
-          bgColor={colors.bg.card}
+          bg={glass.card.bg}
           borderRadius={radius.md}
-          border={`2px solid ${colors.border.default}`}
+          border={glass.card.border}
+          backdropFilter={glass.card.backdropFilter}
           textAlign="center"
           cursor="pointer"
-          _hover={{ borderColor: colors.border.light }}
-          transition="all 0.15s ease"
+          _hover={{ bg: glass.cardHover.bg, border: glass.cardHover.border }}
+          transition={transitions.fast}
         >
           <Text fontSize="15px" fontWeight={600} color={colors.text.secondary}>See all activities</Text>
         </Box>

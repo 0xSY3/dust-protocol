@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dust Protocol — Vortex Logo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #09090b;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 40px 20px 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 300;
+      letter-spacing: 3px;
+      color: #71717a;
+      margin-bottom: 48px;
+    }
+
+    /* Main logo showcase */
+    .hero {
+      background: #111113;
+      border: 1px solid #27272a;
+      border-radius: 24px;
+      padding: 60px;
+      margin-bottom: 32px;
+      text-align: center;
+    }
+    .hero img { width: 280px; height: 280px; }
+    .hero h2 {
+      font-size: 16px;
+      font-weight: 500;
+      color: #a1a1aa;
+      margin-top: 20px;
+    }
+
+    /* Variants row */
+    .variants {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 40px;
+    }
+    .variant {
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      border: 1px solid #27272a;
+    }
+    .variant.dark { background: #111113; }
+    .variant.light { background: #f4f4f5; }
+    .variant h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+    .variant.dark h3 { color: #52525b; }
+    .variant.light h3 { color: #a1a1aa; }
+
+    /* Favicon sizes */
+    .favicon-row {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .favicon-size {
+      text-align: center;
+    }
+    .favicon-size span {
+      display: block;
+      font-size: 10px;
+      color: #52525b;
+      margin-top: 6px;
+    }
+
+    /* Wordmark */
+    .wordmark-section {
+      background: #111113;
+      border: 1px solid #27272a;
+      border-radius: 16px;
+      padding: 40px 60px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .wordmark-section img { height: 80px; width: auto; }
+    .wordmark-section h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #52525b;
+      margin-bottom: 20px;
+      font-weight: 500;
+    }
+
+    .wordmark-light {
+      background: #f4f4f5;
+      border: 1px solid #d4d4d8;
+      border-radius: 16px;
+      padding: 40px 60px;
+      text-align: center;
+    }
+    .wordmark-light img { height: 80px; width: auto; filter: invert(0); }
+    .wordmark-light h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #a1a1aa;
+      margin-bottom: 20px;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <h1>DUST VORTEX — REFINED</h1>
+
+  <!-- Hero: main logo large -->
+  <div class="hero">
+    <img src="logo-dust-vortex.svg" alt="Dust Vortex Logo">
+    <h2>Primary Mark</h2>
+  </div>
+
+  <!-- Dark / Light variants -->
+  <div class="variants">
+    <div class="variant dark">
+      <h3>Dark Background</h3>
+      <img src="logo-dust-vortex.svg" alt="Dark" width="140" height="140">
+    </div>
+    <div class="variant light">
+      <h3>Light Background</h3>
+      <img src="logo-dust-vortex.svg" alt="Light" width="140" height="140">
+    </div>
+    <div class="variant dark">
+      <h3>Favicon Sizes</h3>
+      <div class="favicon-row">
+        <div class="favicon-size">
+          <img src="logo-dust-favicon.svg" alt="64" width="64" height="64">
+          <span>64px</span>
+        </div>
+        <div class="favicon-size">
+          <img src="logo-dust-favicon.svg" alt="32" width="32" height="32">
+          <span>32px</span>
+        </div>
+        <div class="favicon-size">
+          <img src="logo-dust-favicon.svg" alt="16" width="16" height="16">
+          <span>16px</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wordmark dark -->
+  <div class="wordmark-section">
+    <h3>Wordmark — Dark</h3>
+    <img src="logo-dust-wordmark.svg" alt="Dust Protocol Wordmark">
+  </div>
+
+  <!-- Wordmark light -->
+  <div class="wordmark-light">
+    <h3>Wordmark — Light</h3>
+    <img src="logo-dust-wordmark.svg" alt="Dust Protocol Wordmark" style="filter: none;">
+  </div>
+</body>
+</html>

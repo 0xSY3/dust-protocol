@@ -8,6 +8,7 @@ import type { StealthKeyPair } from "@/lib/stealth";
 import type { OwnedName } from "@/lib/design/types";
 
 const CHAIN_STORAGE_KEY = 'dust_active_chain';
+const ONBOARDED_STORAGE_PREFIX = 'dust_onboarded_';
 
 interface AuthState {
   // Connection
@@ -80,10 +81,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // User is onboarded if they have stealth keys + claim addresses, OR if they have a PIN stored
-  // (PIN is only set during onboarding activation, so it's a reliable signal)
+  // Explicit onboarded flag — synchronous localStorage check, survives cleanup and race conditions
+  const hasOnboardedFlag = address
+    ? typeof window !== 'undefined' && !!localStorage.getItem(ONBOARDED_STORAGE_PREFIX + address.toLowerCase())
+    : false;
+
+  // User is onboarded if the explicit flag is set, OR they have a PIN stored,
+  // OR they have stealth keys + claim addresses (legacy fallback)
   const isOnboarded = stealthAddr.isHydrated && (
-    (!!stealthAddr.stealthKeys && stealthAddr.claimAddressesInitialized) || pinHook.hasPin
+    hasOnboardedFlag || pinHook.hasPin ||
+    (!!stealthAddr.stealthKeys && stealthAddr.claimAddressesInitialized)
   );
 
   const value: AuthState = {

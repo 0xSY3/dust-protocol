@@ -6,6 +6,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Dust Protocol - Private Payments",
   description: "Stealth payment infrastructure for Tokamak Network - payments that dissolve into the blockchain",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

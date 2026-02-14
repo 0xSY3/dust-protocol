@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Box, Text, VStack, HStack } from "@chakra-ui/react";
 import QRCode from "qrcode";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, transitions } from "@/lib/design/tokens";
 import { XIcon, CopyIcon, CheckIcon } from "@/components/stealth/icons";
+import { DustLogo } from "@/components/DustLogo";
 
 interface ReceiveModalProps {
   isOpen: boolean;
@@ -43,23 +44,26 @@ export function ReceiveModal({ isOpen, onClose, tokName, payPath }: ReceiveModal
   return (
     <>
       {/* Backdrop */}
-      <Box position="fixed" inset="0" bgColor="rgba(0,0,0,0.5)" zIndex={999}
+      <Box position="fixed" inset="0" bgColor={colors.bg.overlay} zIndex={999}
         onClick={onClose} />
 
       {/* Modal */}
       <Box position="fixed" inset="0" display="flex" alignItems="center" justifyContent="center"
         zIndex={1000} p="16px" onClick={onClose}>
-        <Box bgColor={colors.bg.card} borderRadius={radius.xl}
-          boxShadow={shadows.modal} maxW="400px" w="100%"
+        <Box bg={glass.modal.bg} borderRadius={radius.xl}
+          border={glass.modal.border}
+          boxShadow={shadows.modal} backdropFilter={glass.modal.backdropFilter}
+          maxW="400px" w="100%"
           p="40px 32px" position="relative"
           onClick={(e: React.MouseEvent) => e.stopPropagation()}>
 
           {/* Close button */}
           <Box as="button" position="absolute" top="16px" right="16px"
             w="36px" h="36px" borderRadius={radius.full}
-            border={`2px solid ${colors.border.default}`}
+            border={`1px solid ${colors.border.default}`}
             display="flex" alignItems="center" justifyContent="center"
-            cursor="pointer" _hover={{ bgColor: colors.bg.input }}
+            cursor="pointer" _hover={{ bgColor: colors.bg.hover, borderColor: colors.border.light }}
+            transition={transitions.fast}
             onClick={onClose}>
             <XIcon size={16} color={colors.text.secondary} />
           </Box>
@@ -117,9 +121,12 @@ export function ReceiveModal({ isOpen, onClose, tokName, payPath }: ReceiveModal
               </HStack>
 
               {/* Branding */}
-              <Text fontSize="14px" fontWeight={700} color={colors.text.secondary} opacity={0.6} letterSpacing="-0.02em">
-                Dust Protocol
-              </Text>
+              <HStack gap="6px" justify="center" opacity={0.6}>
+                <DustLogo size={18} color={colors.text.secondary} />
+                <Text fontSize="14px" fontWeight={700} color={colors.text.secondary} letterSpacing="-0.02em">
+                  Dust
+                </Text>
+              </HStack>
             </VStack>
           ) : (
             <VStack gap="16px" py="20px">

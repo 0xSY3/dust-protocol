@@ -48,6 +48,7 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recoveryAttempted = useRef(false);
+  const loadCompleted = useRef(false);
   const metaRef = useRef(userMetaAddress);
   metaRef.current = userMetaAddress;
 
@@ -100,6 +101,7 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       setError(e instanceof Error ? e.message : 'Failed to load names');
     } finally {
       setIsLoading(false);
+      loadCompleted.current = true;
     }
   }, [address, isConnected, isConfigured, chainId, activeChainId]);
 
@@ -108,12 +110,37 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     if (isConnected && isConfigured) loadOwnedNames();
   }, [isConnected, isConfigured, loadOwnedNames]);
 
-  // Discovery: when metaAddress becomes available and we still have no names, try event-based discovery
+  // Discovery: LAST RESORT when metaAddress is available but no names found anywhere.
+  // Only runs after loadOwnedNames has completed and localStorage is empty.
+  // Never overwrites a name that was explicitly registered by the user.
   useEffect(() => {
     if (!userMetaAddress || !address || !isConfigured || ownedNames.length > 0) return;
 
     let cancelled = false;
     (async () => {
+      // Wait for loadOwnedNames to finish before running discovery.
+      // This prevents the race where discovery fires while loadOwnedNames
+      // is still fetching, then overwrites the correct localStorage value.
+      if (!loadCompleted.current) {
+        // Poll briefly — loadOwnedNames is already in-flight
+        for (let i = 0; i < 20 && !loadCompleted.current && !cancelled; i++) {
+          await new Promise(r => setTimeout(r, 250));
+        }
+        if (cancelled) return;
+      }
+
+      // Re-check: loadOwnedNames may have set ownedNames via localStorage
+      const storedName = getStoredUsername(address, activeChainId);
+      if (storedName) {
+        // localStorage already has a name — use it, don't overwrite with discovery
+        setOwnedNames([{ name: storedName, fullName: formatNameWithSuffix(storedName) }]);
+        if (!recoveryAttempted.current) {
+          recoveryAttempted.current = true;
+          tryRecoverName(storedName, address);
+        }
+        return;
+      }
+
       try {
         // First try: match by current meta-address
         let discovered = await discoverNameByMetaAddress(

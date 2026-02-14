@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Box, Text, VStack, HStack } from "@chakra-ui/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStealthScanner, useUnifiedBalance, useDustPool } from "@/hooks/stealth";
-import { colors, radius } from "@/lib/design/tokens";
+import { colors, radius, glass, buttonVariants, transitions } from "@/lib/design/tokens";
 import { getChainConfig } from "@/config/chains";
 import { UnifiedBalanceCard } from "@/components/dashboard/UnifiedBalanceCard";
 import { AddressBreakdownCard } from "@/components/dashboard/AddressBreakdownCard";
@@ -97,9 +97,10 @@ export default function DashboardPage() {
         {/* Privacy Pool section */}
         <Box
           p="16px"
-          bg={colors.bg.card}
+          bg={glass.card.bg}
           borderRadius={radius.lg}
           border={`1.5px solid ${claimToPool || hasPoolBalance ? colors.accent.indigo : colors.border.default}`}
+          backdropFilter={glass.card.backdropFilter}
         >
           <VStack gap="12px" align="stretch">
             {/* Toggle */}
@@ -163,11 +164,12 @@ export default function DashboardPage() {
                     as="button"
                     px="14px"
                     py="8px"
-                    bg={colors.accent.indigo}
+                    bg={buttonVariants.primary.bg}
+                    boxShadow={buttonVariants.primary.boxShadow}
                     borderRadius={radius.sm}
                     cursor="pointer"
-                    _hover={{ opacity: 0.9 }}
-                    transition="all 0.15s ease"
+                    _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
+                    transition={transitions.fast}
                     onClick={() => setShowConsolidateModal(true)}
                   >
                     <Text fontSize="12px" fontWeight={700} color="#fff">Withdraw</Text>
@@ -207,8 +209,8 @@ export default function DashboardPage() {
                     border={`1.5px solid ${colors.accent.indigo}`}
                     borderRadius={radius.sm}
                     cursor="pointer"
-                    _hover={{ bg: "rgba(43,90,226,0.12)" }}
-                    transition="all 0.15s ease"
+                    _hover={{ bg: "rgba(43,90,226,0.15)" }}
+                    transition={transitions.fast}
                     onClick={async () => {
                       if (depositingRef.current) return;
                       depositingRef.current = true;
@@ -262,11 +264,13 @@ export default function DashboardPage() {
             as="button"
             flex={1}
             p="12px"
-            bgColor={colors.accent.indigo}
+            bg={buttonVariants.primary.bg}
+            boxShadow={buttonVariants.primary.boxShadow}
             borderRadius={radius.lg}
             cursor="pointer"
-            _hover={{ opacity: 0.9 }}
-            transition="all 0.15s ease"
+            _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
+            _active={{ transform: buttonVariants.primary.active.transform }}
+            transition={transitions.fast}
             onClick={() => setShowSendModal(true)}
             display="flex" alignItems="center" justifyContent="center" gap="8px"
           >
@@ -277,12 +281,12 @@ export default function DashboardPage() {
             as="button"
             flex={1}
             p="12px"
-            bgColor={colors.bg.card}
+            bg={buttonVariants.secondary.bg}
             borderRadius={radius.lg}
-            border={`2px solid ${colors.border.default}`}
+            border={buttonVariants.secondary.border}
             cursor="pointer"
-            _hover={{ borderColor: colors.accent.indigo }}
-            transition="all 0.15s ease"
+            _hover={{ bg: buttonVariants.secondary.hover.bg, borderColor: buttonVariants.secondary.hover.borderColor }}
+            transition={transitions.fast}
             onClick={() => setShowReceiveModal(true)}
             display="flex" alignItems="center" justifyContent="center" gap="8px"
           >

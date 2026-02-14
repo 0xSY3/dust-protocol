@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import { colors, radius, shadows, transitions } from "@/lib/design/tokens";
 import { getChainConfig } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
 import type { StealthPayment } from "@/lib/design/types";
@@ -35,7 +35,7 @@ export function StealthBalanceCard({ payments, isScanning, scan }: StealthBalanc
     >
       <Box
         p="28px"
-        bgColor={colors.bg.card}
+        bg={colors.bg.cardSolid}
         borderRadius="17px"
       >
         <VStack gap="24px" align="stretch">
@@ -50,9 +50,9 @@ export function StealthBalanceCard({ payments, isScanning, scan }: StealthBalanc
               p="8px"
               borderRadius={radius.full}
               cursor="pointer"
-              _hover={{ bgColor: colors.bg.input }}
+              _hover={{ bgColor: colors.bg.hover }}
               onClick={() => scan()}
-              transition="all 0.15s ease"
+              transition={transitions.fast}
             >
               {isScanning
                 ? <Spinner size="sm" color={colors.accent.indigo} />

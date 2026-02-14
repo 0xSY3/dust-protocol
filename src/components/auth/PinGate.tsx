@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, KeyboardEvent, ChangeEvent } from "react";
 import { Box, Text, VStack, HStack, Input, Spinner } from "@chakra-ui/react";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import { colors, radius, shadows, inputStates, buttonVariants, transitions } from "@/lib/design/tokens";
 import { AlertCircleIcon, ShieldIcon } from "@/components/stealth/icons";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -82,7 +82,8 @@ export function PinGate({ onUnlocked }: PinGateProps) {
         w="100%"
         maxW="400px"
         p="40px 32px"
-        bgColor={colors.bg.card}
+        bg={colors.bg.cardSolid}
+        border={`1px solid ${colors.border.default}`}
         borderRadius={radius.xl}
         boxShadow={shadows.modal}
       >
@@ -117,12 +118,13 @@ export function PinGate({ onUnlocked }: PinGateProps) {
                 textAlign="center"
                 fontSize="24px"
                 fontWeight={700}
-                bgColor={colors.bg.input}
-                border="none"
+                bgColor={inputStates.default.bg}
+                border={inputStates.default.border}
                 borderRadius={radius.sm}
-                color={colors.text.primary}
+                color={inputStates.default.color}
                 css={{ WebkitTextSecurity: "disc" }}
-                _focus={{ boxShadow: colors.glow.indigo }}
+                _focus={{ borderColor: inputStates.focus.borderColor, boxShadow: inputStates.focus.boxShadow }}
+                transition={transitions.fast}
                 disabled={isVerifying}
               />
             ))}
@@ -136,7 +138,7 @@ export function PinGate({ onUnlocked }: PinGateProps) {
           )}
 
           {(error || pinError) && (
-            <HStack gap="8px" p="12px 16px" bgColor="rgba(229, 62, 62, 0.04)" borderRadius={radius.sm}>
+            <HStack gap="8px" p="12px 16px" bg={buttonVariants.danger.bg} border={buttonVariants.danger.border} borderRadius={radius.sm}>
               <AlertCircleIcon size={14} color={colors.accent.red} />
               <Text fontSize="13px" color={colors.accent.red}>{error || pinError}</Text>
             </HStack>

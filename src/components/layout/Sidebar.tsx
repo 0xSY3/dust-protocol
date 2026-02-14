@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useAccount, useDisconnect } from "wagmi";
 import { useAuth } from "@/contexts/AuthContext";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, buttonVariants, typography, transitions } from "@/lib/design/tokens";
 import {
   GridIcon, LinkIcon, ActivityIcon, SettingsIcon, LogOutIcon, StarIcon,
 } from "@/components/stealth/icons";
@@ -42,7 +42,7 @@ export function Sidebar() {
         flexDirection="column"
         w="240px"
         minH="100vh"
-        bgColor={colors.bg.card}
+        bgColor={colors.bg.cardSolid}
         borderRight={`1px solid ${colors.border.default}`}
         position="fixed"
         left={0}
@@ -53,15 +53,28 @@ export function Sidebar() {
         <Box p="28px 24px 24px">
           <HStack gap="10px" align="center">
             <DustLogo size={28} color={colors.accent.indigo} />
-            <Text fontSize="20px" fontWeight={800} color={colors.text.primary} letterSpacing="-0.03em">
+            <Text
+              fontSize="20px"
+              fontWeight={800}
+              color={colors.text.primary}
+              fontFamily={typography.fontFamily.heading}
+              letterSpacing="-0.03em"
+            >
               Dust
             </Text>
             <Box
               px="7px" py="2px"
-              bgColor="rgba(43, 90, 226, 0.08)"
+              bgColor="rgba(74,117,240,0.12)"
+              border="1px solid rgba(74,117,240,0.2)"
               borderRadius={radius.xs}
             >
-              <Text fontSize="9px" fontWeight={700} color={colors.accent.indigo} letterSpacing="0.06em">
+              <Text
+                fontSize="9px"
+                fontWeight={700}
+                color={colors.accent.indigoBright}
+                letterSpacing="0.06em"
+                fontFamily={typography.fontFamily.heading}
+              >
                 BETA
               </Text>
             </Box>
@@ -83,13 +96,26 @@ export function Sidebar() {
                   gap="14px"
                   p="12px 14px"
                   borderRadius={radius.sm}
-                  color={isActive ? colors.text.primary : colors.text.muted}
-                  _hover={{ color: colors.text.primary }}
-                  transition="all 0.15s ease"
+                  bgColor={isActive ? glass.cardHover.bg : "transparent"}
+                  border={isActive ? glass.cardHover.border : "1px solid transparent"}
+                  boxShadow={isActive ? shadows.focusRing : "none"}
+                  color={isActive ? colors.text.primary : colors.text.secondary}
+                  _hover={{
+                    bgColor: isActive ? glass.cardHover.bg : glass.card.bg,
+                    color: colors.text.primary,
+                    border: isActive ? glass.cardHover.border : glass.card.border,
+                  }}
+                  transition={transitions.fast}
                   cursor="pointer"
                 >
-                  <item.Icon size={20} color={isActive ? colors.text.primary : colors.text.muted} />
-                  <Text fontSize="15px" fontWeight={isActive ? 700 : 500}>{item.label}</Text>
+                  <item.Icon size={20} color={isActive ? colors.accent.indigo : "currentColor"} />
+                  <Text
+                    fontSize="15px"
+                    fontWeight={isActive ? 600 : 500}
+                    fontFamily={typography.fontFamily.body}
+                  >
+                    {item.label}
+                  </Text>
                 </HStack>
               </Link>
             );
@@ -103,15 +129,25 @@ export function Sidebar() {
               <Box
                 w="100%"
                 p="10px 14px"
-                bgColor={colors.bg.input}
+                bgColor={glass.input.bg}
+                border={glass.input.border}
                 borderRadius={radius.xs}
               >
                 {displayName ? (
-                  <Text fontSize="13px" fontWeight={600} color={colors.text.primary}>
+                  <Text
+                    fontSize="13px"
+                    fontWeight={600}
+                    color={colors.text.primary}
+                    fontFamily={typography.fontFamily.body}
+                  >
                     {displayName}
                   </Text>
                 ) : (
-                  <Text fontSize="12px" color={colors.text.muted} fontFamily="'JetBrains Mono', monospace">
+                  <Text
+                    fontSize="12px"
+                    color={colors.text.secondary}
+                    fontFamily={typography.fontFamily.mono}
+                  >
                     {address.slice(0, 8)}...{address.slice(-6)}
                   </Text>
                 )}
@@ -119,18 +155,23 @@ export function Sidebar() {
               <Box
                 as="button"
                 p="8px 14px"
-                bgColor="transparent"
+                bgColor={buttonVariants.ghost.bg}
                 borderRadius={radius.xs}
                 cursor="pointer"
-                _hover={{ color: colors.accent.red }}
+                color={colors.text.secondary}
+                _hover={{
+                  bgColor: buttonVariants.danger.bg,
+                  color: colors.accent.red,
+                }}
+                transition={transitions.fast}
                 onClick={() => disconnect()}
                 display="flex"
                 alignItems="center"
                 gap="8px"
                 w="100%"
               >
-                <LogOutIcon size={14} color={colors.text.muted} />
-                <Text fontSize="13px" color={colors.text.muted} fontWeight={400}>Disconnect</Text>
+                <LogOutIcon size={14} color="currentColor" />
+                <Text fontSize="13px" fontWeight={500} color="currentColor">Disconnect</Text>
               </Box>
             </>
           )}
@@ -144,9 +185,9 @@ export function Sidebar() {
         bottom={0}
         left={0}
         right={0}
-        bgColor={colors.bg.card}
+        bgColor={colors.bg.cardSolid}
         borderTop={`1px solid ${colors.border.default}`}
-        boxShadow="0 -2px 8px rgba(0, 0, 0, 0.04)"
+        boxShadow="0 -4px 16px rgba(0,0,0,0.4), 0 -1px 4px rgba(0,0,0,0.3)"
         zIndex={50}
         justifyContent="space-around"
         p="10px 0 env(safe-area-inset-bottom, 8px)"
@@ -155,9 +196,39 @@ export function Sidebar() {
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link key={item.href} href={item.href} style={{ textDecoration: "none" }}>
-              <VStack gap="4px" p="6px 14px" align="center" cursor="pointer">
-                <item.Icon size={22} color={isActive ? colors.accent.indigo : colors.text.muted} />
-                <Text fontSize="10px" fontWeight={isActive ? 600 : 400} color={isActive ? colors.accent.indigo : colors.text.muted}>
+              <VStack
+                gap="4px"
+                p="6px 14px"
+                align="center"
+                cursor="pointer"
+                borderRadius={radius.xs}
+                transition={transitions.fast}
+                _hover={{ bgColor: glass.card.bg }}
+              >
+                <Box
+                  position="relative"
+                >
+                  <item.Icon size={22} color={isActive ? colors.accent.indigo : colors.text.tertiary} />
+                  {isActive && (
+                    <Box
+                      position="absolute"
+                      bottom="-6px"
+                      left="50%"
+                      transform="translateX(-50%)"
+                      w="4px"
+                      h="4px"
+                      borderRadius={radius.full}
+                      bgColor={colors.accent.indigo}
+                      boxShadow="0 0 6px rgba(74,117,240,0.5)"
+                    />
+                  )}
+                </Box>
+                <Text
+                  fontSize="10px"
+                  fontWeight={isActive ? 600 : 400}
+                  color={isActive ? colors.accent.indigo : colors.text.tertiary}
+                  fontFamily={typography.fontFamily.body}
+                >
                   {item.label}
                 </Text>
               </VStack>

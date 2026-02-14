@@ -3,14 +3,14 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
 import { Box, Text, VStack, HStack, Input } from "@chakra-ui/react";
 import { Button } from "@/components/ui/button";
-import { colors, radius } from "@/lib/design/tokens";
-import { LockIcon, AlertCircleIcon, InfoIcon } from "@/components/stealth/icons";
+import { colors, radius, inputStates, buttonVariants, transitions } from "@/lib/design/tokens";
+import { AlertCircleIcon } from "@/components/stealth/icons";
 
 interface PinStepProps {
   onNext: (pin: string) => void;
 }
 
-function PinInput({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+function PinInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -33,36 +33,37 @@ function PinInput({ value, onChange, label }: { value: string; onChange: (v: str
   };
 
   return (
-    <VStack gap="10px" align="stretch">
-      <Text fontSize="12px" color={colors.text.tertiary} fontWeight={500}>{label}</Text>
-      <HStack gap="8px" justify="center">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Input
-            key={i}
-            ref={(el) => { refs.current[i] = el; }}
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoComplete="one-time-code"
-            maxLength={1}
-            value={value[i] || ""}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(i, e.target.value)}
-            onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => handleKeyDown(i, e)}
-            w="48px"
-            h="56px"
-            textAlign="center"
-            fontSize="24px"
-            fontWeight={700}
-            bgColor={colors.bg.input}
-            border={`1.5px solid ${value[i] ? colors.accent.indigo : colors.border.default}`}
-            borderRadius={radius.sm}
-            color={colors.text.primary}
-            css={{ WebkitTextSecurity: "disc" }}
-            _focus={{ borderColor: colors.accent.indigo, boxShadow: colors.glow.indigo }}
-          />
-        ))}
-      </HStack>
-    </VStack>
+    <HStack gap="8px" justify="center">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Input
+          key={i}
+          ref={(el) => { refs.current[i] = el; }}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="one-time-code"
+          maxLength={1}
+          value={value[i] || ""}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(i, e.target.value)}
+          onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => handleKeyDown(i, e)}
+          w="44px"
+          h="52px"
+          textAlign="center"
+          fontSize="20px"
+          fontWeight={600}
+          bgColor={inputStates.default.bg}
+          border={`1px solid ${value[i] ? "rgba(255,255,255,0.15)" : colors.border.default}`}
+          borderRadius={radius.sm}
+          color={inputStates.default.color}
+          css={{ WebkitTextSecurity: "disc" }}
+          _focus={{
+            borderColor: inputStates.focus.borderColor,
+            boxShadow: inputStates.focus.boxShadow,
+          }}
+          transition={transitions.fast}
+        />
+      ))}
+    </HStack>
   );
 }
 
@@ -89,33 +90,31 @@ export function PinStep({ onNext }: PinStepProps) {
     onNext(pin);
   };
 
+  const isReady = step === "create" ? pin.length === 6 : confirmPin.length === 6;
+
   return (
-    <VStack gap="28px" align="stretch">
-      <VStack gap="8px" textAlign="center">
-        <Box color={colors.accent.indigo} opacity={0.9}>
-          <LockIcon size={36} />
-        </Box>
-        <Text fontSize="22px" fontWeight={700} color={colors.text.primary}>
-          {step === "create" ? "Set your PIN" : "Confirm your PIN"}
+    <VStack gap="20px" align="stretch">
+      <VStack gap="4px" align="flex-start">
+        <Text fontSize="20px" fontWeight={600} color="white" letterSpacing="-0.01em">
+          {step === "create" ? "Create a PIN" : "Confirm your PIN"}
         </Text>
-        <Text fontSize="14px" color={colors.text.muted} maxW="320px" mx="auto" lineHeight="1.6">
+        <Text fontSize="13px" color={colors.text.muted}>
           {step === "create"
-            ? "This PIN + your wallet creates your stealth identity"
-            : "Enter the same PIN again to confirm"
-          }
+            ? "Your PIN + wallet signature creates your stealth keys"
+            : "Enter the same PIN to confirm"}
         </Text>
       </VStack>
 
       {step === "create" ? (
-        <PinInput value={pin} onChange={setPin} label="Create PIN" />
+        <PinInput value={pin} onChange={setPin} />
       ) : (
-        <PinInput value={confirmPin} onChange={setConfirmPin} label="Confirm PIN" />
+        <PinInput value={confirmPin} onChange={setConfirmPin} />
       )}
 
       {error && (
-        <HStack gap="8px" p="12px 16px" bgColor="rgba(229, 62, 62, 0.06)" borderRadius={radius.xs}>
-          <AlertCircleIcon size={14} color={colors.accent.red} />
-          <Text fontSize="13px" color={colors.accent.red}>{error}</Text>
+        <HStack gap="6px" pl="2px">
+          <AlertCircleIcon size={12} color={colors.accent.red} />
+          <Text fontSize="12px" color={colors.accent.red}>{error}</Text>
         </HStack>
       )}
 
@@ -123,14 +122,18 @@ export function PinStep({ onNext }: PinStepProps) {
         {step === "confirm" && (
           <Button
             flex={1}
-            h="52px"
-            bgColor={colors.bg.elevated}
+            h="44px"
+            bg={buttonVariants.secondary.bg}
             borderRadius={radius.sm}
-            border={`1px solid ${colors.border.default}`}
+            border={buttonVariants.secondary.border}
             fontWeight={500}
             fontSize="14px"
-            color={colors.text.primary}
-            _hover={{ bgColor: colors.bg.hover }}
+            color={colors.text.secondary}
+            _hover={{
+              bg: buttonVariants.secondary.hover.bg,
+              borderColor: buttonVariants.secondary.hover.borderColor,
+            }}
+            transition={transitions.fast}
             onClick={() => { setStep("create"); setPin(""); setConfirmPin(""); setError(null); }}
           >
             Back
@@ -138,26 +141,33 @@ export function PinStep({ onNext }: PinStepProps) {
         )}
         <Button
           flex={2}
-          h="52px"
-          bgColor={(step === "create" ? pin.length === 6 : confirmPin.length === 6) ? colors.accent.indigoDark : colors.bg.elevated}
+          h="44px"
+          bgColor={isReady ? buttonVariants.primary.bg : inputStates.disabled.bg}
           borderRadius={radius.sm}
-          fontWeight={600}
-          fontSize="15px"
-          color={(step === "create" ? pin.length === 6 : confirmPin.length === 6) ? "#fff" : colors.text.muted}
-          _hover={(step === "create" ? pin.length === 6 : confirmPin.length === 6) ? { bgColor: colors.accent.indigo } : {}}
+          border={isReady ? `1px solid ${colors.border.accent}` : `1px solid ${colors.border.default}`}
+          boxShadow={isReady ? buttonVariants.primary.boxShadow : "none"}
+          fontWeight={500}
+          fontSize="14px"
+          color={isReady ? colors.text.primary : colors.text.muted}
+          _hover={
+            isReady
+              ? {
+                  boxShadow: buttonVariants.primary.hover.boxShadow,
+                  transform: buttonVariants.primary.hover.transform,
+                }
+              : {}
+          }
+          transition={transitions.fast}
           onClick={step === "create" ? handleCreateNext : handleConfirm}
-          disabled={step === "create" ? pin.length !== 6 : confirmPin.length !== 6}
+          disabled={!isReady}
         >
-          {step === "create" ? "Continue" : "Confirm PIN"}
+          {step === "create" ? "Continue" : "Confirm"}
         </Button>
       </HStack>
 
-      <HStack gap="10px" p="14px 16px" bgColor="rgba(217, 119, 6, 0.06)" borderRadius={radius.sm} border="1px solid rgba(217, 119, 6, 0.12)">
-        <InfoIcon size={16} color={colors.accent.amber} />
-        <Text fontSize="12px" color={colors.accent.amber} lineHeight="1.5">
-          This PIN cannot be recovered if forgotten. You would need to create a new identity.
-        </Text>
-      </HStack>
+      <Text fontSize="11px" color={colors.text.muted} lineHeight="1.4">
+        This PIN cannot be recovered. You would need to create a new identity.
+      </Text>
     </VStack>
   );
 }

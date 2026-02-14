@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!-- Dust Vortex — Final refined version -->
+  <g transform="translate(200,200)">
+    <!-- Dense core — overlapping bright circles -->
+    <circle cx="-6" cy="-10" r="12" fill="#22d3ee"/>
+    <circle cx="10" cy="-4" r="11" fill="#38bdf8"/>
+    <circle cx="2" cy="10" r="11.5" fill="#60a5fa"/>
+    <circle cx="-10" cy="6" r="10.5" fill="#818cf8"/>
+    <circle cx="0" cy="-2" r="8" fill="#a78bfa"/>
+    <circle cx="8" cy="10" r="8" fill="#6366f1"/>
+    <circle cx="-8" cy="-4" r="7" fill="#34d4f0"/>
+
+    <!-- Inner ring — 6 particles evenly spaced -->
+    <circle cx="0" cy="-34" r="8" fill="#22d3ee" opacity="0.9"/>
+    <circle cx="30" cy="-17" r="7.5" fill="#38bdf8" opacity="0.85"/>
+    <circle cx="30" cy="17" r="7.5" fill="#60a5fa" opacity="0.8"/>
+    <circle cx="0" cy="34" r="7" fill="#818cf8" opacity="0.78"/>
+    <circle cx="-30" cy="17" r="7" fill="#a78bfa" opacity="0.78"/>
+    <circle cx="-30" cy="-17" r="7.5" fill="#6366f1" opacity="0.82"/>
+
+    <!-- Mid ring — 8 particles, slightly rotated -->
+    <circle cx="14" cy="-56" r="6" fill="#22d3ee" opacity="0.65"/>
+    <circle cx="46" cy="-30" r="5.5" fill="#2dd4bf" opacity="0.6"/>
+    <circle cx="52" cy="8" r="5.5" fill="#38bdf8" opacity="0.58"/>
+    <circle cx="32" cy="44" r="5" fill="#60a5fa" opacity="0.55"/>
+    <circle cx="-8" cy="56" r="5" fill="#818cf8" opacity="0.52"/>
+    <circle cx="-42" cy="36" r="5" fill="#a78bfa" opacity="0.5"/>
+    <circle cx="-52" cy="-4" r="5.5" fill="#8b5cf6" opacity="0.55"/>
+    <circle cx="-34" cy="-44" r="5.5" fill="#6366f1" opacity="0.58"/>
+
+    <!-- Outer ring — 10 particles, dispersed -->
+    <circle cx="6" cy="-78" r="4" fill="#22d3ee" opacity="0.4"/>
+    <circle cx="44" cy="-64" r="3.5" fill="#2dd4bf" opacity="0.35"/>
+    <circle cx="70" cy="-32" r="3.5" fill="#38bdf8" opacity="0.33"/>
+    <circle cx="74" cy="14" r="3.5" fill="#60a5fa" opacity="0.3"/>
+    <circle cx="56" cy="54" r="3" fill="#818cf8" opacity="0.28"/>
+    <circle cx="18" cy="76" r="3" fill="#818cf8" opacity="0.26"/>
+    <circle cx="-26" cy="72" r="3" fill="#a78bfa" opacity="0.26"/>
+    <circle cx="-62" cy="44" r="3" fill="#c084fc" opacity="0.25"/>
+    <circle cx="-72" cy="-10" r="3.5" fill="#8b5cf6" opacity="0.28"/>
+    <circle cx="-52" cy="-60" r="3.5" fill="#6366f1" opacity="0.3"/>
+
+    <!-- Farthest scatter — barely visible -->
+    <circle cx="28" cy="-96" r="2.5" fill="#22d3ee" opacity="0.2"/>
+    <circle cx="72" cy="-62" r="2" fill="#2dd4bf" opacity="0.16"/>
+    <circle cx="92" cy="-8" r="2" fill="#38bdf8" opacity="0.14"/>
+    <circle cx="76" cy="52" r="2" fill="#60a5fa" opacity="0.14"/>
+    <circle cx="34" cy="90" r="2" fill="#818cf8" opacity="0.12"/>
+    <circle cx="-22" cy="94" r="2" fill="#a78bfa" opacity="0.12"/>
+    <circle cx="-70" cy="64" r="2" fill="#c084fc" opacity="0.12"/>
+    <circle cx="-90" cy="4" r="2" fill="#8b5cf6" opacity="0.14"/>
+    <circle cx="-68" cy="-68" r="2" fill="#6366f1" opacity="0.15"/>
+    <circle cx="-10" cy="-96" r="2.5" fill="#818cf8" opacity="0.18"/>
+  </g>
+</svg>

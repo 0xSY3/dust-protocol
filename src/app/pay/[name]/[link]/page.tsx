@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, ChangeEvent } from "react";
 import { Box, Text, VStack, HStack, Input, Spinner } from "@chakra-ui/react";
 import { useAccount, useConnect } from "wagmi";
 import { injected } from "wagmi/connectors";
-import { colors, radius, getExplorerBase } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, buttonVariants, transitions, typography, getExplorerBase } from "@/lib/design/tokens";
 import { useStealthSend, useStealthName } from "@/hooks/stealth";
 import { NAME_SUFFIX } from "@/lib/stealth";
 import { getChainConfig, DEFAULT_CHAIN_ID } from "@/config/chains";
@@ -14,6 +14,7 @@ import {
   ShieldIcon, AlertCircleIcon, ArrowUpRightIcon, LockIcon,
   WalletIcon, SendIcon, CopyIcon,
 } from "@/components/stealth/icons";
+import { DustLogo } from "@/components/DustLogo";
 
 const animations = `
 @keyframes dust-success-scale {
@@ -90,17 +91,23 @@ export default function LinkPayPage({ params }: { params: { name: string; link: 
       <style>{animations}</style>
 
       {/* Header */}
-      <Box as="header" borderBottom={`1px solid ${colors.border.default}`} bg="rgba(255, 255, 255, 0.95)"
-        backdropFilter="blur(10px)" px="24px" py="16px" position="sticky" top={0} zIndex={10}>
+      <Box as="header" borderBottom={`1px solid ${colors.border.default}`} bg={glass.modal.bg}
+        backdropFilter={glass.modal.backdropFilter} boxShadow={shadows.card}
+        px="24px" py="16px" position="sticky" top={0} zIndex={10}>
         <HStack justify="space-between" align="center" maxW="600px" mx="auto">
           <Link href="/" style={{ textDecoration: "none" }}>
-            <Text fontSize="20px" fontWeight={800} color={colors.text.primary} letterSpacing="-0.03em"
-              _hover={{ color: colors.accent.indigo }} transition="color 0.15s" cursor="pointer">
-              Dust Protocol
-            </Text>
+            <HStack gap="8px" align="center" _hover={{ opacity: 0.8 }} transition={transitions.fast} cursor="pointer">
+              <DustLogo size={24} color={colors.accent.indigo} />
+              <Text fontSize="20px" fontWeight={800} color={colors.text.primary}
+                fontFamily={typography.fontFamily.heading} letterSpacing="-0.03em">
+                Dust
+              </Text>
+            </HStack>
           </Link>
-          <Box px="12px" py="5px" bgColor="rgba(43, 90, 226, 0.08)" borderRadius={radius.full}>
-            <Text fontSize="11px" color={colors.accent.indigo} fontWeight={600} letterSpacing="0.02em">Payment</Text>
+          <Box px="12px" py="5px" bgColor="rgba(74,117,240,0.12)" border="1px solid rgba(74,117,240,0.2)"
+            borderRadius={radius.full}>
+            <Text fontSize="11px" color={colors.accent.indigoBright} fontWeight={600} letterSpacing="0.02em"
+              fontFamily={typography.fontFamily.heading}>Payment</Text>
           </Box>
         </HStack>
       </Box>
@@ -113,8 +120,8 @@ export default function LinkPayPage({ params }: { params: { name: string; link: 
               <Box position="absolute" inset="-2px" borderRadius="26px" bg="linear-gradient(135deg, #2B5AE2, #7C3AED, #2B5AE2)"
                 opacity={isSuccess ? 0.8 : 0.15} transition="opacity 0.6s ease" />
 
-              <Box bgColor={colors.bg.card} borderRadius={radius.xl} overflow="hidden" w="100%" position="relative"
-                boxShadow="0 8px 32px rgba(43, 90, 226, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04)">
+              <Box bg={colors.bg.cardSolid} borderRadius={radius.xl} overflow="hidden" w="100%" position="relative"
+                boxShadow={shadows.card}>
 
                 <Box p="28px 24px 24px" textAlign="center"
                   bg={isSuccess
@@ -243,11 +250,12 @@ export default function LinkPayPage({ params }: { params: { name: string; link: 
                             </Text>
                           </VStack>
                           <Box as="button" w="100%" p="14px"
-                            bg="linear-gradient(135deg, #2B5AE2 0%, #4A75F0 100%)"
+                            bg={buttonVariants.primary.bg}
                             borderRadius={radius.sm} cursor="pointer"
-                            _hover={{ opacity: 0.9, transform: "translateY(-1px)" }}
-                            transition="all 0.15s ease"
-                            boxShadow="0 4px 12px rgba(43, 90, 226, 0.25)"
+                            boxShadow={buttonVariants.primary.boxShadow}
+                            _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
+                            _active={{ transform: buttonVariants.primary.active.transform }}
+                            transition={transitions.fast}
                             onClick={() => connect({ connector: injected() })}>
                             <HStack gap="8px" justify="center">
                               <WalletIcon size={16} color="white" />
@@ -278,13 +286,13 @@ export default function LinkPayPage({ params }: { params: { name: string; link: 
                             <Text fontSize="11px" color={colors.text.muted} mt="6px">on {chainConfig.name}</Text>
                           </Box>
                           <Box as="button" w="100%" h="52px"
-                            bg={amount ? "linear-gradient(135deg, #2B5AE2 0%, #4A75F0 100%)" : colors.bg.elevated}
+                            bg={amount ? buttonVariants.primary.bg : colors.bg.elevated}
                             borderRadius={radius.md} display="flex" alignItems="center" justifyContent="center" gap="8px"
                             cursor={amount && resolvedMeta ? "pointer" : "not-allowed"}
                             opacity={amount && resolvedMeta && !isLoading ? 1 : 0.5}
-                            boxShadow={amount ? "0 4px 12px rgba(43, 90, 226, 0.25)" : "none"}
-                            _hover={amount && resolvedMeta ? { opacity: 0.9, transform: "translateY(-1px)" } : {}}
-                            transition="all 0.15s ease"
+                            boxShadow={amount ? buttonVariants.primary.boxShadow : "none"}
+                            _hover={amount && resolvedMeta ? { boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform } : {}}
+                            transition={transitions.fast}
                             onClick={handlePreview}>
                             <Text fontSize="15px" fontWeight={600} color={amount ? "white" : colors.text.muted}>
                               Preview Payment
@@ -321,19 +329,21 @@ export default function LinkPayPage({ params }: { params: { name: string; link: 
                             </Text>
                           </HStack>
                           <HStack gap="10px">
-                            <Box as="button" flex={1} h="48px" bgColor={colors.bg.input} borderRadius={radius.sm}
-                              border={`1.5px solid ${colors.border.default}`} display="flex" alignItems="center"
+                            <Box as="button" flex={1} h="48px" bg={buttonVariants.secondary.bg} borderRadius={radius.sm}
+                              border={buttonVariants.secondary.border} display="flex" alignItems="center"
                               justifyContent="center" cursor="pointer"
-                              _hover={{ bgColor: colors.bg.elevated }} transition="background-color 0.15s"
+                              _hover={{ bg: buttonVariants.secondary.hover.bg, borderColor: buttonVariants.secondary.hover.borderColor }}
+                              transition={transitions.fast}
                               onClick={() => setSendStep("input")}>
                               <Text fontSize="14px" fontWeight={500} color={colors.text.secondary}>Back</Text>
                             </Box>
                             <Box as="button" flex={2} h="48px"
-                              bg="linear-gradient(135deg, #2B5AE2 0%, #4A75F0 100%)"
+                              bg={buttonVariants.primary.bg}
                               borderRadius={radius.sm} display="flex" alignItems="center" justifyContent="center" gap="8px"
                               cursor={isLoading ? "wait" : "pointer"}
-                              boxShadow="0 4px 12px rgba(43, 90, 226, 0.25)"
-                              _hover={{ opacity: 0.9 }} transition="opacity 0.15s"
+                              boxShadow={buttonVariants.primary.boxShadow}
+                              _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
+                              transition={transitions.fast}
                               onClick={handleSend}>
                               {isLoading ? (
                                 <Spinner size="sm" color="white" />
@@ -348,7 +358,7 @@ export default function LinkPayPage({ params }: { params: { name: string; link: 
                         </VStack>
                       )}
                       {sendError && (
-                        <HStack gap="6px" p="12px 14px" bgColor="rgba(229, 62, 62, 0.06)" borderRadius={radius.xs} mt="12px">
+                        <HStack gap="6px" p="12px 14px" bg={buttonVariants.danger.bg} border={buttonVariants.danger.border} borderRadius={radius.xs} mt="12px">
                           <AlertCircleIcon size={14} color={colors.accent.red} />
                           <Text fontSize="12px" color={colors.accent.red}>{sendError}</Text>
                         </HStack>

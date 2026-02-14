@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Box, Text, VStack, HStack } from "@chakra-ui/react";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import { colors, radius, shadows, glass, transitions } from "@/lib/design/tokens";
 import type { OwnedName } from "@/lib/design/types";
 import { LinkIcon, CopyIcon, CheckIcon, QRIcon, ExternalLinkIcon } from "@/components/stealth/icons";
 import { QRModal } from "@/components/links/QRModal";
@@ -34,10 +34,11 @@ export function PersonalLinkCard({ ownedNames, metaAddress }: PersonalLinkCardPr
     <>
       <Box
         p="28px"
-        bgColor={colors.bg.card}
+        bg={glass.card.bg}
         borderRadius={radius.lg}
-        border={`2px solid ${colors.border.default}`}
+        border={glass.card.border}
         boxShadow={shadows.card}
+        backdropFilter={glass.card.backdropFilter}
       >
         <VStack gap="20px" align="stretch">
           {/* Header */}
@@ -71,7 +72,8 @@ export function PersonalLinkCard({ ownedNames, metaAddress }: PersonalLinkCardPr
                   p="8px"
                   borderRadius={radius.full}
                   cursor="pointer"
-                  _hover={{ bgColor: colors.bg.elevated }}
+                  _hover={{ bgColor: colors.bg.hover }}
+                  transition={transitions.fast}
                   onClick={handleCopy}
                 >
                   {copied
@@ -84,7 +86,8 @@ export function PersonalLinkCard({ ownedNames, metaAddress }: PersonalLinkCardPr
                   p="8px"
                   borderRadius={radius.full}
                   cursor="pointer"
-                  _hover={{ bgColor: colors.bg.elevated }}
+                  _hover={{ bgColor: colors.bg.hover }}
+                  transition={transitions.fast}
                   onClick={() => setShowQR(true)}
                 >
                   <QRIcon size={16} color={colors.text.muted} />
@@ -94,7 +97,8 @@ export function PersonalLinkCard({ ownedNames, metaAddress }: PersonalLinkCardPr
                   p="8px"
                   borderRadius={radius.full}
                   cursor="pointer"
-                  _hover={{ bgColor: colors.bg.elevated }}
+                  _hover={{ bgColor: colors.bg.hover }}
+                  transition={transitions.fast}
                   onClick={() => window.open(payPath, "_blank")}
                 >
                   <ExternalLinkIcon size={16} color={colors.text.muted} />

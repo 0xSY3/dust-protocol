@@ -4,7 +4,7 @@ import { useState, useEffect, ChangeEvent } from "react";
 import { Box, Text, VStack, HStack, Input, Spinner } from "@chakra-ui/react";
 import { Button } from "@/components/ui/button";
 import { ethers } from "ethers";
-import { colors, radius, getExplorerBase } from "@/lib/design/tokens";
+import { colors, radius, buttonVariants, transitions, getExplorerBase } from "@/lib/design/tokens";
 import { getChainConfig } from "@/config/chains";
 import { getTokensForChain, NATIVE_TOKEN_ADDRESS, type TokenConfig } from "@/config/tokens";
 import { useStealthSend, useStealthName } from "@/hooks/stealth";
@@ -207,9 +207,10 @@ export function SendForm() {
               <Text fontSize="11px" color={colors.text.muted} mt="6px">{displaySymbol} on {chainConfig.name}</Text>
             </Box>
           </VStack>
-          <Button h="48px" bgColor={colors.accent.indigoDark} borderRadius={radius.sm}
-            fontWeight={500} fontSize="14px" color="#fff" _hover={{ bgColor: colors.accent.indigo }}
-            onClick={handlePreview}
+          <Button h="48px" bg={buttonVariants.primary.bg} boxShadow={buttonVariants.primary.boxShadow}
+            borderRadius={radius.sm} fontWeight={500} fontSize="14px" color="#fff"
+            _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
+            transition={transitions.fast} onClick={handlePreview}
             disabled={(!resolvedAddress && !recipient.startsWith("st:")) || !amount || isLoading || isResolving}>
             Preview Payment
           </Button>
@@ -238,13 +239,14 @@ export function SendForm() {
             <Text fontSize="12px" color={colors.text.tertiary}>This payment is private.</Text>
           </HStack>
           <HStack gap="10px">
-            <Button flex={1} h="44px" bgColor={colors.bg.elevated} borderRadius={radius.sm}
-              border={`1px solid ${colors.border.default}`} fontWeight={500} fontSize="13px"
-              color={colors.text.primary} _hover={{ bgColor: colors.bg.hover }}
-              onClick={() => setSendStep("input")}>Back</Button>
-            <Button flex={2} h="44px" bgColor={colors.accent.indigoDark} borderRadius={radius.sm}
-              fontWeight={500} fontSize="13px" color="#fff" _hover={{ bgColor: colors.accent.indigo }}
-              onClick={handleSend} disabled={isLoading}>
+            <Button flex={1} h="44px" bg={buttonVariants.secondary.bg} borderRadius={radius.sm}
+              border={buttonVariants.secondary.border} fontWeight={500} fontSize="13px"
+              color={colors.text.primary} _hover={{ bg: buttonVariants.secondary.hover.bg, borderColor: buttonVariants.secondary.hover.borderColor }}
+              transition={transitions.fast} onClick={() => setSendStep("input")}>Back</Button>
+            <Button flex={2} h="44px" bg={buttonVariants.primary.bg} boxShadow={buttonVariants.primary.boxShadow}
+              borderRadius={radius.sm} fontWeight={500} fontSize="13px" color="#fff"
+              _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
+              transition={transitions.fast} onClick={handleSend} disabled={isLoading}>
               {isLoading ? <Spinner size="sm" /> : "Send Payment"}
             </Button>
           </HStack>
@@ -269,14 +271,15 @@ export function SendForm() {
               </HStack>
             </a>
           )}
-          <Button h="44px" px="28px" bgColor={colors.accent.indigoDark} borderRadius={radius.sm}
-            fontWeight={500} fontSize="13px" color="#fff" _hover={{ bgColor: colors.accent.indigo }}
-            onClick={reset}>Send Another</Button>
+          <Button h="44px" px="28px" bg={buttonVariants.primary.bg} boxShadow={buttonVariants.primary.boxShadow}
+            borderRadius={radius.sm} fontWeight={500} fontSize="13px" color="#fff"
+            _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
+            transition={transitions.fast} onClick={reset}>Send Another</Button>
         </VStack>
       )}
 
       {sendError && (
-        <HStack gap="6px" p="12px 14px" bgColor="rgba(248, 113, 113, 0.08)" borderRadius={radius.xs}>
+        <HStack gap="6px" p="12px 14px" bg={buttonVariants.danger.bg} border={buttonVariants.danger.border} borderRadius={radius.xs}>
           <AlertCircleIcon size={14} color={colors.accent.red} />
           <Text fontSize="12px" color={colors.accent.red}>{sendError}</Text>
         </HStack>

@@ -251,8 +251,8 @@ export default function CreateLinkPage() {
                       {BG_COLORS.map((bg) => (
                         <Box key={bg} as="button" w="32px" h="32px" borderRadius={radius.full}
                           bgColor={bg} cursor="pointer" transition="all 0.15s ease"
-                          border={emojiBg === bg ? "3px solid #1A1D2B" : "2px solid transparent"}
-                          boxShadow={emojiBg === bg ? `0 2px 8px ${bg}80` : "none"}
+                          border={emojiBg === bg ? `3px solid ${colors.accent.indigo}` : "2px solid transparent"}
+                          boxShadow={emojiBg === bg ? `0 2px 8px ${bg}80, ${colors.glow.indigo}` : "none"}
                           _hover={{ transform: "scale(1.15)" }}
                           onClick={() => setEmojiBg(bg)} />
                       ))}

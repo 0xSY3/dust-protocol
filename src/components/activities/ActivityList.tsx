@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
-import { colors, radius, getExplorerBase } from "@/lib/design/tokens";
+import { colors, radius, glass, buttonVariants, transitions, getExplorerBase } from "@/lib/design/tokens";
 import { getChainConfig } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
 import type { StealthPayment, ClaimAddress, OutgoingPayment } from "@/lib/design/types";
@@ -95,16 +95,17 @@ export function ActivityList({
               px="16px"
               py="8px"
               borderRadius={radius.full}
-              bgColor={filter === f ? colors.text.primary : "transparent"}
+              bg={filter === f ? buttonVariants.primary.bg : "transparent"}
+              boxShadow={filter === f ? buttonVariants.primary.boxShadow : "none"}
               border={filter === f ? "none" : `1px solid ${colors.border.default}`}
               cursor="pointer"
               onClick={() => setFilter(f)}
-              transition="all 0.15s ease"
+              transition={transitions.fast}
               _hover={filter !== f ? { bgColor: colors.bg.input } : {}}
             >
               <Text
                 fontSize="13px"
-                fontWeight={filter === f ? 500 : 400}
+                fontWeight={filter === f ? 600 : 400}
                 color={filter === f ? "#fff" : colors.text.muted}
                 textTransform="capitalize"
               >
@@ -210,7 +211,7 @@ export function ActivityList({
 
       {/* Claimed tx success */}
       {claimedTx && (
-        <HStack p="16px 20px" bgColor={colors.bg.card} borderRadius={radius.md} border={`2px solid ${colors.accent.indigo}`} gap="14px">
+        <HStack p="16px 20px" bg={glass.card.bg} backdropFilter={glass.card.backdropFilter} borderRadius={radius.md} border={`2px solid ${colors.accent.indigo}`} gap="14px">
           <Box w="40px" h="40px" borderRadius={radius.full} bgColor="rgba(43, 90, 226, 0.08)"
             display="flex" alignItems="center" justifyContent="center" flexShrink={0}>
             <CheckCircleIcon size={20} color={colors.accent.indigo} />
@@ -235,7 +236,7 @@ export function ActivityList({
 
       {/* Activity list */}
       {filtered.length === 0 ? (
-        <Box p="48px" textAlign="center" bgColor={colors.bg.card} borderRadius={radius.lg} border={`2px solid ${colors.border.default}`}>
+        <Box p="48px" textAlign="center" bg={glass.card.bg} backdropFilter={glass.card.backdropFilter} borderRadius={radius.lg} border={glass.card.border}>
           <VStack gap="12px">
             <Text fontSize="15px" fontWeight={500} color={colors.text.primary}>No transactions yet</Text>
             <Text fontSize="13px" color={colors.text.muted}>
@@ -285,14 +286,15 @@ function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, c
     <Box>
       <HStack
         p="16px 20px"
-        bgColor={colors.bg.card}
+        bg={glass.card.bg}
+        backdropFilter={glass.card.backdropFilter}
         borderRadius={isExpanded ? `${radius.md} ${radius.md} 0 0` : radius.md}
-        border={`2px solid ${colors.border.default}`}
-        borderBottom={isExpanded ? "none" : `2px solid ${colors.border.default}`}
+        border={glass.card.border}
+        borderBottom={isExpanded ? "none" : glass.card.border}
         justify="space-between"
         cursor="pointer"
-        _hover={{ borderColor: colors.border.light }}
-        transition="all 0.15s ease"
+        _hover={{ bg: glass.cardHover.bg, border: glass.cardHover.border }}
+        transition={transitions.fast}
         onClick={() => setExpandedTx(isExpanded ? null : payment.announcement.txHash)}
       >
         <HStack gap="14px">
@@ -323,8 +325,8 @@ function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, c
       </HStack>
 
       {isExpanded && (
-        <Box p="16px 20px" bgColor={colors.bg.card} borderRadius={`0 0 ${radius.md} ${radius.md}`}
-          border={`2px solid ${colors.border.default}`} borderTop="none">
+        <Box p="16px 20px" bg={glass.card.bg} backdropFilter={glass.card.backdropFilter} borderRadius={`0 0 ${radius.md} ${radius.md}`}
+          border={glass.card.border} borderTop="none">
           <VStack gap="10px" align="stretch">
             <HStack justify="space-between">
               <Text fontSize="12px" color={colors.text.muted}>Tx Hash</Text>
@@ -375,14 +377,15 @@ function OutgoingRow({ item, expandedTx, setExpandedTx }: {
     <Box>
       <HStack
         p="16px 20px"
-        bgColor={colors.bg.card}
+        bg={glass.card.bg}
+        backdropFilter={glass.card.backdropFilter}
         borderRadius={isExpanded ? `${radius.md} ${radius.md} 0 0` : radius.md}
-        border={`2px solid ${colors.border.default}`}
-        borderBottom={isExpanded ? "none" : `2px solid ${colors.border.default}`}
+        border={glass.card.border}
+        borderBottom={isExpanded ? "none" : glass.card.border}
         justify="space-between"
         cursor="pointer"
-        _hover={{ borderColor: colors.border.light }}
-        transition="all 0.15s ease"
+        _hover={{ bg: glass.cardHover.bg, border: glass.cardHover.border }}
+        transition={transitions.fast}
         onClick={() => setExpandedTx(isExpanded ? null : payment.txHash)}
       >
         <HStack gap="14px">
@@ -413,8 +416,8 @@ function OutgoingRow({ item, expandedTx, setExpandedTx }: {
       </HStack>
 
       {isExpanded && (
-        <Box p="16px 20px" bgColor={colors.bg.card} borderRadius={`0 0 ${radius.md} ${radius.md}`}
-          border={`2px solid ${colors.border.default}`} borderTop="none">
+        <Box p="16px 20px" bg={glass.card.bg} backdropFilter={glass.card.backdropFilter} borderRadius={`0 0 ${radius.md} ${radius.md}`}
+          border={glass.card.border} borderTop="none">
           <VStack gap="10px" align="stretch">
             <HStack justify="space-between">
               <Text fontSize="12px" color={colors.text.muted}>Tx Hash</Text>

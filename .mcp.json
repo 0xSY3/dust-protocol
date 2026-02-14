@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "codepilot": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/sahil/projects/codepilot/packages/mcp-server/dist/index.js"
+      ],
+      "env": {}
+    }
+  }
+}

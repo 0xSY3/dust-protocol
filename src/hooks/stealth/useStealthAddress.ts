@@ -59,8 +59,18 @@ export function useStealthAddress() {
   const claimAddressesInitialized = claimAddresses.length > 0;
 
   // Load saved keys — full round-trip validation before setting state
+  // Also handles reset when switching wallets (merged to avoid race condition)
   useEffect(() => {
     if (!address || typeof window === 'undefined') { setIsHydrated(true); return; }
+    setIsHydrated(false);
+
+    // Clear stale state from previous address before loading new data
+    setStealthKeys(null);
+    setIsRegistered(false);
+    setClaimAddresses([]);
+    setSelectedClaimIndex(0);
+    signatureRef.current = null;
+
     const stored = localStorage.getItem(STORAGE_KEY + address.toLowerCase());
     if (stored) {
       try {
@@ -268,12 +278,6 @@ export function useStealthAddress() {
     setClaimAddresses(prev => prev.map((a, i) => ({ ...a, balance: balances[i] })));
   }, [claimAddresses, fetchBalance]);
 
-  // Reset on address change
-  useEffect(() => {
-    setClaimAddresses([]);
-    setSelectedClaimIndex(0);
-    signatureRef.current = null;
-  }, [address]);
 
   return {
     stealthKeys, metaAddress, parsedMetaAddress,
