@@ -15,12 +15,16 @@ import { ReceiveModal } from "@/components/dashboard/ReceiveModal";
 import { ConsolidateModal } from "@/components/dashboard/ConsolidateModal";
 import { SendIcon, ArrowDownLeftIcon, ShieldIcon } from "@/components/stealth/icons";
 
+function claimToPoolKey(address: string, chainId: number): string {
+  return `dust_claim_to_pool_${chainId}_${address.toLowerCase()}`;
+}
+
 export default function DashboardPage() {
-  const { stealthKeys, metaAddress, ownedNames, claimAddresses, refreshClaimBalances, claimAddressesInitialized, activeChainId } = useAuth();
+  const { stealthKeys, metaAddress, ownedNames, claimAddresses, refreshClaimBalances, claimAddressesInitialized, activeChainId, address } = useAuth();
   const chainConfig = getChainConfig(activeChainId);
   const [claimToPool, setClaimToPool] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('dust_claim_to_pool') === 'true';
+    if (typeof window === 'undefined' || !address) return false;
+    return localStorage.getItem(claimToPoolKey(address, activeChainId)) === 'true';
   });
   const { payments, scan, scanInBackground, stopBackgroundScan, isScanning, depositToPool } = useStealthScanner(stealthKeys, { claimToPool, chainId: activeChainId });
   const [showSendModal, setShowSendModal] = useState(false);
@@ -47,6 +51,12 @@ export default function DashboardPage() {
     refreshClaimBalances();
     dustPool.loadPoolDeposits();
   }, [scan, refreshClaimBalances, dustPool.loadPoolDeposits]);
+
+  // Re-sync claimToPool preference when address or chain changes
+  useEffect(() => {
+    if (typeof window === 'undefined' || !address) return;
+    setClaimToPool(localStorage.getItem(claimToPoolKey(address, activeChainId)) === 'true');
+  }, [address, activeChainId]);
 
   // Auto-refresh: scan every 30s while dashboard is mounted
   useEffect(() => {
@@ -130,7 +140,7 @@ export default function DashboardPage() {
                 onClick={() => {
                   const next = !claimToPool;
                   setClaimToPool(next);
-                  localStorage.setItem('dust_claim_to_pool', String(next));
+                  if (address) localStorage.setItem(claimToPoolKey(address, activeChainId), String(next));
                 }}
               >
                 <Box
