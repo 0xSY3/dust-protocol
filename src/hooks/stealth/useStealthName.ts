@@ -209,11 +209,13 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     }
   }, [chainId]);
 
+  const registeringNameRef = useRef(false);
   const registerName = useCallback(async (name: string, metaAddress: string): Promise<string | null> => {
     if (!isConnected || !isConfigured) {
       setError('Not connected or registry not configured');
       return null;
     }
+    if (registeringNameRef.current) return null;
 
     const validation = validateName(name);
     if (!validation.valid) {
@@ -221,6 +223,7 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       return null;
     }
 
+    registeringNameRef.current = true;
     setIsLoading(true);
     setError(null);
 
@@ -243,6 +246,7 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       return null;
     } finally {
       setIsLoading(false);
+      registeringNameRef.current = false;
     }
   }, [address, isConnected, isConfigured, validateName, loadOwnedNames, chainId, activeChainId]);
 

@@ -118,8 +118,11 @@ export function useStealthAddress() {
   // Unified derivation — uses wagmi wallet client for signing (proper wallet integration)
   // Accepts optional PIN for PIN-based derivation
   // Returns the wallet signature so callers can reuse it (e.g. for PIN encryption)
+  const derivingRef = useRef(false);
   const deriveKeysFromWallet = useCallback(async (pin?: string): Promise<{ sig: string; metaAddress: string } | null> => {
     if (!isConnected || !address) { setError('Wallet not connected'); return null; }
+    if (derivingRef.current) return null;
+    derivingRef.current = true;
     setError(null);
     setIsLoading(true);
     setIsSigningMessage(true);
@@ -182,6 +185,7 @@ export function useStealthAddress() {
     } finally {
       setIsLoading(false);
       setIsSigningMessage(false);
+      derivingRef.current = false;
     }
   }, [isConnected, address, walletClient, fetchBalance]);
 
@@ -208,8 +212,11 @@ export function useStealthAddress() {
 
   const exportKeys = useCallback(() => stealthKeys, [stealthKeys]);
 
+  const registeringRef = useRef(false);
   const registerMetaAddress = useCallback(async (chainId?: number): Promise<string | null> => {
     if (!metaAddress || !isConnected || !address) { setError('No keys or wallet not connected'); return null; }
+    if (registeringRef.current) return null;
+    registeringRef.current = true;
     setError(null);
     setIsLoading(true);
     const cid = chainId ?? DEFAULT_CHAIN_ID;
@@ -242,6 +249,7 @@ export function useStealthAddress() {
       return null;
     } finally {
       setIsLoading(false);
+      registeringRef.current = false;
     }
   }, [metaAddress, isConnected, address]);
 

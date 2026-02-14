@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
 import {
@@ -170,6 +170,7 @@ export function useStealthSend(chainId?: number) {
   const [lastGeneratedAddress, setLastGeneratedAddress] = useState<GeneratedStealthAddress | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const sendingRef = useRef(false);
 
   const generateAddressFor = useCallback((metaAddress: string): GeneratedStealthAddress | null => {
     setError(null);
@@ -226,6 +227,8 @@ export function useStealthSend(chainId?: number) {
 
   const sendEthToStealth = useCallback(async (metaAddress: string, amount: string, linkSlug?: string): Promise<string | null> => {
     if (!isConnected) { setError('Wallet not connected'); return null; }
+    if (sendingRef.current) return null;
+    sendingRef.current = true;
     setError(null);
     setIsLoading(true);
 
@@ -303,11 +306,14 @@ export function useStealthSend(chainId?: number) {
       return null;
     } finally {
       setIsLoading(false);
+      sendingRef.current = false;
     }
   }, [isConnected, activeChainId, generateAddressFor]);
 
   const sendTokenToStealth = useCallback(async (metaAddress: string, tokenAddress: string, amount: string): Promise<string | null> => {
     if (!isConnected) { setError('Wallet not connected'); return null; }
+    if (sendingRef.current) return null;
+    sendingRef.current = true;
     setError(null);
     setIsLoading(true);
 
@@ -380,6 +386,7 @@ export function useStealthSend(chainId?: number) {
       return null;
     } finally {
       setIsLoading(false);
+      sendingRef.current = false;
     }
   }, [isConnected, activeChainId, generateAddressFor]);
 
