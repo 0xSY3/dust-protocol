@@ -25,20 +25,16 @@ export function ActivateStep({ username, pin, onComplete }: ActivateStepProps) {
     setError(null);
 
     try {
-      const sig = await deriveKeysFromWallet(pin);
-      if (!sig) throw new Error("Please approve the signature in your wallet");
+      const result = await deriveKeysFromWallet(pin);
+      if (!result) throw new Error("Please approve the signature in your wallet");
 
       setStatus("activating");
 
-      const pinStored = await storePinEncrypted(pin, sig);
+      const pinStored = await storePinEncrypted(pin, result.sig);
       if (!pinStored) throw new Error("Failed to store PIN");
 
-      const { deriveStealthKeyPairFromSignatureAndPin, formatStealthMetaAddress } = await import("@/lib/stealth");
-      const keys = deriveStealthKeyPairFromSignatureAndPin(sig, pin);
-      const freshMetaAddress = formatStealthMetaAddress(keys, "thanos");
-
       const [nameTx] = await Promise.all([
-        registerName(username, freshMetaAddress),
+        registerName(username, result.metaAddress),
         registerMetaAddress().catch(() => null),
       ]);
       if (!nameTx) throw new Error("Failed to register name");

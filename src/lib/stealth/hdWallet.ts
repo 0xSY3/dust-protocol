@@ -41,16 +41,16 @@ export function deriveClaimAddresses(signature: string, count: number): DerivedC
   return Array.from({ length: count }, (_, i) => deriveClaimAddressAtIndex(seed, i));
 }
 
-export function deriveSeedFromSignatureAndPin(signature: string, pin: string, walletAddress?: string): string {
+export async function deriveSeedFromSignatureAndPin(signature: string, pin: string, walletAddress?: string): Promise<string> {
   const version = getKeyVersion(walletAddress);
   if (version === 0) {
     return '0x' + deriveClaimSeedV0(signature, pin);
   }
-  return '0x' + deriveClaimSeed(signature, pin);
+  return '0x' + await deriveClaimSeed(signature, pin);
 }
 
-export function deriveClaimAddressesWithPin(signature: string, pin: string, count: number, walletAddress?: string): DerivedClaimAddress[] {
-  const seed = deriveSeedFromSignatureAndPin(signature, pin, walletAddress);
+export async function deriveClaimAddressesWithPin(signature: string, pin: string, count: number, walletAddress?: string): Promise<DerivedClaimAddress[]> {
+  const seed = await deriveSeedFromSignatureAndPin(signature, pin, walletAddress);
   return Array.from({ length: count }, (_, i) => deriveClaimAddressAtIndex(seed, i));
 }
 

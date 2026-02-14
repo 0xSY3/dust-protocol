@@ -1,31 +1,41 @@
 // PIN-based key derivation for Dust Protocol
-// Uses SHA-512 (from @noble/hashes) + Web Crypto API for AES-256-GCM
+// Uses SHA-512 (from @noble/hashes) + Web Crypto API for PBKDF2 & AES-256-GCM
 
 import { sha512 } from '@noble/hashes/sha512';
-import { pbkdf2 } from '@noble/hashes/pbkdf2';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 
+// Async PBKDF2 via Web Crypto — hardware-accelerated, non-blocking
+async function webCryptoPbkdf2(password: Uint8Array, salt: Uint8Array, iterations: number, dkLen: number): Promise<Uint8Array> {
+  const keyMaterial = await crypto.subtle.importKey('raw', password.buffer as ArrayBuffer, 'PBKDF2', false, ['deriveBits']);
+  const derived = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: salt.buffer as ArrayBuffer, iterations, hash: 'SHA-256' },
+    keyMaterial,
+    dkLen * 8,
+  );
+  return new Uint8Array(derived);
+}
+
 // Derive a 32-byte spending seed from wallet signature + PIN
 // Uses PBKDF2 with 100K iterations to resist brute-force (6-digit PIN = 1M combos)
-export function deriveSpendingSeed(signature: string, pin: string): string {
+export async function deriveSpendingSeed(signature: string, pin: string): Promise<string> {
   const password = new TextEncoder().encode(signature + pin);
   const salt = new TextEncoder().encode('Dust Spend Authority v2');
-  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
+  return bytesToHex(await webCryptoPbkdf2(password, salt, 100_000, 32));
 }
 
 // Derive a 32-byte viewing seed from wallet signature + PIN
-export function deriveViewingSeed(signature: string, pin: string): string {
+export async function deriveViewingSeed(signature: string, pin: string): Promise<string> {
   const password = new TextEncoder().encode(signature + pin);
   const salt = new TextEncoder().encode('Dust View Authority v2');
-  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
+  return bytesToHex(await webCryptoPbkdf2(password, salt, 100_000, 32));
 }
 
 // Derive a 32-byte claim seed from wallet signature + PIN
-export function deriveClaimSeed(signature: string, pin: string): string {
+export async function deriveClaimSeed(signature: string, pin: string): Promise<string> {
   const password = new TextEncoder().encode(signature + pin);
   const salt = new TextEncoder().encode('Dust Claim Authority v2');
-  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
+  return bytesToHex(await webCryptoPbkdf2(password, salt, 100_000, 32));
 }
 
 // True original v0 derivation — plain SHA-512, pre-audit (before H2 PBKDF2 change)
@@ -46,22 +56,22 @@ export function deriveClaimSeedV0(signature: string, pin: string): string {
 }
 
 // Legacy v1 derivation — PBKDF2 with old salts (intermediate, rarely used)
-export function deriveSpendingSeedV1(signature: string, pin: string): string {
+export async function deriveSpendingSeedV1(signature: string, pin: string): Promise<string> {
   const password = new TextEncoder().encode(signature + pin);
   const salt = new TextEncoder().encode('Dust Spend Authority');
-  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
+  return bytesToHex(await webCryptoPbkdf2(password, salt, 100_000, 32));
 }
 
-export function deriveViewingSeedV1(signature: string, pin: string): string {
+export async function deriveViewingSeedV1(signature: string, pin: string): Promise<string> {
   const password = new TextEncoder().encode(signature + pin);
   const salt = new TextEncoder().encode('Dust View Authority');
-  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
+  return bytesToHex(await webCryptoPbkdf2(password, salt, 100_000, 32));
 }
 
-export function deriveClaimSeedV1(signature: string, pin: string): string {
+export async function deriveClaimSeedV1(signature: string, pin: string): Promise<string> {
   const password = new TextEncoder().encode(signature + pin);
   const salt = new TextEncoder().encode('Dust Claim Authority');
-  return bytesToHex(pbkdf2(sha256, password, salt, { c: 100_000, dkLen: 32 }));
+  return bytesToHex(await webCryptoPbkdf2(password, salt, 100_000, 32));
 }
 
 // Validate PIN format: exactly 6 digits
@@ -75,7 +85,7 @@ export function validatePin(pin: string): { valid: boolean; error?: string } {
 // Encrypt PIN using AES-256-GCM with PBKDF2-derived key from signature
 export async function encryptPin(pin: string, signature: string): Promise<string> {
   const salt = sha256(new TextEncoder().encode('dust-pin-salt:' + signature.slice(0, 20)));
-  const key = pbkdf2(sha256, new TextEncoder().encode(signature), salt, { c: 100000, dkLen: 32 });
+  const key = await webCryptoPbkdf2(new TextEncoder().encode(signature), salt, 100_000, 32);
 
   const cryptoKey = await crypto.subtle.importKey('raw', key.buffer as ArrayBuffer, 'AES-GCM', false, ['encrypt']);
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -92,7 +102,7 @@ export async function encryptPin(pin: string, signature: string): Promise<string
 // Decrypt stored PIN
 export async function decryptPin(encrypted: string, signature: string): Promise<string> {
   const salt = sha256(new TextEncoder().encode('dust-pin-salt:' + signature.slice(0, 20)));
-  const key = pbkdf2(sha256, new TextEncoder().encode(signature), salt, { c: 100000, dkLen: 32 });
+  const key = await webCryptoPbkdf2(new TextEncoder().encode(signature), salt, 100_000, 32);
 
   const cryptoKey = await crypto.subtle.importKey('raw', key.buffer as ArrayBuffer, 'AES-GCM', false, ['decrypt']);
   const iv = hexToBytes(encrypted.slice(0, 24));

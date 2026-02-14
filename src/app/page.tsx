@@ -18,7 +18,7 @@ import { injected } from "wagmi/connectors";
 // those contain valid user data that isOnboarded detection depends on.
 function cleanupCorruptedStorage() {
   if (typeof window === "undefined") return;
-  const CURRENT_VERSION = 5;
+  const CURRENT_VERSION = 6;
   const flag = "stealth_storage_version";
   const stored = parseInt(localStorage.getItem(flag) || "0", 10);
   if (stored >= CURRENT_VERSION) return;
@@ -34,6 +34,22 @@ function cleanupCorruptedStorage() {
     }
   }
   keysToRemove.forEach(k => localStorage.removeItem(k));
+
+  // v6: Migrate pre-fix users — set dust_onboarded_ flag for users who have
+  // stored stealth keys or PIN but no explicit onboarded flag
+  if (stored < 6) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("tokamak_stealth_keys_") || key?.startsWith("dust_pin_")) {
+        const addr = key.replace("tokamak_stealth_keys_", "").replace("dust_pin_", "");
+        const onboardedKey = "dust_onboarded_" + addr;
+        if (!localStorage.getItem(onboardedKey)) {
+          localStorage.setItem(onboardedKey, "true");
+        }
+      }
+    }
+  }
+
   localStorage.setItem(flag, String(CURRENT_VERSION));
 }
 

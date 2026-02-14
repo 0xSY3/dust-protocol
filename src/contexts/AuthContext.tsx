@@ -31,7 +31,7 @@ interface AuthState {
   // Stealth keys
   stealthKeys: StealthKeyPair | null;
   metaAddress: string | null;
-  deriveKeysFromWallet: (pin?: string) => Promise<string | null>;
+  deriveKeysFromWallet: (pin?: string) => Promise<{ sig: string; metaAddress: string } | null>;
   clearKeys: () => void;
   isRegistered: boolean;
   registerMetaAddress: () => Promise<string | null>;
@@ -87,11 +87,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     : false;
 
   // User is onboarded if the explicit flag is set, OR they have a PIN stored,
-  // OR they have stealth keys + claim addresses (legacy fallback)
-  const isOnboarded = stealthAddr.isHydrated && (
+  // OR they have stealth keys + claim addresses (legacy fallback).
+  // Sync checks (hasOnboardedFlag, hasPin) are NOT gated behind isHydrated —
+  // they read localStorage synchronously and don't need async hydration.
+  // Only the legacy stealthKeys fallback requires hydration to load keys first.
+  const isOnboarded =
     hasOnboardedFlag || pinHook.hasPin ||
-    (!!stealthAddr.stealthKeys && stealthAddr.claimAddressesInitialized)
-  );
+    (stealthAddr.isHydrated && !!stealthAddr.stealthKeys && stealthAddr.claimAddressesInitialized);
 
   const value: AuthState = {
     isConnected,
