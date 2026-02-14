@@ -46,6 +46,8 @@ interface AuthState {
   refreshClaimBalances: () => Promise<void>;
   // Names
   ownedNames: OwnedName[];
+  registerName: (name: string, metaAddress: string) => Promise<string | null>;
+  formatName: (name: string) => string;
   isOnboarded: boolean;
 }
 
@@ -53,12 +55,13 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { address, isConnected } = useAccount();
-  const stealthAddr = useStealthAddress();
-  const nameHook = useStealthName(stealthAddr.metaAddress);
-  const pinHook = usePin();
 
-  // Active chain state — persisted in localStorage
+  // Active chain state — persisted in localStorage (must be declared before hooks that use it)
   const [activeChainId, setActiveChainIdState] = useState(DEFAULT_CHAIN_ID);
+
+  const stealthAddr = useStealthAddress();
+  const nameHook = useStealthName(stealthAddr.metaAddress, activeChainId);
+  const pinHook = usePin();
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -113,6 +116,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     selectClaimAddress: stealthAddr.selectClaimAddress,
     refreshClaimBalances: stealthAddr.refreshClaimBalances,
     ownedNames: nameHook.ownedNames,
+    registerName: nameHook.registerName,
+    formatName: nameHook.formatName,
     isOnboarded,
   };
 
