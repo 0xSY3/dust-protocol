@@ -309,17 +309,17 @@ export async function transferStealthName(signer: ethers.Signer, name: string, n
   return (await tx.wait()).transactionHash;
 }
 
+const DEPLOYER = '0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496';
+
 /**
  * Discover which name maps to a given meta-address.
- * Checks names owned by the deployer/sponsor (who may have registered on user's behalf).
+ * Checks names owned by the deployer/sponsor on ALL supported chains in parallel.
  */
 export async function discoverNameByMetaAddress(
   _provider: ethers.providers.Provider | null,
-  metaAddressHex: string
+  metaAddressHex: string,
+  _chainId?: number,
 ): Promise<string | null> {
-  const addr = getNameRegistryAddress();
-  if (!addr) return null;
-
   // Normalize meta-address to raw hex for comparison
   const targetHex = metaAddressHex.startsWith('st:')
     ? '0x' + (metaAddressHex.match(/st:[a-z]+:0x([0-9a-fA-F]+)/)?.[1] || '')
@@ -327,18 +327,37 @@ export async function discoverNameByMetaAddress(
 
   if (!targetHex || targetHex === '0x') return null;
 
-  try {
-    const rpcProvider = getReadOnlyProvider();
-    const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
+  const chains = getSupportedChains().filter(c => c.contracts.nameRegistry);
 
-    // Check names owned by deployer/sponsor — they register on behalf of users
-    const DEPLOYER = '0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496';
+  // Query all chains in parallel — return first match
+  const results = await Promise.allSettled(
+    chains.map(chain => discoverNameOnChain(chain.id, chain.name, targetHex))
+  );
+
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value) return result.value;
+  }
+
+  return null;
+}
+
+/**
+ * Check a single chain's name registry for a deployer-owned name matching the target meta-address.
+ */
+async function discoverNameOnChain(chainId: number, chainName: string, targetHex: string): Promise<string | null> {
+  const addr = getNameRegistryForChain(chainId);
+  if (!addr) return null;
+
+  try {
+    const rpcProvider = getReadOnlyProvider(chainId);
+    const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
     const deployerNames: string[] = await registry.getNamesOwnedBy(DEPLOYER);
 
     for (const name of deployerNames) {
       try {
         const resolved: string = await registry.resolveName(name);
         if (resolved && resolved.toLowerCase() === targetHex.toLowerCase()) {
+          console.log(`[names] Discovered name "${name}" on ${chainName} (${chainId})`);
           return name;
         }
       } catch { continue; }
@@ -346,7 +365,7 @@ export async function discoverNameByMetaAddress(
 
     return null;
   } catch (e) {
-    console.error('[names] discoverNameByMetaAddress error:', e);
+    console.warn(`[names] discoverNameByMetaAddress failed on ${chainName}:`, e);
     return null;
   }
 }
@@ -356,55 +375,83 @@ const ERC6538_REGISTRY_ABI = [
 ];
 
 /**
- * Discover name by checking the user's ERC-6538 registration history.
+ * Discover name by checking the user's ERC-6538 registration history across ALL chains.
  * When a user re-derives keys, the NameRegistry still has the OLD meta-address.
  * This function scans all historical meta-addresses the user has registered
- * on ERC-6538, then checks deployer names for any matching old meta-address.
+ * on ERC-6538 across all supported chains, then checks deployer names on all chains
+ * for any matching old meta-address.
  * If found, also auto-updates the name's meta-address to the current one.
+ *
+ * @param erc6538Address - Legacy param, ignored. All chains' registries are queried.
  */
 export async function discoverNameByWalletHistory(
   userAddress: string,
   currentMetaAddress: string,
-  erc6538Address: string,
+  _erc6538Address?: string,
+  _chainId?: number,
 ): Promise<string | null> {
-  const addr = getNameRegistryAddress();
-  if (!addr) return null;
+  const chains = getSupportedChains();
 
   try {
-    const rpcProvider = getReadOnlyProvider();
-
-    // Scan ERC-6538 for all meta-addresses this wallet has ever registered
-    const erc6538 = new ethers.Contract(erc6538Address, ERC6538_REGISTRY_ABI, rpcProvider);
-    const filter = erc6538.filters.StealthMetaAddressSet(userAddress, 1);
-    const events = await erc6538.queryFilter(filter, 6272527);
-
-    if (events.length === 0) return null;
-
-    // Collect all historical meta-addresses (deduplicated)
+    // Step 1: Collect historical meta-addresses from ERC-6538 events on ALL chains in parallel
     const historicalMetas = new Set<string>();
-    for (const evt of events) {
-      if (evt.args) {
-        const meta = (evt.args.stealthMetaAddress as string).toLowerCase();
-        historicalMetas.add(meta);
+
+    const eventResults = await Promise.allSettled(
+      chains.map(async (chain) => {
+        const registryAddr = chain.contracts.registry;
+        if (!registryAddr) return [];
+        try {
+          const rpcProvider = getReadOnlyProvider(chain.id);
+          const erc6538 = new ethers.Contract(registryAddr, ERC6538_REGISTRY_ABI, rpcProvider);
+          const filter = erc6538.filters.StealthMetaAddressSet(userAddress, 1);
+          return await erc6538.queryFilter(filter, chain.deploymentBlock);
+        } catch (e) {
+          console.warn(`[names] ERC-6538 event scan failed on ${chain.name}:`, e);
+          return [];
+        }
+      })
+    );
+
+    for (const result of eventResults) {
+      if (result.status !== 'fulfilled') continue;
+      for (const evt of result.value) {
+        if (evt.args) {
+          historicalMetas.add((evt.args.stealthMetaAddress as string).toLowerCase());
+        }
       }
     }
 
     if (historicalMetas.size === 0) return null;
 
-    // Check deployer names against historical meta-addresses
-    const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
-    const DEPLOYER = '0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496';
-    const deployerNames: string[] = await registry.getNamesOwnedBy(DEPLOYER);
+    // Step 2: Check deployer names on ALL chains' nameRegistries in parallel
+    const nameResults = await Promise.allSettled(
+      chains.filter(c => c.contracts.nameRegistry).map(async (chain) => {
+        const addr = getNameRegistryForChain(chain.id);
+        if (!addr) return null;
+        try {
+          const rpcProvider = getReadOnlyProvider(chain.id);
+          const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
+          const deployerNames: string[] = await registry.getNamesOwnedBy(DEPLOYER);
 
-    for (const name of deployerNames) {
-      try {
-        const resolved: string = await registry.resolveName(name);
-        if (resolved && historicalMetas.has(resolved.toLowerCase())) {
-          // Found a match with an old meta-address — auto-update to current
-          autoUpdateNameMeta(name, currentMetaAddress);
-          return name;
+          for (const name of deployerNames) {
+            try {
+              const resolved: string = await registry.resolveName(name);
+              if (resolved && historicalMetas.has(resolved.toLowerCase())) {
+                console.log(`[names] Discovered name "${name}" via wallet history on ${chain.name} (${chain.id})`);
+                autoUpdateNameMeta(name, currentMetaAddress);
+                return name;
+              }
+            } catch { continue; }
+          }
+        } catch (e) {
+          console.warn(`[names] Name registry scan failed on ${chain.name}:`, e);
         }
-      } catch { continue; }
+        return null;
+      })
+    );
+
+    for (const result of nameResults) {
+      if (result.status === 'fulfilled' && result.value) return result.value;
     }
 
     return null;
