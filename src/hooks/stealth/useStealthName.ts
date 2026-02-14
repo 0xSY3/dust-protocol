@@ -77,9 +77,16 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       const names = await getNamesOwnedBy(null, address, chainId);
 
       if (names.length > 0) {
-        setOwnedNames(names.reverse().map(name => ({ name, fullName: formatNameWithSuffix(name) })));
-        // Also persist to localStorage for future resilience
-        storeUsername(address, names[0], activeChainId);
+        const existingName = getStoredUsername(address, activeChainId);
+        if (existingName) {
+          // localStorage name (set by registerName) takes priority — don't overwrite
+          const others = names.filter(n => n !== existingName);
+          setOwnedNames([existingName, ...others].map(name => ({ name, fullName: formatNameWithSuffix(name) })));
+        } else {
+          // No localStorage — use on-chain, most recent first
+          setOwnedNames(names.reverse().map(name => ({ name, fullName: formatNameWithSuffix(name) })));
+          storeUsername(address, names[0], activeChainId);
+        }
         return;
       }
 
@@ -188,7 +195,13 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       if (res.ok) {
         const refreshedNames = await getNamesOwnedBy(null, userAddress, chainId);
         if (refreshedNames.length > 0) {
-          setOwnedNames(refreshedNames.reverse().map(n => ({ name: n, fullName: formatNameWithSuffix(n) })));
+          const storedName = getStoredUsername(userAddress, chainId ?? DEFAULT_CHAIN_ID);
+          if (storedName) {
+            const others = refreshedNames.filter(n => n !== storedName);
+            setOwnedNames([storedName, ...others].map(n => ({ name: n, fullName: formatNameWithSuffix(n) })));
+          } else {
+            setOwnedNames(refreshedNames.reverse().map(n => ({ name: n, fullName: formatNameWithSuffix(n) })));
+          }
         }
       }
     } catch {

@@ -77,26 +77,30 @@ export function setKeyVersion(address: string, version: number): void {
   localStorage.setItem(KEY_VERSION_STORAGE + address.toLowerCase(), String(version));
 }
 
-export function deriveStealthKeyPairFromSignatureAndPin(signature: string, pin: string, walletAddress?: string): StealthKeyPair {
+export async function deriveStealthKeyPairFromSignatureAndPin(signature: string, pin: string, walletAddress?: string): Promise<StealthKeyPair> {
   const version = getKeyVersion(walletAddress);
 
   let spendingSeed: string;
   let viewingSeed: string;
 
   if (version === 0) {
-    // True original derivation — SHA-512 (pre-audit users)
+    // True original derivation — SHA-512 (pre-audit users, sync)
     spendingSeed = deriveSpendingSeedV0(signature, pin);
     viewingSeed = deriveViewingSeedV0(signature, pin);
     if (walletAddress) setKeyVersion(walletAddress, 0);
   } else if (version === 1) {
-    // Legacy v1 — PBKDF2 with old salts
-    spendingSeed = deriveSpendingSeedV1(signature, pin);
-    viewingSeed = deriveViewingSeedV1(signature, pin);
+    // Legacy v1 — PBKDF2 with old salts (async Web Crypto)
+    [spendingSeed, viewingSeed] = await Promise.all([
+      deriveSpendingSeedV1(signature, pin),
+      deriveViewingSeedV1(signature, pin),
+    ]);
     if (walletAddress) setKeyVersion(walletAddress, 1);
   } else {
-    // v2 (default for new users) — PBKDF2 with "v2" salts
-    spendingSeed = deriveSpendingSeed(signature, pin);
-    viewingSeed = deriveViewingSeed(signature, pin);
+    // v2 (default for new users) — PBKDF2 with "v2" salts (async Web Crypto)
+    [spendingSeed, viewingSeed] = await Promise.all([
+      deriveSpendingSeed(signature, pin),
+      deriveViewingSeed(signature, pin),
+    ]);
     if (walletAddress) setKeyVersion(walletAddress, 2);
   }
 

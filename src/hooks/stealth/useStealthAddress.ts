@@ -118,7 +118,7 @@ export function useStealthAddress() {
   // Unified derivation — uses wagmi wallet client for signing (proper wallet integration)
   // Accepts optional PIN for PIN-based derivation
   // Returns the wallet signature so callers can reuse it (e.g. for PIN encryption)
-  const deriveKeysFromWallet = useCallback(async (pin?: string): Promise<string | null> => {
+  const deriveKeysFromWallet = useCallback(async (pin?: string): Promise<{ sig: string; metaAddress: string } | null> => {
     if (!isConnected || !address) { setError('Wallet not connected'); return null; }
     setError(null);
     setIsLoading(true);
@@ -130,7 +130,7 @@ export function useStealthAddress() {
 
       // Derive stealth keys — PIN-based if PIN provided, legacy otherwise
       const newKeys = pin
-        ? deriveStealthKeyPairFromSignatureAndPin(sig, pin, address)
+        ? await deriveStealthKeyPairFromSignatureAndPin(sig, pin, address)
         : deriveStealthKeyPairFromSignature(sig);
 
       // Validate before setting state
@@ -141,11 +141,15 @@ export function useStealthAddress() {
       setStealthKeys(newKeys);
       setIsRegistered(false);
 
+      // Compute metaAddress synchronously (cheap string concat) so callers
+      // don't need to wait for a React re-render or re-derive keys
+      const derivedMetaAddress = formatStealthMetaAddress(newKeys, 'thanos');
+
       // Derive claim addresses — PIN-based if PIN provided
       const stored = loadClaimAddressesFromStorage(address);
-      const derived = pin
+      const derived = await (pin
         ? deriveClaimAddressesWithPin(sig, pin, 3, address)
-        : deriveClaimAddresses(sig, 3);
+        : deriveClaimAddresses(sig, 3));
       const withLabels: ClaimAddressWithBalance[] = derived.map(a => ({
         ...a,
         label: stored.find(s => s.address.toLowerCase() === a.address.toLowerCase())?.label || getLabel(a.index),
@@ -159,7 +163,7 @@ export function useStealthAddress() {
         setClaimAddresses(prev => prev.map((a, i) => ({ ...a, balance: balances[i] })));
       });
 
-      return sig;
+      return { sig, metaAddress: derivedMetaAddress };
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to derive keys';
       if (
