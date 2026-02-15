@@ -33,6 +33,18 @@ RELAYER_PRIVATE_KEY=<deployer-private-key>
 
 Contract addresses and RPC URLs are configured per-chain in `src/config/chains.ts`. No per-chain env vars needed.
 
+#### The Graph (optional)
+
+To use The Graph for faster name queries instead of direct RPC calls:
+
+```
+NEXT_PUBLIC_SUBGRAPH_URL_THANOS=https://api.studio.thegraph.com/query/<STUDIO_ID>/dust-protocol-thanos/version/latest
+NEXT_PUBLIC_SUBGRAPH_URL_SEPOLIA=https://api.studio.thegraph.com/query/<STUDIO_ID>/dust-protocol-sepolia/version/latest
+NEXT_PUBLIC_USE_GRAPH=true
+```
+
+See [docs/GRAPH_DEPLOYMENT.md](docs/GRAPH_DEPLOYMENT.md) for full setup instructions.
+
 ## Supported Networks
 
 | Network | Chain ID | Native Currency | Explorer |
@@ -314,6 +326,10 @@ public/zk/               # Browser ZK assets (WASM + zkey)
 - **DustPool (ZK Privacy Pool)** — Groth16 ZK proofs for unlinkable fund withdrawal. Poseidon Merkle tree (depth 20), browser proof generation via snarkjs, sponsored deposit + withdrawal. 10 Foundry tests passing.
 - **Multi-Chain Support** — Chain config registry, chain-aware API routes/hooks/scanner, chain selector UI. Deployed on Thanos Sepolia + Ethereum Sepolia.
 
+### In Progress
+
+- **The Graph Migration** — Replacing localStorage-based name caching with indexed subgraph queries (GraphQL). Eliminates stale data bugs and adds sub-second name lookups. Feature-flagged via `NEXT_PUBLIC_USE_GRAPH` for instant rollback. See [deployment guide](docs/GRAPH_DEPLOYMENT.md).
+
 ### Future
 
 - **Merkle tree gas optimization** — Hardcode zero hashes in MerkleTree.sol to reduce deposit gas from 6.8M to ~700K
@@ -335,8 +351,9 @@ public/zk/               # Browser ZK assets (WASM + zkey)
 
 ## Tech Stack
 
-- **Frontend**: Next.js 14, React 18, Chakra UI (Panda CSS)
+- **Frontend**: Next.js 14, React 18, Chakra UI (Panda CSS), graphql-request
 - **Blockchain**: ethers.js v5, wagmi, elliptic
+- **Indexing**: The Graph (Subgraph Studio), GraphQL
 - **ZK Proving**: circom, snarkjs (Groth16 on BN254), circomlibjs (Poseidon)
 - **Smart Contracts**: Foundry (Solidity 0.8.x), poseidon-solidity
 - **Standards**: ERC-5564, ERC-6538, ERC-4337
