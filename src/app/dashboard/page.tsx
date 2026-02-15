@@ -76,13 +76,12 @@ export default function DashboardPage() {
 
   const hasPoolBalance = parseFloat(dustPool.poolBalance) > 0;
 
-  // Count payments actually eligible for pool deposit (create2/account with meaningful original amount)
+  // Count payments actually eligible for pool deposit (must have current balance)
   const poolEligibleCount = payments.filter(p => {
     if (p.claimed || p.keyMismatch) return false;
-    if (p.walletType !== 'create2' && p.walletType !== 'account') return false;
+    if (p.walletType !== 'create2' && p.walletType !== 'account' && p.walletType !== 'eip7702') return false;
     const bal = parseFloat(p.balance || '0');
-    const orig = parseFloat(p.originalAmount || '0');
-    return bal > 0.0001 || orig > 0.001;
+    return bal > 0.0001;
   }).length;
 
   return (
@@ -236,6 +235,12 @@ export default function DashboardPage() {
                         if (result.deposited > 0) {
                           scan();
                         }
+                        // Keep result message visible for a few seconds
+                        await new Promise(r => setTimeout(r, 3000));
+                      } catch (err) {
+                        console.error('[PoolDeposit] Unexpected error:', err);
+                        setPoolDepositProgress({ done: 0, total: 0, message: 'Deposit failed — check console' });
+                        await new Promise(r => setTimeout(r, 5000));
                       } finally {
                         setDepositingToPool(false);
                         depositingRef.current = false;
@@ -255,7 +260,7 @@ export default function DashboardPage() {
               <>
                 <Box h="1px" bg={colors.border.default} />
                 <Text fontSize="11px" color={colors.text.muted} textAlign="center" py="4px">
-                  No eligible payments — EOA types can&apos;t use pool. New payments will appear here for deposit.
+                  No eligible payments yet. New payments will appear here for deposit.
                 </Text>
               </>
             )}
