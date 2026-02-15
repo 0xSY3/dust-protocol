@@ -76,5 +76,13 @@ export async function buildSignedAuthorization(
     contractAddress: implAddress as `0x${string}`,
   });
 
-  return authorization;
+  // Convert BigInt values to numbers for JSON serialization
+  // (viem returns `v` as BigInt which breaks JSON.stringify)
+  return {
+    ...authorization,
+    chainId: Number(authorization.chainId),
+    nonce: Number(authorization.nonce),
+    v: Number(authorization.v),
+    yParity: Number(authorization.yParity),
+  };
 }
