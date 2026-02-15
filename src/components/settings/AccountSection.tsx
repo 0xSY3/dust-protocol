@@ -4,6 +4,7 @@ import { Box, Text, VStack, HStack } from "@chakra-ui/react";
 import { colors, radius, shadows } from "@/lib/design/tokens";
 import type { OwnedName } from "@/lib/design/types";
 import { UserIcon, CheckCircleIcon } from "@/components/stealth/icons";
+import { getChainConfig, DEFAULT_CHAIN_ID } from "@/config/chains";
 
 interface AccountSectionProps {
   address: string | undefined;
@@ -40,7 +41,7 @@ export function AccountSection({ address, ownedNames, isRegistered }: AccountSec
           )}
           <HStack justify="space-between" p="14px 0" borderBottom={`1px solid ${colors.border.default}`}>
             <Text fontSize="13px" color={colors.text.muted}>Network</Text>
-            <Text fontSize="13px" color={colors.text.secondary}>Thanos Sepolia</Text>
+            <Text fontSize="13px" color={colors.text.secondary}>{getChainConfig(DEFAULT_CHAIN_ID).name}</Text>
           </HStack>
           <HStack justify="space-between" p="14px 0">
             <Text fontSize="13px" color={colors.text.muted}>On-chain</Text>

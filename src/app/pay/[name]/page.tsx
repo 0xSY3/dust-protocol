@@ -50,7 +50,7 @@ export default function PayPage({ params }: { params: { name: string } }) {
   const { isConnected } = useAccount();
   const { connect } = useConnect();
   const { resolveName, formatName, isConfigured } = useStealthName();
-  // Pay pages use the default chain (Thanos Sepolia) since senders don't have chain context
+  // Pay pages use the default chain (Ethereum Sepolia) since senders don't have chain context
   const chainId = DEFAULT_CHAIN_ID;
   const chainConfig = getChainConfig(chainId);
   const { generateAddressFor, sendEthToStealth, isLoading, error: sendError } = useStealthSend(chainId);

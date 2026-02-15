@@ -16,7 +16,7 @@ const NAME_REGISTRY_ABI = [
 
 /**
  * POST /api/sync-names
- * Syncs all names from the canonical chain (Thanos Sepolia) to all other chains.
+ * Syncs all names from the canonical chain (Ethereum Sepolia) to all other chains.
  * This ensures cross-chain name resolution works for existing users.
  */
 export async function POST() {

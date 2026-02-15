@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useAccount } from 'wagmi';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   resolveStealthName, isNameAvailable, getNamesOwnedBy,
   isNameRegistryConfigured, stripNameSuffix,
@@ -7,53 +8,54 @@ import {
   discoverNameByWalletHistory, CANONICAL_ADDRESSES,
 } from '@/lib/stealth';
 import { DEFAULT_CHAIN_ID } from '@/config/chains';
+import { useNamesByMetaAddress } from '@/hooks/graph/useNameQuery';
+import { isGraphAvailable } from '@/lib/graph/client';
 
 interface OwnedName {
   name: string;
   fullName: string;
 }
 
-const USERNAME_KEY = 'dust_username_';
-
-function getScopedKey(chainId: number, addr: string): string {
-  return `${USERNAME_KEY}${chainId}_${addr.toLowerCase()}`;
-}
-
-function getStoredUsername(addr: string, chainId: number = DEFAULT_CHAIN_ID): string | null {
-  try {
-    // Try chain-scoped key first
-    const scoped = localStorage.getItem(getScopedKey(chainId, addr));
-    if (scoped) return scoped;
-
-    // Migrate from legacy unscoped key (C4/C5 audit fix)
-    const legacyKey = USERNAME_KEY + addr.toLowerCase();
-    const legacy = localStorage.getItem(legacyKey);
-    if (legacy) {
-      localStorage.setItem(getScopedKey(chainId, addr), legacy);
-      localStorage.removeItem(legacyKey);
-      return legacy;
-    }
-
-    return null;
-  } catch { return null; }
-}
-
-function storeUsername(addr: string, name: string, chainId: number = DEFAULT_CHAIN_ID): void {
-  try { localStorage.setItem(getScopedKey(chainId, addr), name); } catch {}
-}
+const USE_GRAPH = process.env.NEXT_PUBLIC_USE_GRAPH === 'true';
 
 export function useStealthName(userMetaAddress?: string | null, chainId?: number) {
   const { address, isConnected } = useAccount();
-  const [ownedNames, setOwnedNames] = useState<OwnedName[]>([]);
+  const queryClient = useQueryClient();
+  const [legacyOwnedNames, setLegacyOwnedNames] = useState<OwnedName[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recoveryAttempted = useRef(false);
-  const loadCompleted = useRef(false);
-  const metaRef = useRef(userMetaAddress);
-  metaRef.current = userMetaAddress;
 
   const activeChainId = chainId ?? DEFAULT_CHAIN_ID;
   const isConfigured = isNameRegistryConfigured();
+
+  // --- Graph-based name loading (when USE_GRAPH is enabled) ---
+  const graphEnabled = USE_GRAPH && isGraphAvailable(activeChainId);
+  const {
+    data: graphNames,
+    isLoading: graphLoading,
+    isError: graphFailed,
+    error: graphError,
+    refetch: refetchGraphNames,
+  } = useNamesByMetaAddress(
+    graphEnabled && isConnected ? userMetaAddress : undefined,
+    activeChainId,
+  );
+
+  // Derive ownedNames from Graph data when enabled
+  const graphOwnedNames = useMemo<OwnedName[]>(() => {
+    if (!graphEnabled || !graphNames?.length) return [];
+    return graphNames.map((n) => ({
+      name: n.name,
+      fullName: formatNameWithSuffix(n.name),
+    }));
+  }, [graphEnabled, graphNames]);
+
+  // Graph→RPC fallback: if Graph is enabled but errored, fall back to legacy RPC path
+  const useGraphData = graphEnabled && !graphFailed;
+
+  // Unified ownedNames: prefer Graph when it has data, fall back to legacy/discovery
+  const ownedNames = graphOwnedNames.length > 0 ? graphOwnedNames : legacyOwnedNames;
 
   const validateName = useCallback((name: string): { valid: boolean; error?: string } => {
     const stripped = stripNameSuffix(name);
@@ -63,10 +65,15 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     return { valid: true };
   }, []);
 
-  // Core name loading — queries on-chain, falls back to localStorage
+  // --- Legacy name loading (when USE_GRAPH is disabled or Graph failed) ---
   const loadOwnedNames = useCallback(async () => {
+    if (graphEnabled && !graphFailed) {
+      refetchGraphNames();
+      return;
+    }
+
     if (!isConnected || !address || !isConfigured) {
-      setOwnedNames([]);
+      setLegacyOwnedNames([]);
       return;
     }
 
@@ -75,81 +82,58 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
 
     try {
       const names = await getNamesOwnedBy(null, address, chainId);
-
       if (names.length > 0) {
-        const existingName = getStoredUsername(address, activeChainId);
-        if (existingName) {
-          // localStorage name (set by registerName) takes priority — don't overwrite
-          const others = names.filter(n => n !== existingName);
-          setOwnedNames([existingName, ...others].map(name => ({ name, fullName: formatNameWithSuffix(name) })));
-        } else {
-          // No localStorage — use on-chain, most recent first
-          setOwnedNames(names.reverse().map(name => ({ name, fullName: formatNameWithSuffix(name) })));
-          storeUsername(address, names[0], activeChainId);
-        }
-        return;
-      }
-
-      // On-chain empty — check localStorage
-      const storedName = getStoredUsername(address, activeChainId);
-      if (storedName) {
-        setOwnedNames([{ name: storedName, fullName: formatNameWithSuffix(storedName) }]);
-        // Try background recovery
-        if (!recoveryAttempted.current) {
-          recoveryAttempted.current = true;
-          tryRecoverName(storedName, address);
-        }
+        setLegacyOwnedNames(names.reverse().map(name => ({ name, fullName: formatNameWithSuffix(name) })));
       }
     } catch (e) {
-      const storedName = address ? getStoredUsername(address, activeChainId) : null;
-      if (storedName) {
-        setOwnedNames([{ name: storedName, fullName: formatNameWithSuffix(storedName) }]);
-      }
       setError(e instanceof Error ? e.message : 'Failed to load names');
     } finally {
       setIsLoading(false);
-      loadCompleted.current = true;
     }
-  }, [address, isConnected, isConfigured, chainId, activeChainId]);
+  }, [address, isConnected, isConfigured, chainId, graphEnabled, graphFailed, refetchGraphNames]);
 
-  // Initial load
+  // Initial load: legacy path when Graph is disabled, OR fallback when Graph fails
   useEffect(() => {
-    if (isConnected && isConfigured) loadOwnedNames();
-  }, [isConnected, isConfigured, loadOwnedNames]);
+    if (!useGraphData && isConnected && isConfigured) loadOwnedNames();
+  }, [useGraphData, isConnected, isConfigured, loadOwnedNames]);
 
-  // Discovery: LAST RESORT when metaAddress is available but no names found anywhere.
-  // Only runs after loadOwnedNames has completed and localStorage is empty.
-  // Never overwrites a name that was explicitly registered by the user.
+  // Background recovery: transfer name from deployer to user if needed
+  const tryRecoverName = useCallback(async (name: string, userAddress: string) => {
+    try {
+      const owner = await getNameOwner(null, name, chainId);
+      if (!owner || owner.toLowerCase() === userAddress.toLowerCase()) return; // already owned or free
+      // Try sponsored transfer from deployer
+      const res = await fetch('/api/sponsor-name-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, newOwner: userAddress, chainId }),
+      });
+      if (res.ok) {
+        // Invalidate Graph caches to pick up the transfer
+        queryClient.invalidateQueries({ queryKey: ['names'] });
+        queryClient.invalidateQueries({ queryKey: ['name'] });
+      }
+    } catch {
+      // Silent — recovery is best-effort
+    }
+  }, [chainId, queryClient]);
+
+  const registeringNameRef = useRef(false);
+
+  // Discovery: runs when no names found from Graph or legacy.
+  // Queries the deployer's on-chain names and matches by metaAddress.
   useEffect(() => {
-    if (!userMetaAddress || !address || !isConfigured || ownedNames.length > 0 || isLoading) return;
+    // Skip if we already have names from any source
+    const hasNames = graphOwnedNames.length > 0 || legacyOwnedNames.length > 0;
+    if (hasNames) return;
+    // Wait for Graph to finish loading before deciding to discover
+    if (graphLoading || isLoading || registeringNameRef.current) return;
+    if (!userMetaAddress || !address || !isConfigured) return;
 
     let cancelled = false;
     (async () => {
-      // Wait for loadOwnedNames to finish before running discovery.
-      // This prevents the race where discovery fires while loadOwnedNames
-      // is still fetching, then overwrites the correct localStorage value.
-      if (!loadCompleted.current || registeringNameRef.current) {
-        // Poll briefly — loadOwnedNames or registration is in-flight
-        for (let i = 0; i < 30 && (!loadCompleted.current || registeringNameRef.current) && !cancelled; i++) {
-          await new Promise(r => setTimeout(r, 250));
-        }
-        if (cancelled) return;
-      }
-
-      // Re-check: loadOwnedNames may have set ownedNames via localStorage
-      const storedName = getStoredUsername(address, activeChainId);
-      if (storedName) {
-        // localStorage already has a name — use it, don't overwrite with discovery
-        setOwnedNames([{ name: storedName, fullName: formatNameWithSuffix(storedName) }]);
-        if (!recoveryAttempted.current) {
-          recoveryAttempted.current = true;
-          tryRecoverName(storedName, address);
-        }
-        return;
-      }
-
       try {
-        // First try: match by current meta-address
+        // First try: match by current meta-address on the deployer's names
         let discovered = await discoverNameByMetaAddress(
           null,
           userMetaAddress,
@@ -167,8 +151,7 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
         }
 
         if (cancelled || !discovered) return;
-        storeUsername(address, discovered, activeChainId);
-        setOwnedNames([{ name: discovered, fullName: formatNameWithSuffix(discovered) }]);
+        setLegacyOwnedNames([{ name: discovered, fullName: formatNameWithSuffix(discovered) }]);
         // Try to recover ownership
         if (!recoveryAttempted.current) {
           recoveryAttempted.current = true;
@@ -179,37 +162,7 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       }
     })();
     return () => { cancelled = true; };
-  }, [userMetaAddress, address, isConfigured, ownedNames.length, chainId, activeChainId]);
-
-  // Background recovery: transfer name from deployer to user if needed
-  const tryRecoverName = useCallback(async (name: string, userAddress: string) => {
-    try {
-      const owner = await getNameOwner(null, name, chainId);
-      if (!owner || owner.toLowerCase() === userAddress.toLowerCase()) return; // already owned or free
-      // Try sponsored transfer from deployer
-      const res = await fetch('/api/sponsor-name-transfer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, newOwner: userAddress, chainId }),
-      });
-      if (res.ok) {
-        const refreshedNames = await getNamesOwnedBy(null, userAddress, chainId);
-        if (refreshedNames.length > 0) {
-          const storedName = getStoredUsername(userAddress, chainId ?? DEFAULT_CHAIN_ID);
-          if (storedName) {
-            const others = refreshedNames.filter(n => n !== storedName);
-            setOwnedNames([storedName, ...others].map(n => ({ name: n, fullName: formatNameWithSuffix(n) })));
-          } else {
-            setOwnedNames(refreshedNames.reverse().map(n => ({ name: n, fullName: formatNameWithSuffix(n) })));
-          }
-        }
-      }
-    } catch {
-      // Silent — recovery is best-effort
-    }
-  }, [chainId]);
-
-  const registeringNameRef = useRef(false);
+  }, [userMetaAddress, address, isConfigured, graphOwnedNames.length, legacyOwnedNames.length, graphLoading, isLoading, chainId, tryRecoverName]);
   const registerName = useCallback(async (name: string, metaAddress: string): Promise<string | null> => {
     if (!isConnected || !isConfigured) {
       setError('Not connected or registry not configured');
@@ -237,10 +190,15 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Name registration failed');
 
-      if (address) storeUsername(address, stripNameSuffix(name), activeChainId);
-
-      // Optimistically update owned names in background (don't wait)
-      loadOwnedNames().catch(() => {});
+      const stripped = stripNameSuffix(name);
+      // Optimistically set in React Query cache (persists across page navigation)
+      const normalizedMeta = (metaAddress.match(/^st:[a-z]+:(0x[0-9a-fA-F]+)$/)?.[1] || metaAddress).toLowerCase();
+      queryClient.setQueryData(
+        ['names', 'meta', activeChainId, normalizedMeta],
+        [{ id: '', name: stripped, ownerAddress: '', metaAddress: normalizedMeta, registeredAt: String(Math.floor(Date.now() / 1000)) }],
+      );
+      // Also set in component state as backup
+      setLegacyOwnedNames([{ name: stripped, fullName: formatNameWithSuffix(stripped) }]);
 
       return data.txHash;
     } catch (e) {
@@ -251,21 +209,21 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       setIsLoading(false);
       registeringNameRef.current = false;
     }
-  }, [address, isConnected, isConfigured, validateName, loadOwnedNames, chainId, activeChainId]);
+  }, [isConnected, isConfigured, validateName, chainId, activeChainId, graphEnabled, queryClient]);
 
   const checkAvailability = useCallback(async (name: string): Promise<boolean | null> => {
     if (!isConfigured) return null;
     try {
-      return await isNameAvailable(null, name, chainId);
+      return await isNameAvailable(null, name, activeChainId);
     } catch { return null; }
-  }, [isConfigured, chainId]);
+  }, [isConfigured, activeChainId]);
 
   const resolveName = useCallback(async (name: string): Promise<string | null> => {
     if (!isConfigured) return null;
     try {
-      return await resolveStealthName(null, name, chainId);
+      return await resolveStealthName(null, name, activeChainId);
     } catch { return null; }
-  }, [isConfigured, chainId]);
+  }, [isConfigured, activeChainId]);
 
   const updateMetaAddress = useCallback(async (_name: string, _newMetaAddress: string): Promise<string | null> => {
     // Name meta-address updates are handled by the deployer (name owner)
@@ -276,6 +234,9 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
 
   return {
     ownedNames, loadOwnedNames, registerName, checkAvailability, resolveName, updateMetaAddress,
-    isConfigured, formatName: formatNameWithSuffix, validateName, isLoading, error,
+    isConfigured, formatName: formatNameWithSuffix, validateName,
+    isLoading: useGraphData ? graphLoading : isLoading,
+    error: graphFailed ? (graphError instanceof Error ? graphError.message : 'Graph query failed') : error,
+    graphFailed,
   };
 }

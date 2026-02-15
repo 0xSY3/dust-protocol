@@ -157,6 +157,8 @@ export async function POST(req: Request) {
       });
     } else if (walletType === 'eoa') {
       return NextResponse.json({ error: 'EOA wallets not supported for pool deposit' }, { status: 400 });
+    } else if (walletType === 'eip7702') {
+      return NextResponse.json({ error: 'EIP-7702 pool deposits use the delegate-7702 API (pool-deposit mode)' }, { status: 400 });
     } else if (walletType === 'account') {
       return NextResponse.json({ error: 'ERC-4337 accounts should use the bundle API for direct pool deposits' }, { status: 400 });
     } else {

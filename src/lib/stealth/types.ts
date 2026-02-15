@@ -69,7 +69,7 @@ export interface StealthContractAddresses {
   registry: string;
 }
 
-// ─── Backward-compatible defaults (Thanos Sepolia) ─────────────────────────────
+// ─── Backward-compatible defaults (Ethereum Sepolia) ────────────────────────────
 // These are kept so existing code that imports directly still works.
 // New code should use getChainConfig(chainId) instead.
 

@@ -249,9 +249,10 @@ async function resolveOnChain(chainId: number | undefined, stripped: string): Pr
 
 export async function isNameAvailable(_provider: ethers.providers.Provider | null, name: string, chainId?: number): Promise<boolean | null> {
   try {
-    const addr = chainId ? getNameRegistryForChain(chainId) : getNameRegistryAddress();
+    const effectiveChainId = chainId ?? DEFAULT_CHAIN_ID;
+    const addr = getNameRegistryForChain(effectiveChainId);
     if (!addr) return null;
-    const rpcProvider = getReadOnlyProvider(chainId);
+    const rpcProvider = getReadOnlyProvider(effectiveChainId);
     const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
     return await registry.isNameAvailable(stripNameSuffix(name));
   } catch (e) {
@@ -262,9 +263,10 @@ export async function isNameAvailable(_provider: ethers.providers.Provider | nul
 
 export async function getNameOwner(_provider: ethers.providers.Provider | null, name: string, chainId?: number): Promise<string | null> {
   try {
-    const addr = chainId ? getNameRegistryForChain(chainId) : getNameRegistryAddress();
+    const effectiveChainId = chainId ?? DEFAULT_CHAIN_ID;
+    const addr = getNameRegistryForChain(effectiveChainId);
     if (!addr) return null;
-    const rpcProvider = getReadOnlyProvider(chainId);
+    const rpcProvider = getReadOnlyProvider(effectiveChainId);
     const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
     const owner = await registry.getOwner(stripNameSuffix(name));
     return owner === ethers.constants.AddressZero ? null : owner;
@@ -287,9 +289,10 @@ export async function getNamesOwnedBy(_provider: ethers.providers.Provider | nul
 
 async function getNamesOnChain(chainId: number | undefined, address: string): Promise<string[]> {
   try {
-    const addr = chainId ? getNameRegistryForChain(chainId) : getNameRegistryAddress();
+    const effectiveChainId = chainId ?? DEFAULT_CHAIN_ID;
+    const addr = getNameRegistryForChain(effectiveChainId);
     if (!addr) return [];
-    const rpcProvider = getReadOnlyProvider(chainId);
+    const rpcProvider = getReadOnlyProvider(effectiveChainId);
     const registry = new ethers.Contract(addr, NAME_REGISTRY_ABI, rpcProvider);
     return await registry.getNamesOwnedBy(address);
   } catch {
