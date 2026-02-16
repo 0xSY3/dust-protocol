@@ -26,7 +26,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract InitializePoolSmall is Script {
     // ─── Deployed contract addresses (Ethereum Sepolia) ─────────────────────────
     address constant POOL_MANAGER = 0x93805603e0167574dFe2F50ABdA8f42C85002FD8;
-    address constant DUST_SWAP_HOOK = 0xbc86b898aCc1544a1233d8c59A984106c58980C0; // Redeployed via CREATE2 (Feb 16 2026)
+    address constant DUST_SWAP_HOOK = 0x06829AAC5bF68172158DE18972fb1107363500C0; // Redeployed via CREATE2 (Feb 16 2026)
     address constant USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238; // Circle USDC on Sepolia
 
     // ─── Pool parameters (must match frontend: src/lib/swap/constants.ts) ───────
@@ -39,9 +39,9 @@ contract InitializePoolSmall is Script {
     uint160 constant SQRT_PRICE_X96 = 3961408125713216879677197516800;
 
     // ─── Liquidity amounts (small — suitable for testnet faucets) ───────────────
-    uint256 constant ETH_AMOUNT = 0.01 ether;     // 0.01 ETH
-    uint256 constant USDC_AMOUNT = 20 * 1e6;       // 20 USDC (6 decimals) - adjusted for available balance
-    int256 constant LIQUIDITY_DELTA = 400_000; // Adjusted to match 0.01 ETH + 20 USDC
+    uint256 constant ETH_AMOUNT = 0.001 ether;     // 0.001 ETH - reduced for low balance
+    uint256 constant USDC_AMOUNT = 1 * 1e6;        // 1 USDC (6 decimals)
+    int256 constant LIQUIDITY_DELTA = 20_000;      // scaled down for 1 USDC
 
     // Full-range tick bounds (must be divisible by TICK_SPACING)
     int24 constant TICK_LOWER = -887270;
@@ -59,9 +59,9 @@ contract InitializePoolSmall is Script {
         console.log("USDC amount:", USDC_AMOUNT);
 
         // Pre-flight checks
-        require(deployer.balance >= ETH_AMOUNT + 0.005 ether, "Need >= 0.015 ETH (liquidity + gas)");
+        require(deployer.balance >= ETH_AMOUNT + 0.005 ether, "Need >= 0.006 ETH (liquidity + gas)");
         uint256 usdcBalance = IERC20(USDC).balanceOf(deployer);
-        require(usdcBalance >= USDC_AMOUNT, "Need >= 25 USDC. Get from https://faucet.circle.com/");
+        require(usdcBalance >= USDC_AMOUNT, "Need >= 1 USDC. Get from https://faucet.circle.com/");
 
         console.log("Deployer ETH balance:", deployer.balance);
         console.log("Deployer USDC balance:", usdcBalance);
