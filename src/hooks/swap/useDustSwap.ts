@@ -193,8 +193,9 @@ export function useDustSwap(options?: UseDustSwapOptions) {
           poolKey
         )
 
-        // PoolSwapTest deployed on Sepolia (Feb 16 2026)
-        const poolHelperAddress = '0x3b3D4d4Ed9c89FcB0ffA1Dc139C8A5ca50033470' as Address
+        // PoolSwapTest deployed on Sepolia - use address from config
+        const poolHelperAddress = contracts.uniswapV4SwapRouter as Address
+        if (!poolHelperAddress) throw new Error('Swap Router not configured for this chain')
 
         const swapArgs = {
           address: poolHelperAddress,
@@ -202,9 +203,15 @@ export function useDustSwap(options?: UseDustSwapOptions) {
           functionName: 'swap' as const,
           args: [
             poolKey,
-            zeroForOne,
-            -BigInt(depositNote.amount), // exact input (negative = exact in)
-            sqrtPriceLimitX96,
+            {
+              zeroForOne,
+              amountSpecified: -BigInt(depositNote.amount),
+              sqrtPriceLimitX96,
+            },
+            {
+              takeClaims: false,
+              settleUsingBurn: false,
+            },
             hookData,
           ] as const,
           // For ETH→token swaps (zeroForOne, since currency0 = native ETH),

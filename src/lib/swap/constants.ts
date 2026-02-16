@@ -66,6 +66,7 @@ export function getSwapContracts(chainId?: number) {
     uniswapV4PoolManager: config.contracts.uniswapV4PoolManager,
     uniswapV4StateView: config.contracts.uniswapV4StateView,
     uniswapV4Quoter: config.contracts.uniswapV4Quoter,
+    uniswapV4SwapRouter: config.contracts.uniswapV4SwapRouter,
   }
 }
 

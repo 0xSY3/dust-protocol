@@ -91,6 +91,7 @@ export const DUST_SWAP_POOL_ABI = [
 
 // ─── PoolHelper ABI ──────────────────────────────────────────────────────────
 
+
 export const POOL_HELPER_ABI = [
   {
     inputs: [
@@ -105,29 +106,23 @@ export const POOL_HELPER_ABI = [
           { name: 'hooks', type: 'address' },
         ],
       },
-      { name: 'sqrtPriceX96', type: 'uint160' },
-    ],
-    name: 'initializePool',
-    outputs: [{ name: 'tick', type: 'int24' }],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-  {
-    inputs: [
       {
-        name: 'key',
+        name: 'params',
         type: 'tuple',
         components: [
-          { name: 'currency0', type: 'address' },
-          { name: 'currency1', type: 'address' },
-          { name: 'fee', type: 'uint24' },
-          { name: 'tickSpacing', type: 'int24' },
-          { name: 'hooks', type: 'address' },
+          { name: 'zeroForOne', type: 'bool' },
+          { name: 'amountSpecified', type: 'int256' },
+          { name: 'sqrtPriceLimitX96', type: 'uint160' },
         ],
       },
-      { name: 'zeroForOne', type: 'bool' },
-      { name: 'amountSpecified', type: 'int256' },
-      { name: 'sqrtPriceLimitX96', type: 'uint160' },
+      {
+        name: 'testSettings',
+        type: 'tuple',
+        components: [
+          { name: 'takeClaims', type: 'bool' },
+          { name: 'settleUsingBurn', type: 'bool' },
+        ],
+      },
       { name: 'hookData', type: 'bytes' },
     ],
     name: 'swap',

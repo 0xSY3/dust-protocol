@@ -162,7 +162,7 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
     uniswapV4PoolManager: '0x93805603e0167574dFe2F50ABdA8f42C85002FD8',
     uniswapV4StateView: '0x9C1CF9F4C496b7Df66d4EaBbff127Db6Af3c1C14',
     uniswapV4Quoter: '0xc3b43472250ab15dD91DB8900ce10f77fbDd22DB',
-    uniswapV4SwapRouter: '0x3b3D4d4Ed9c89FcB0ffA1Dc139C8A5ca50033470',
+    uniswapV4SwapRouter: '0x25eC587b262F30E4e8AE13643255a5f0F9E049aD', // PoolSwapTest
   },
   creationCodes: {
     // Same as Thanos — compiled from identical source with same Solc 0.8.20
