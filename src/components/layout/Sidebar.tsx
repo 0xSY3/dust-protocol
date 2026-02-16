@@ -7,7 +7,7 @@ import { useAccount, useDisconnect } from "wagmi";
 import { useAuth } from "@/contexts/AuthContext";
 import { colors, radius, shadows, glass, buttonVariants, typography, transitions } from "@/lib/design/tokens";
 import {
-  GridIcon, LinkIcon, ActivityIcon, SettingsIcon, LogOutIcon, StarIcon,
+  GridIcon, LinkIcon, ActivityIcon, SettingsIcon, LogOutIcon, StarIcon, SwapIcon,
 } from "@/components/stealth/icons";
 import { DustLogo } from "@/components/DustLogo";
 import { ChainSelector } from "@/components/ChainSelector";
@@ -21,6 +21,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", Icon: GridIcon },
+  { href: "/swap", label: "Privacy Swaps", Icon: SwapIcon },
   { href: "/links", label: "Links", Icon: LinkIcon },
   { href: "/activities", label: "Activities", Icon: ActivityIcon },
   { href: "/settings", label: "Settings", Icon: SettingsIcon },
