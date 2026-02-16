@@ -60,7 +60,7 @@ export function useSwapQuote({
 
       try {
         const poolKey = getDustSwapPoolKey(chainId)
-        const { zeroForOne } = getSwapDirection(fromToken, toToken, poolKey)
+        const { zeroForOne, sqrtPriceLimitX96 } = getSwapDirection(fromToken, toToken, poolKey)
 
         const parsedAmount = parseFloat(amount)
         if (isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -100,6 +100,7 @@ export function useSwapQuote({
               zeroForOne,
               exactAmount,
               hookData: '0x' as `0x${string}`,
+              sqrtPriceLimitX96,
             },
           ],
         })
