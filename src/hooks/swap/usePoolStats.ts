@@ -11,6 +11,7 @@ import {
 import { getSwapContracts } from '@/lib/swap/constants'
 
 const Q96 = BigInt(2) ** BigInt(96)
+const Q192 = Q96 * Q96
 const POLL_INTERVAL_MS = 60_000 // Reduced RPC calls - pool stats are display-only
 
 export interface PoolStatsData {
@@ -32,29 +33,36 @@ export interface PoolStatsData {
 }
 
 /**
- * Derive ETH/USDC price from sqrtPriceX96.
+ * Derive ETH/USDC price from sqrtPriceX96 using bigint math.
  *
  * sqrtPriceX96 = sqrt(price_raw) * 2^96
  * price_raw = token1_smallest / token0_smallest = USDC_units / ETH_wei
  * price_human = price_raw * 10^(token0_decimals - token1_decimals)
  *             = price_raw * 10^(18 - 6) = price_raw * 10^12
+ *
+ * Using bigint to avoid Number overflow (sqrtPriceX96 can be ~3.96e27
+ * which is far beyond Number.MAX_SAFE_INTEGER ~9e15).
+ *
+ * We compute: price_human = (sqrtPriceX96^2 * 10^12) / 2^192
+ * Then convert to float with 2 decimal places of precision via:
+ *   price_human = Number((sqrtPriceX96^2 * 10^14) / 2^192) / 100
  */
 function sqrtPriceToHumanPrice(sqrtPriceX96: bigint): number {
-  // Use floating point to avoid overflow with huge bigint multiplications
-  const sqrtPrice = Number(sqrtPriceX96) / Number(Q96)
-  const priceRaw = sqrtPrice * sqrtPrice
-  // Adjust for decimal difference: ETH (18) vs USDC (6)
-  return priceRaw * 1e12
+  const sqrtPriceSq = sqrtPriceX96 * sqrtPriceX96
+  // Multiply by 10^14 (10^12 for decimal adjustment + 10^2 for 2 decimal places)
+  // then divide by Q192, yielding price * 100 as a bigint
+  const priceX100 = (sqrtPriceSq * BigInt(10) ** BigInt(14)) / Q192
+  return Number(priceX100) / 100
 }
 
 /**
  * Estimate reserves from liquidity and sqrtPriceX96.
  *
- * For full-range liquidity (which is what our pool uses):
- *   amount0 (ETH) ≈ L / sqrtPrice  (in wei)
- *   amount1 (USDC) ≈ L * sqrtPrice (in USDC smallest units)
+ * For concentrated liquidity around the current tick:
+ *   amount0 (ETH) ≈ L / sqrtPrice  →  L * 2^96 / sqrtPriceX96  (in wei)
+ *   amount1 (USDC) ≈ L * sqrtPrice →  L * sqrtPriceX96 / 2^96  (in USDC units)
  *
- * where sqrtPrice = sqrtPriceX96 / 2^96
+ * We convert using bigint math then scale to human-readable units.
  */
 function estimateReserves(
   liquidity: bigint,
@@ -64,16 +72,15 @@ function estimateReserves(
     return { ethReserve: 0, usdcReserve: 0 }
   }
 
-  const sqrtPrice = Number(sqrtPriceX96) / Number(Q96)
-  const L = Number(liquidity)
+  // ETH reserve: L * 2^96 / sqrtPriceX96, in wei → divide by 10^18 for ETH
+  // To get 6 decimal places: multiply by 10^6 first, convert, then divide
+  const ethWeiX1e6 = (liquidity * Q96 * BigInt(1e6)) / sqrtPriceX96
+  const ethReserve = Number(ethWeiX1e6) / 1e6 / 1e18
 
-  // ETH reserve in wei → convert to ETH
-  const ethWei = L / sqrtPrice
-  const ethReserve = ethWei / 1e18
-
-  // USDC reserve in smallest units → convert to USDC (6 decimals)
-  const usdcUnits = L * sqrtPrice
-  const usdcReserve = usdcUnits / 1e6
+  // USDC reserve: L * sqrtPriceX96 / 2^96, in USDC units → divide by 10^6
+  // To get 2 decimal places: multiply by 10^2 first
+  const usdcUnitsX100 = (liquidity * sqrtPriceX96 * BigInt(100)) / Q96
+  const usdcReserve = Number(usdcUnitsX100) / 100 / 1e6
 
   return { ethReserve, usdcReserve }
 }

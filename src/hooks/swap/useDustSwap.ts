@@ -196,18 +196,46 @@ export function useDustSwap(options?: UseDustSwapOptions) {
         // PoolSwapTest deployed on Sepolia (Feb 16 2026)
         const poolHelperAddress = '0x3b3D4d4Ed9c89FcB0ffA1Dc139C8A5ca50033470' as Address
 
-        const hash = await walletClient.writeContract({
+        const swapArgs = {
           address: poolHelperAddress,
           abi: POOL_HELPER_ABI,
-          functionName: 'swap',
+          functionName: 'swap' as const,
           args: [
             poolKey,
             zeroForOne,
             -BigInt(depositNote.amount), // exact input (negative = exact in)
             sqrtPriceLimitX96,
             hookData,
-          ],
-        })
+          ] as const,
+          // For ETH→token swaps (zeroForOne, since currency0 = native ETH),
+          // we must send ETH value with the payable swap call
+          ...(zeroForOne ? { value: BigInt(depositNote.amount) } : {}),
+          // Cap gas to prevent MetaMask from using block gas limit on simulation failure
+          gas: BigInt(500_000),
+        }
+
+        // Pre-flight simulation: catch reverts with a clear error before MetaMask opens
+        try {
+          await publicClient.simulateContract(swapArgs)
+        } catch (simErr) {
+          const simMsg = simErr instanceof Error ? simErr.message : String(simErr)
+          // Extract useful revert reason if available
+          if (simMsg.includes('InvalidMerkleRoot')) {
+            throw new Error('Swap failed: Merkle root not recognized by pool. The pool may need re-syncing.')
+          } else if (simMsg.includes('NullifierAlreadyUsed')) {
+            throw new Error('Swap failed: This deposit note has already been used.')
+          } else if (simMsg.includes('InvalidProof')) {
+            throw new Error('Swap failed: ZK proof verification failed on-chain.')
+          } else if (simMsg.includes('InvalidRecipient')) {
+            throw new Error('Swap failed: Invalid recipient address.')
+          } else if (simMsg.includes('SwapAmountTooLow')) {
+            throw new Error('Swap failed: Output amount too low (excessive slippage).')
+          } else {
+            throw new Error(`Swap simulation failed: ${simMsg.slice(0, 200)}`)
+          }
+        }
+
+        const hash = await walletClient.writeContract(swapArgs)
 
         // Step 7: Wait for confirmation
         setState('confirming')
@@ -265,10 +293,10 @@ export function useDustSwap(options?: UseDustSwapOptions) {
   }, [notes])
 
   /**
-   * Estimate gas for a private swap (~850k gas)
+   * Estimate gas for a private swap (~500k gas with Groth16 verification)
    */
   const estimateGas = useCallback(async (): Promise<bigint> => {
-    return BigInt(850000)
+    return BigInt(500_000)
   }, [])
 
   return {

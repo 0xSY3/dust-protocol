@@ -171,7 +171,7 @@ export function PoolStats({
             <Text fontSize="18px" fontFamily={typography.fontFamily.mono} color={colors.text.primary}>
               1 ETH ={" "}
               <Box as="span" color={colors.accent.indigo}>
-                ${currentPrice?.toFixed(2) ?? "\u2014"}
+                ${currentPrice?.toFixed(2) ?? "—"}
               </Box>{" "}
               USDC
             </Text>
@@ -190,21 +190,21 @@ export function PoolStats({
               icon={<BarChartIcon />}
               iconColor={colors.accent.cyan}
               label="24h Volume"
-              value="\u2014"
+              value="—"
               sublabel="Requires indexer"
             />
             <StatBox
               icon={<TrendingUpIcon />}
               iconColor={colors.accent.green}
               label="ETH Price"
-              value={`$${currentPrice?.toFixed(2) ?? "\u2014"}`}
+              value={`$${currentPrice?.toFixed(2) ?? "—"}`}
               sublabel="USDC per ETH"
             />
             <StatBox
               icon={<ActivityIcon />}
               iconColor={colors.accent.red}
               label="APR"
-              value="\u2014"
+              value="—"
               sublabel="Based on fees"
             />
           </Box>
@@ -246,7 +246,7 @@ export function PoolStats({
                     {formatNumber(ethReserve, 4)}
                   </Text>
                   <Text fontSize="10px" color={colors.text.muted}>
-                    {"\u2248"} ${formatNumber(ethValue)}
+                    ≈ ${formatNumber(ethValue)}
                   </Text>
                 </VStack>
               </HStack>
@@ -295,7 +295,7 @@ export function PoolStats({
                     {formatNumber(usdcReserve, 2)}
                   </Text>
                   <Text fontSize="10px" color={colors.text.muted}>
-                    {"\u2248"} ${formatNumber(usdcReserve)}
+                    ≈ ${formatNumber(usdcReserve)}
                   </Text>
                 </VStack>
               </HStack>
