@@ -139,20 +139,35 @@ export default function Home() {
         display="flex"
         flexDirection="column"
         position="relative"
-        overflowY="hidden"
+        overflowX="hidden"
       >
-        {/* Unicorn Studio Background - SDK Implementation */}
-        {/* Static Nature Background */}
-        {/* Dust Spirit Portal (Mouse-Reactive Spiral) */}
-        <SpiritPortal />
+        {/* Mobile Background Image */}
+        <Box
+          position="absolute"
+          top="0"
+          left="0"
+          w="100%"
+          h="100%"
+          zIndex={0}
+          display={{ base: "block", lg: "none" }}
+          backgroundImage="url('/mobile.png')"
+          backgroundSize="cover"
+          backgroundPosition="center"
+          opacity={0.6}
+        />
+
+        {/* Dust Spirit Portal (Desktop Only) */}
+        <Box display={{ base: "none", lg: "block" }}>
+          <SpiritPortal />
+        </Box>
 
         {/* Header */}
-        <Box as="header" position="relative" zIndex={100} px="40px" py="32px">
+        <Box as="header" position="relative" zIndex={100} px={{ base: "20px", md: "40px" }} py={{ base: "20px", md: "32px" }}>
           <Box w="100%" display="flex" alignItems="center" justifyContent="space-between">
             {/* Left: Logo */}
             <HStack gap="12px" align="center">
               <DustLogo size={32} color={colors.accent.indigoBright} />
-              <HStack gap="6px" align="baseline">
+              <HStack gap="6px" align="baseline" display={{ base: "none", sm: "flex" }}>
                 <Text
                   fontSize="24px"
                   fontWeight="400"
@@ -208,10 +223,10 @@ export default function Home() {
                   ))}
                 </HStack>
               )}
-              {/* Manual Connect Button if not authenticated via Privy or if Privy is disabled */}
+              {/* Manual Connect Button */}
               <Box
                 as="button"
-                px="20px"
+                px={{ base: "16px", md: "20px" }}
                 py="10px"
                 bg={buttonVariants.primary.bg}
                 boxShadow={buttonVariants.primary.boxShadow}
@@ -227,7 +242,7 @@ export default function Home() {
               >
                 <WalletIcon size={16} color="white" />
                 <Text fontSize="14px" color="white" fontWeight="600">
-                  Connect Wallet
+                  Connect
                 </Text>
               </Box>
             </HStack>
@@ -239,34 +254,36 @@ export default function Home() {
           zIndex={10}
           flex="1"
           display="flex"
-          flexDirection={{ base: "column", lg: "row" }} // RESPONSIVE: Stack on mobile
+          flexDirection={{ base: "column", lg: "row" }}
           w="100%"
-          px={{ base: "20px", md: "60px" }} // RESPONSIVE PADDING
+          px={{ base: "20px", md: "60px" }}
           alignItems="center"
-          gap={{ base: "40px", lg: "0" }} // Gap for mobile stack
-          minH="calc(100vh - 100px)" // Ensure it takes full screen height minus header
+          justifyContent="center"
+          gap={{ base: "60px", lg: "0" }}
+          minH={{ base: "auto", lg: "calc(100vh - 100px)" }}
+          pb={{ base: "80px", lg: "0" }}
         >
 
           {/* Left Side: Privacy Transfers */}
-          <Box flex="1" display="flex" flexDirection="column" gap="40px" alignItems="flex-start" justifyContent="center">
+          <Box flex="1" display="flex" flexDirection="column" gap="32px" alignItems={{ base: "center", lg: "flex-start" }} justifyContent="center" textAlign={{ base: "center", lg: "left" }} w="100%">
             <Box className="fade-up d1">
               <Text
                 fontFamily="var(--font-instrument-serif), serif"
-                fontSize={{ base: "52px", lg: "72px" }}
+                fontSize={{ base: "42px", md: "52px", lg: "72px" }}
                 color="white"
-                lineHeight="1.0"
+                lineHeight="1.1"
                 letterSpacing="-0.03em"
                 mb="16px"
               >
                 Private<br />Transfers
               </Text>
-              <Text fontSize="16px" color="rgba(255,255,255,0.6)" maxW="320px" lineHeight="1.6">
+              <Text fontSize={{ base: "15px", md: "16px" }} color="rgba(255,255,255,0.7)" maxW="320px" lineHeight="1.6" mx={{ base: "auto", lg: "0" }}>
                 Untraceable payments that dissolve into the blockchain.
               </Text>
             </Box>
 
             {/* Pay Search Input form */}
-            <VStack gap="12px" w="100%" maxW="380px" align="flex-start" className="fade-up d2">
+            <VStack gap="12px" w="100%" maxW="380px" align={{ base: "center", lg: "flex-start" }} className="fade-up d2">
               <HStack gap="8px" w="100%">
                 <Input
                   placeholder="username.tok"
@@ -275,24 +292,24 @@ export default function Home() {
                   onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handlePaySearch(); }}
                   h="56px"
                   flex={1}
-                  bgColor="rgba(0, 0, 0, 0.3)"
-                  border="1px solid rgba(255, 255, 255, 0.1)"
+                  bgColor="rgba(0, 0, 0, 0.4)"
+                  border="1px solid rgba(255, 255, 255, 0.15)"
                   borderRadius={radius.md}
                   color="white"
                   fontSize="16px"
                   fontWeight={400}
                   fontFamily={typography.fontFamily.body}
                   px="20px"
-                  backdropFilter="blur(12px)"
-                  _placeholder={{ color: "rgba(255, 255, 255, 0.4)" }}
+                  backdropFilter="blur(16px)"
+                  _placeholder={{ color: "rgba(255, 255, 255, 0.5)" }}
                   _hover={{
                     borderColor: "rgba(74, 117, 240, 0.5)",
-                    bgColor: "rgba(0, 0, 0, 0.4)",
+                    bgColor: "rgba(0, 0, 0, 0.5)",
                   }}
                   _focus={{
                     borderColor: colors.border.focus,
                     boxShadow: `${shadows.inputFocus}`,
-                    bgColor: "rgba(0, 0, 0, 0.5)",
+                    bgColor: "rgba(0, 0, 0, 0.6)",
                   }}
                   transition={transitions.base}
                 />
@@ -301,14 +318,14 @@ export default function Home() {
                   w="56px"
                   h="56px"
                   flexShrink={0}
-                  bg="rgba(255, 255, 255, 0.05)"
-                  border={`1px solid rgba(255, 255, 255, 0.1)`}
+                  bg="rgba(255, 255, 255, 0.1)"
+                  border={`1px solid rgba(255, 255, 255, 0.15)`}
                   borderRadius={radius.md}
                   display="flex"
                   alignItems="center"
                   justifyContent="center"
                   cursor="pointer"
-                  backdropFilter={glass.input.backdropFilter}
+                  backdropFilter="blur(16px)"
                   transition={transitions.base}
                   _hover={{
                     bg: colors.accent.indigo,
@@ -321,10 +338,12 @@ export default function Home() {
                 </Box>
               </HStack>
               <Text
-                fontSize="12px"
-                color="rgba(255, 255, 255, 0.4)"
+                fontSize="11px"
+                color="rgba(255, 255, 255, 0.5)"
                 letterSpacing="0.05em"
                 fontFamily={typography.fontFamily.mono}
+                textAlign={{ base: "center", lg: "left" }}
+                w="100%"
               >
                 ENTER A USERNAME TO PAY
               </Text>
@@ -332,19 +351,19 @@ export default function Home() {
           </Box>
 
           {/* Right Side: Privacy Swap */}
-          <Box flex="1" display="flex" flexDirection="column" gap="24px" alignItems="flex-end" justifyContent="center" textAlign="right">
+          <Box flex="1" display="flex" flexDirection="column" gap="24px" alignItems={{ base: "center", lg: "flex-end" }} justifyContent="center" textAlign={{ base: "center", lg: "right" }}>
             <Box className="fade-up d3">
               <Text
                 fontFamily="var(--font-instrument-serif), serif"
-                fontSize={{ base: "52px", lg: "72px" }}
+                fontSize={{ base: "42px", md: "52px", lg: "72px" }}
                 color="white"
-                lineHeight="1.0"
+                lineHeight="1.1"
                 letterSpacing="-0.03em"
                 mb="16px"
               >
                 Privacy<br />Swap
               </Text>
-              <Text fontSize="16px" color="rgba(255,255,255,0.6)" maxW="320px" lineHeight="1.6" ml="auto">
+              <Text fontSize={{ base: "15px", md: "16px" }} color="rgba(255,255,255,0.7)" maxW="320px" lineHeight="1.6" ml={{ base: "0", lg: "auto" }}>
                 Swap tokens anonymously without leaving a trace.
               </Text>
             </Box>
@@ -355,18 +374,17 @@ export default function Home() {
               px="24px"
               py="12px"
               borderRadius={radius.full}
-              border="1px solid rgba(255,255,255,0.1)"
-              bg="rgba(255,255,255,0.02)"
+              border="1px solid rgba(255,255,255,0.15)"
+              bg="rgba(255,255,255,0.05)"
+              backdropFilter="blur(8px)"
             >
-              <Text fontSize="13px" color="rgba(255,255,255,0.4)" fontFamily={typography.fontFamily.mono}>
+              <Text fontSize="13px" color="rgba(255,255,255,0.6)" fontFamily={typography.fontFamily.mono}>
                 COMING SOON
               </Text>
             </Box>
           </Box>
 
         </Box>
-
-
 
         {/* Footer Placeholder */}
         <Box
@@ -378,7 +396,7 @@ export default function Home() {
           zIndex={10}
           pointerEvents="none"
         >
-          <Text color="rgba(255,255,255,0.3)" fontSize="12px">
+          <Text color="rgba(255,255,255,0.4)" fontSize="11px">
             © 2026 Dust Protocol. All rights reserved.
           </Text>
         </Box>
