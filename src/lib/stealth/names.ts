@@ -250,6 +250,18 @@ async function resolveOnChain(chainId: number | undefined, stripped: string): Pr
 export async function isNameAvailable(_provider: ethers.providers.Provider | null, name: string, chainId?: number): Promise<boolean | null> {
   try {
     const effectiveChainId = chainId ?? DEFAULT_CHAIN_ID;
+
+    // Try Graph first if enabled
+    if (process.env.NEXT_PUBLIC_USE_GRAPH === 'true') {
+      const { isGraphAvailable, checkNameAvailabilityGraph } = await import('@/lib/graph/client');
+      if (isGraphAvailable(effectiveChainId)) {
+        const graphResult = await checkNameAvailabilityGraph(stripNameSuffix(name), effectiveChainId);
+        if (graphResult !== null) return graphResult;
+        // Fall through to RPC if Graph fails
+      }
+    }
+
+    // RPC fallback
     const addr = getNameRegistryForChain(effectiveChainId);
     if (!addr) return null;
     const rpcProvider = getReadOnlyProvider(effectiveChainId);

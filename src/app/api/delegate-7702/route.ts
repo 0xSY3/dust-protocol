@@ -172,7 +172,10 @@ export async function POST(req: Request) {
           chain: config.viemChain,
           transport: http(config.rpcUrl),
         });
-        await publicClient.waitForTransactionReceipt({ hash: initTxHash });
+        await publicClient.waitForTransactionReceipt({
+          hash: initTxHash,
+          timeout: 120_000, // 120s for Sepolia testnet
+        });
       }
 
       // Step 2: Execute DustPool.deposit(commitment, balance) via the stealth account
@@ -213,7 +216,10 @@ export async function POST(req: Request) {
         chain: config.viemChain,
         transport: http(config.rpcUrl),
       });
-      const receipt = await pubClient.waitForTransactionReceipt({ hash: txHash });
+      const receipt = await pubClient.waitForTransactionReceipt({
+        hash: txHash,
+        timeout: 120_000, // 120s for Sepolia testnet
+      });
 
       const poolContract = new ethers.Contract(dustPoolAddress, DUST_POOL_ABI, provider);
       let leafIndex = 0;

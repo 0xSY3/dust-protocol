@@ -181,7 +181,18 @@ export async function generateProof(
     relayer: BigInt(swapParams.relayer).toString(),
     relayerFee: swapParams.relayerFee.toString(),
     swapAmountOut: swapParams.swapAmountOut.toString(),
+    reserved1: '0',
+    reserved2: '0',
   }
+
+  console.log('[DustSwap] Circuit inputs:', {
+    commitment: note.commitment.toString(),
+    leafIndex: note.leafIndex,
+    merkleRoot: merkleProof.root.toString(),
+    pathElementsLength: pathElements.length,
+    secret: note.secret.toString().slice(0, 20) + '...',
+    nullifier: note.nullifier.toString().slice(0, 20) + '...',
+  })
 
   try {
     return await generateProofInWorker(circuitInputs, onProgress)

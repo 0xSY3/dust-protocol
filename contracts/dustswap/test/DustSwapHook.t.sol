@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import {DustSwapHook} from "../src/DustSwapHook.sol";
+import {DustSwapHook, PoolKey, SwapParams} from "../src/DustSwapHook.sol";
 import {IDustSwapVerifier} from "../src/DustSwapVerifier.sol";
 import {IDustSwapPool} from "../src/IDustSwapPool.sol";
 
@@ -16,8 +16,8 @@ contract MockPoolManager {
 
     function callBeforeSwap(
         address sender,
-        DustSwapHook.PoolKey calldata key,
-        DustSwapHook.SwapParams calldata params,
+        PoolKey calldata key,
+        SwapParams calldata params,
         bytes calldata hookData
     ) external returns (bytes4, int256, uint24) {
         return DustSwapHook(hook).beforeSwap(sender, key, params, hookData);
@@ -92,8 +92,8 @@ contract DustSwapHookTest is Test {
     uint256[2][2] pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
     uint256[2] pC = [uint256(7), uint256(8)];
 
-    DustSwapHook.PoolKey poolKey;
-    DustSwapHook.SwapParams swapParams;
+    PoolKey poolKey;
+    SwapParams swapParams;
 
     function setUp() public {
         // Deploy mocks
@@ -115,7 +115,7 @@ contract DustSwapHookTest is Test {
         poolUSDC.setHook(address(hook));
 
         // Set up pool key
-        poolKey = DustSwapHook.PoolKey({
+        poolKey = PoolKey({
             currency0: address(0x1),
             currency1: address(0x2),
             fee: 500,
@@ -124,7 +124,7 @@ contract DustSwapHookTest is Test {
         });
 
         // Set up swap params (1 ETH exact input)
-        swapParams = DustSwapHook.SwapParams({
+        swapParams = SwapParams({
             zeroForOne: true,
             amountSpecified: -1 ether, // negative = exact input
             sqrtPriceLimitX96: 0

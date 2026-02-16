@@ -7,20 +7,21 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {Currency} from "v4-core/src/types/Currency.sol";
 import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {PoolModifyLiquidityTest} from "v4-core/src/test/PoolModifyLiquidityTest.sol";
+import {ModifyLiquidityParams} from "v4-core/src/types/PoolOperation.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title InitializePool - Initialize ETH/USDC pool and add initial liquidity
 /// @dev Initialize pool with DustSwapHook and add ~1 ETH + 2500 USDC
 contract InitializePool is Script {
-    // Deployed contracts
+    // Deployed contracts (updated to production addresses)
     address constant POOL_MANAGER = 0x93805603e0167574dFe2F50ABdA8f42C85002FD8;
-    address constant DUST_SWAP_HOOK = 0x2441a9C80BAFeD19F07cAB97fd4e2293c49Ac9f1;
+    address constant DUST_SWAP_HOOK = 0xbc86b898aCc1544a1233d8c59A984106c58980C0; // Redeployed via CREATE2 (Feb 16 2026)
     address constant USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
 
-    // Pool parameters
-    uint24 constant FEE = 3000; // 0.3%
-    int24 constant TICK_SPACING = 60;
-    uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336; // sqrt(1) in Q64.96
+    // Pool parameters (aligned with frontend constants)
+    uint24 constant FEE = 500; // 0.05% (matches POOL_FEE in constants.ts)
+    int24 constant TICK_SPACING = 10; // Matches POOL_TICK_SPACING in constants.ts
+    uint160 constant SQRT_PRICE_X96 = 3961408125713216879677197516800; // sqrt(2500) * 2^96 for ETH=$2500
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -48,8 +49,8 @@ contract InitializePool is Script {
             hooks: IHooks(DUST_SWAP_HOOK)
         });
 
-        // Initialize pool at 1:1 price (will adjust based on actual ETH/USDC rate)
-        IPoolManager(POOL_MANAGER).initialize(poolKey, SQRT_PRICE_1_1);
+        // Initialize pool at ETH = $2500 price
+        IPoolManager(POOL_MANAGER).initialize(poolKey, SQRT_PRICE_X96);
         console.log("Pool initialized");
 
         // Approve USDC for liquidity helper
@@ -60,10 +61,10 @@ contract InitializePool is Script {
         // Full range liquidity: tick range from -887220 to 887220
         liquidityHelper.modifyLiquidity{value: 1 ether}(
             poolKey,
-            IPoolManager.ModifyLiquidityParams({
+            ModifyLiquidityParams({
                 tickLower: -887220,
                 tickUpper: 887220,
-                liquidityDelta: 1000000000000000000, // 1 ETH worth of liquidity
+                liquidityDelta: int256(1000000000000000000), // 1 ETH worth of liquidity
                 salt: bytes32(0)
             }),
             ""

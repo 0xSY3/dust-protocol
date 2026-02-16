@@ -1,7 +1,16 @@
 import type { Metadata } from "next";
+import { Instrument_Serif } from "next/font/google";
+import Script from "next/script";
 import { Providers } from "./providers";
 import { AuthLayoutWrapper } from "./auth-layout-wrapper";
 import "./globals.css";
+
+const instrumentSerif = Instrument_Serif({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-instrument-serif",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Dust Protocol - Private Payments",
@@ -18,7 +27,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" data-theme="dark" style={{ colorScheme: "dark" }} suppressHydrationWarning>
-      <body>
+      <head>
+      </head>
+      <body className={instrumentSerif.variable}> {/* [NEW] Apply font variable */}
         <Providers>
           <AuthLayoutWrapper>{children}</AuthLayoutWrapper>
         </Providers>

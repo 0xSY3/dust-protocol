@@ -5,7 +5,7 @@
  * Uniswap V4 PoolHelper, and ERC20 interactions.
  */
 
-import { type Address } from 'viem'
+import { type Address, keccak256, encodeAbiParameters } from 'viem'
 import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains'
 import { POOL_FEE, POOL_TICK_SPACING, USDC_ADDRESS_SEPOLIA } from './constants'
 
@@ -28,25 +28,23 @@ export const DUST_SWAP_POOL_ABI = [
     stateMutability: 'payable',
     type: 'function',
   },
-  // ERC20 deposit
+  // ERC20 deposit (USDC pool - no token param since contract is USDC-specific)
   {
     inputs: [
       { name: 'commitment', type: 'bytes32' },
-      { name: 'token', type: 'address' },
       { name: 'amount', type: 'uint256' },
     ],
-    name: 'depositToken',
+    name: 'deposit',
     outputs: [],
     stateMutability: 'nonpayable',
     type: 'function',
   },
-  // Deposit event
+  // Deposit event (matches DustSwapPoolETH.sol - no token field)
   {
     anonymous: false,
     inputs: [
       { indexed: true, name: 'commitment', type: 'bytes32' },
       { indexed: false, name: 'leafIndex', type: 'uint32' },
-      { indexed: true, name: 'token', type: 'address' },
       { indexed: false, name: 'amount', type: 'uint256' },
       { indexed: false, name: 'timestamp', type: 'uint256' },
     ],
@@ -178,6 +176,62 @@ export const ERC20_ABI = [
   },
 ] as const
 
+// ─── Uniswap V4 Quoter ABI ───────────────────────────────────────────────────
+
+export const QUOTER_ABI = [
+  {
+    inputs: [
+      {
+        name: 'params',
+        type: 'tuple',
+        components: [
+          { name: 'poolKey', type: 'tuple', components: [
+            { name: 'currency0', type: 'address' },
+            { name: 'currency1', type: 'address' },
+            { name: 'fee', type: 'uint24' },
+            { name: 'tickSpacing', type: 'int24' },
+            { name: 'hooks', type: 'address' },
+          ]},
+          { name: 'zeroForOne', type: 'bool' },
+          { name: 'exactAmount', type: 'uint128' },
+          { name: 'hookData', type: 'bytes' },
+        ],
+      },
+    ],
+    name: 'quoteExactInputSingle',
+    outputs: [
+      { name: 'amountOut', type: 'uint256' },
+      { name: 'gasEstimate', type: 'uint256' },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+] as const
+
+// ─── Uniswap V4 StateView ABI ───────────────────────────────────────────────
+
+export const STATE_VIEW_ABI = [
+  {
+    inputs: [{ name: 'poolId', type: 'bytes32' }],
+    name: 'getSlot0',
+    outputs: [
+      { name: 'sqrtPriceX96', type: 'uint160' },
+      { name: 'tick', type: 'int24' },
+      { name: 'protocolFee', type: 'uint24' },
+      { name: 'lpFee', type: 'uint24' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'poolId', type: 'bytes32' }],
+    name: 'getLiquidity',
+    outputs: [{ name: 'liquidity', type: 'uint128' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const
+
 // ─── Pool Key ────────────────────────────────────────────────────────────────
 
 export interface PoolKey {
@@ -206,6 +260,30 @@ export function getDustSwapPoolKey(chainId?: number): PoolKey {
     tickSpacing: POOL_TICK_SPACING,
     hooks: hook as Address,
   }
+}
+
+/**
+ * Compute Uniswap V4 PoolId from a PoolKey (keccak256 of abi-encoded key)
+ */
+export function computePoolId(poolKey: PoolKey): `0x${string}` {
+  return keccak256(
+    encodeAbiParameters(
+      [
+        { type: 'address' },
+        { type: 'address' },
+        { type: 'uint24' },
+        { type: 'int24' },
+        { type: 'address' },
+      ],
+      [
+        poolKey.currency0,
+        poolKey.currency1,
+        poolKey.fee,
+        poolKey.tickSpacing,
+        poolKey.hooks,
+      ]
+    )
+  )
 }
 
 /**

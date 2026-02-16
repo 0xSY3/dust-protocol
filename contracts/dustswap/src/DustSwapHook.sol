@@ -48,18 +48,13 @@ contract DustSwapHook {
     IDustSwapPool public immutable dustSwapPoolETH;
     IDustSwapPool public immutable dustSwapPoolUSDC;
 
-    address public owner;
+    address public owner;                      // slot 0: 20 bytes
+    bool public relayerWhitelistEnabled;       // slot 0: 1 byte (packed)
+    uint128 public totalPrivateSwaps;          // slot 1: 16 bytes
+    uint128 public totalPrivateVolume;         // slot 1: 16 bytes (packed)
 
     // Relayer whitelist
-    mapping(address => bool) public authorizedRelayers;
-    bool public relayerWhitelistEnabled;
-
-    // Nullifier tracking (prevents double-spending across pools)
-    mapping(bytes32 => bool) public usedNullifiers;
-
-    // Stats
-    uint256 public totalPrivateSwaps;
-    uint256 public totalPrivateVolume;
+    mapping(address => bool) public authorizedRelayers; // slot 2
 
     // Max relayer fee: 5% (500 BPS)
     uint256 public constant MAX_RELAYER_FEE_BPS = 500;
@@ -190,15 +185,13 @@ contract DustSwapHook {
         // Verify Merkle root is known in the pool
         if (!pool.isKnownRoot(root)) revert InvalidMerkleRoot();
 
-        // Check nullifier hasn't been used (in either pool or this hook)
-        if (usedNullifiers[nullifierHash]) revert NullifierAlreadyUsed();
+        // Check nullifier hasn't been used
         if (pool.isSpent(nullifierHash)) revert NullifierAlreadyUsed();
 
         // Verify the Groth16 proof
         if (!verifier.verifyProof(pA, pB, pC, pubSignals)) revert InvalidProof();
 
-        // Mark nullifier as spent in both the hook and the pool
-        usedNullifiers[nullifierHash] = true;
+        // Mark nullifier as spent in the pool
         pool.markNullifierAsSpent(nullifierHash);
 
         // Update stats
@@ -218,7 +211,7 @@ contract DustSwapHook {
         bytes calldata hookData
     ) external onlyPoolManager returns (bytes4, int128) {
         if (hookData.length > 0 && delta > 0) {
-            totalPrivateVolume += uint256(delta);
+            totalPrivateVolume += uint128(uint256(delta));
         }
         return (this.afterSwap.selector, 0);
     }
@@ -298,8 +291,9 @@ contract DustSwapHook {
     // ─── View Functions ──────────────────────────────────────────────────────────
 
     /// @notice Check if a nullifier has been used in a private swap
+    /// @dev Checks both pools for nullifier status
     function isNullifierUsed(bytes32 nullifierHash) external view returns (bool) {
-        return usedNullifiers[nullifierHash];
+        return dustSwapPoolETH.isSpent(nullifierHash) || dustSwapPoolUSDC.isSpent(nullifierHash);
     }
 
     /// @notice Get swap statistics

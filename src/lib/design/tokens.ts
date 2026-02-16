@@ -260,7 +260,7 @@ export const inputStates = {
 
 export const typography = {
   fontFamily: {
-    heading: "'Space Grotesk', sans-serif",
+    heading: "var(--font-instrument-serif), 'Instrument Serif', serif",
     body: "'Plus Jakarta Sans', sans-serif",
     mono: "'JetBrains Mono', monospace",
   },

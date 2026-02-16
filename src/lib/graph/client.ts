@@ -40,3 +40,29 @@ export function getGraphClient(chainId: number): GraphQLClient {
   clients.set(chainId, client);
   return client;
 }
+
+/**
+ * Check if a name is available using The Graph
+ * Returns true if available, false if taken, null on error
+ */
+export async function checkNameAvailabilityGraph(name: string, chainId: number): Promise<boolean | null> {
+  try {
+    if (!isGraphAvailable(chainId)) return null;
+    const client = getGraphClient(chainId);
+    const GET_NAME = `
+      query GetName($name: String!) {
+        names(where: { name: $name }, first: 1) {
+          id
+          name
+        }
+      }
+    `;
+    const data = await client.request<{ names: Array<{ id: string; name: string }> }>(GET_NAME, {
+      name: name.toLowerCase(),
+    });
+    return data.names.length === 0;
+  } catch (err) {
+    console.error('[Graph] checkNameAvailabilityGraph error:', err);
+    return null;
+  }
+}

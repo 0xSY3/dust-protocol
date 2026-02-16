@@ -6,11 +6,10 @@
  * Orchestrates the full flow:
  * 1. Select deposit note
  * 2. Sync Merkle tree
- * 3. Add root to pool (testnet)
- * 4. Generate ZK proof
- * 5. Encode proof as Uniswap V4 hook data
- * 6. Execute swap through PoolHelper
- * 7. Mark note as spent
+ * 3. Generate ZK proof
+ * 4. Encode proof as Uniswap V4 hook data
+ * 5. Execute swap through PoolHelper (single signature!)
+ * 6. Mark note as spent
  */
 
 import { useState, useCallback } from 'react'
@@ -33,7 +32,6 @@ export type SwapState =
   | 'idle'
   | 'selecting-note'
   | 'syncing-tree'
-  | 'adding-root'
   | 'generating-proof'
   | 'submitting'
   | 'confirming'
@@ -99,13 +97,32 @@ function toBytes32(n: bigint): `0x${string}` {
   return `0x${n.toString(16).padStart(64, '0')}`
 }
 
-export function useDustSwap() {
-  const { address, isConnected } = useAccount()
+interface UseDustSwapOptions {
+  chainId?: number
+  /** Pass Merkle tree functions to avoid duplicate tree instances */
+  merkleTree?: {
+    getProof: (leafIndex: number) => Promise<any>
+    syncTree: () => Promise<void>
+    getRoot: () => Promise<bigint | null>
+    isSyncing: boolean
+  }
+}
+
+export function useDustSwap(options?: UseDustSwapOptions) {
+  const { address, isConnected, chainId: accountChainId } = useAccount()
   const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
-  const chainId = useChainId()
+
+  // Use provided chainId or fall back to account chainId
+  const chainId = options?.chainId ?? accountChainId
+
   const { generateProof } = useSwapZKProof()
-  const { getProof: getMerkleProof, syncTree, getRoot, isSyncing } = useSwapMerkleTree()
+
+  // Use provided Merkle tree or create new instance (backwards compat)
+  const internalTree = useSwapMerkleTree(chainId)
+  const merkleTree = options?.merkleTree ?? internalTree
+  const { getProof: getMerkleProof, syncTree, getRoot, isSyncing } = merkleTree
+
   const { notes, spendNote } = useSwapNotes()
 
   const [state, setState] = useState<SwapState>('idle')
@@ -149,33 +166,7 @@ export function useDustSwap() {
         const merkleProof = await getMerkleProof(depositNote.leafIndex)
         if (!merkleProof) throw new Error('Failed to generate Merkle proof')
 
-        // Step 4: Add root to DustSwapPool (testnet only - root addKnownRoot)
-        setState('adding-root')
-
-        const poolAddress = contracts.dustSwapPoolETH as Address | null
-        if (!poolAddress) throw new Error('Pool not deployed')
-
-        const rootBytes = toBytes32(merkleProof.root)
-
-        const isKnown = await publicClient.readContract({
-          address: poolAddress as `0x${string}`,
-          abi: DUST_SWAP_POOL_ABI,
-          functionName: 'isKnownRoot',
-          args: [rootBytes],
-        })
-
-        if (!isKnown) {
-          const addRootTx = await walletClient.writeContract({
-            address: poolAddress as `0x${string}`,
-            abi: DUST_SWAP_POOL_ABI,
-            functionName: 'addKnownRoot',
-            args: [rootBytes],
-          })
-
-          await publicClient.waitForTransactionReceipt({ hash: addRootTx })
-        }
-
-        // Step 5: Generate ZK proof
+        // Step 4: Generate ZK proof (skip addKnownRoot - hook validates during swap)
         setState('generating-proof')
 
         const zkSwapParams: ZKSwapParams = {
@@ -189,14 +180,14 @@ export function useDustSwap() {
 
         if (!proofResult) throw new Error('Failed to generate ZK proof')
 
-        // Step 6: Format proof and encode as hook data
+        // Step 5: Format proof and encode as hook data
         const contractProof = formatProofForContract(
           proofResult.proof,
           proofResult.publicSignals
         )
         const hookData = encodeHookData(contractProof)
 
-        // Step 7: Execute swap through PoolHelper
+        // Step 6: Execute swap through PoolHelper (SINGLE SIGNATURE)
         setState('submitting')
 
         const poolKey = params.poolKey || getDustSwapPoolKey(chainId)
@@ -207,8 +198,8 @@ export function useDustSwap() {
           poolKey
         )
 
-        // TODO: Replace with actual poolHelper address from chain config
-        const poolHelperAddress = '0x0000000000000000000000000000000000000000' as Address
+        // PoolSwapTest deployed on Sepolia (Feb 16 2026)
+        const poolHelperAddress = '0x3b3D4d4Ed9c89FcB0ffA1Dc139C8A5ca50033470' as Address
 
         const hash = await walletClient.writeContract({
           address: poolHelperAddress,
@@ -223,16 +214,19 @@ export function useDustSwap() {
           ],
         })
 
-        // Step 8: Wait for confirmation
+        // Step 7: Wait for confirmation
         setState('confirming')
 
-        const receipt = await publicClient.waitForTransactionReceipt({ hash })
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash,
+          timeout: 120_000, // 120s for Sepolia testnet
+        })
 
         if (receipt.status === 'reverted') {
           throw new Error('Transaction reverted')
         }
 
-        // Step 9: Mark note as spent
+        // Step 8: Mark note as spent
         if (depositNote.id) {
           await spendNote(depositNote.id)
         }
@@ -297,7 +291,6 @@ export function useDustSwap() {
     isLoading: [
       'selecting-note',
       'syncing-tree',
-      'adding-root',
       'generating-proof',
       'submitting',
       'confirming',

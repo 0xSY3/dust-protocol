@@ -7,7 +7,7 @@
  * persists state in IndexedDB, and auto-syncs every 30 seconds.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { usePublicClient, useChainId } from 'wagmi'
 import { MerkleTree, type MerkleProof } from '@/lib/swap/zk'
 import { DUST_SWAP_POOL_ABI } from '@/lib/swap/contracts'
@@ -22,15 +22,26 @@ export type SyncState = 'idle' | 'syncing' | 'synced' | 'error'
 
 type MerkleTreeInstance = InstanceType<typeof MerkleTree>
 
-export function useSwapMerkleTree() {
+export function useSwapMerkleTree(chainIdParam?: number) {
   const publicClient = usePublicClient()
-  const chainId = useChainId()
+  const accountChainId = useChainId()
+
+  // Use provided chainId or fall back to account chainId
+  const chainId = chainIdParam ?? accountChainId
 
   const [tree, setTree] = useState<MerkleTreeInstance | null>(null)
   const [state, setState] = useState<SyncState>('idle')
   const [error, setError] = useState<string | null>(null)
   const [lastSyncedBlock, setLastSyncedBlock] = useState<number>(0)
   const [leafCount, setLeafCount] = useState<number>(0)
+
+  // Concurrency lock to prevent overlapping syncs
+  const syncingLockRef = useRef(false)
+  // Abort controller for canceling in-flight requests
+  const abortControllerRef = useRef<AbortController | null>(null)
+  // Exponential backoff tracking
+  const retryCountRef = useRef(0)
+  const nextRetryTimeRef = useRef(0)
 
   // Pool address for the current chain
   const contracts = getSwapContracts(chainId)
@@ -96,38 +107,58 @@ export function useSwapMerkleTree() {
 
   /**
    * Fetch Deposit events from the DustSwapPool contract
+   * Batches large block ranges to avoid RPC limits (max 50k blocks per request)
+   * Returns array of {commitment, leafIndex} objects for proper deduplication
    */
   const fetchDeposits = useCallback(
-    async (fromBlock: bigint, toBlock: bigint): Promise<bigint[]> => {
+    async (fromBlock: bigint, toBlock: bigint): Promise<Array<{commitment: bigint, leafIndex: number}>> => {
       if (!publicClient || !poolAddress) return []
 
+      const BATCH_SIZE = 50000n
+      const allLogs: any[] = []
+
       try {
-        const logs = await publicClient.getLogs({
-          address: poolAddress as `0x${string}`,
-          event: {
-            type: 'event',
-            name: 'Deposit',
-            inputs: [
-              { type: 'bytes32', name: 'commitment', indexed: true },
-              { type: 'uint32', name: 'leafIndex', indexed: false },
-              { type: 'address', name: 'token', indexed: true },
-              { type: 'uint256', name: 'amount', indexed: false },
-              { type: 'uint256', name: 'timestamp', indexed: false },
-            ],
-          },
-          fromBlock,
-          toBlock,
-        })
+        let currentFrom = fromBlock
+
+        // Batch requests to stay within RPC limits
+        while (currentFrom <= toBlock) {
+          const currentTo = currentFrom + BATCH_SIZE - 1n > toBlock
+            ? toBlock
+            : currentFrom + BATCH_SIZE - 1n
+
+          const logs = await publicClient.getLogs({
+            address: poolAddress as `0x${string}`,
+            event: {
+              type: 'event',
+              name: 'Deposit',
+              inputs: [
+                { type: 'bytes32', name: 'commitment', indexed: true },
+                { type: 'uint32', name: 'leafIndex', indexed: false },
+                { type: 'uint256', name: 'amount', indexed: false },
+                { type: 'uint256', name: 'timestamp', indexed: false },
+              ],
+            },
+            fromBlock: currentFrom,
+            toBlock: currentTo,
+          })
+
+          allLogs.push(...logs)
+          currentFrom = currentTo + 1n
+        }
 
         // Sort by leafIndex to ensure correct insertion order
-        const sortedLogs = [...logs].sort((a: any, b: any) => {
+        const sortedLogs = [...allLogs].sort((a: any, b: any) => {
           return Number(a.args.leafIndex) - Number(b.args.leafIndex)
         })
 
-        return sortedLogs.map((log: any) => BigInt(log.args.commitment))
+        return sortedLogs.map((log: any) => ({
+          commitment: BigInt(log.args.commitment),
+          leafIndex: Number(log.args.leafIndex)
+        }))
       } catch (err) {
         console.error('[DustSwap] Failed to fetch deposits:', err)
-        return []
+        // Throw error instead of returning [] to prevent silently skipping deposits
+        throw err
       }
     },
     [publicClient, poolAddress]
@@ -135,18 +166,49 @@ export function useSwapMerkleTree() {
 
   /**
    * Sync tree with on-chain state
+   * Fixed: Concurrency lock + AbortController + exponential backoff + explicit params to avoid stale closures
    */
-  const syncTree = useCallback(async (): Promise<void> => {
+  const syncTree = useCallback(async (existingTree?: MerkleTreeInstance, fromBlockOverride?: number): Promise<void> => {
+    // Concurrency lock - prevent overlapping syncs
+    if (syncingLockRef.current) {
+      console.log('[DustSwap] Sync already in progress, skipping')
+      return
+    }
+
+    // Exponential backoff - don't retry if we're in backoff period
+    const now = Date.now()
+    if (now < nextRetryTimeRef.current) {
+      const waitSeconds = Math.ceil((nextRetryTimeRef.current - now) / 1000)
+      console.log(`[DustSwap] In backoff period, waiting ${waitSeconds}s before retry`)
+      return
+    }
+
     if (!publicClient) {
       setError('Public client not available')
       return
     }
 
+    syncingLockRef.current = true
     setState('syncing')
     setError(null)
 
+    // Create AbortController for canceling in-flight requests
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
+    // Timeout with abort signal
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        abortController.abort()
+        reject(new Error('Sync timeout - RPC not responding'))
+      }, 30000) // 30s timeout
+    })
+
     try {
-      let merkleTree = tree || (await loadTree())
+      await Promise.race([
+        (async () => {
+      // Use explicit params to avoid stale closure (fixes double-insertion bug)
+      let merkleTree = existingTree || tree || (await loadTree())
 
       if (!merkleTree) {
         merkleTree = new MerkleTree()
@@ -156,18 +218,32 @@ export function useSwapMerkleTree() {
       const currentBlock = await publicClient.getBlockNumber()
       const deploymentBlock = getSwapDeploymentBlock(chainId)
 
+      // Use explicit fromBlockOverride to avoid stale closure
+      const effectiveLastBlock = fromBlockOverride ?? lastSyncedBlock
       const fromBlock =
-        lastSyncedBlock > 0
-          ? BigInt(lastSyncedBlock + 1)
+        effectiveLastBlock > 0
+          ? BigInt(effectiveLastBlock + 1)
           : BigInt(deploymentBlock ?? 0)
 
-      const newCommitments = await fetchDeposits(fromBlock, currentBlock)
+      const newDeposits = await fetchDeposits(fromBlock, currentBlock)
 
-      for (const commitment of newCommitments) {
-        await merkleTree.insert(commitment)
+      console.log(`[DustSwap] Fetched ${newDeposits.length} new deposits (blocks ${fromBlock} to ${currentBlock})`)
+
+      // Deduplication guard: skip deposits already in tree by comparing leafIndex
+      const expectedNextIndex = merkleTree.getLeafCount()
+      const depositsToInsert = newDeposits.filter(d => d.leafIndex >= expectedNextIndex)
+
+      if (depositsToInsert.length !== newDeposits.length) {
+        console.log(`[DustSwap] Skipping ${newDeposits.length - depositsToInsert.length} duplicate deposits (tree has ${expectedNextIndex} leaves, fetched deposits ${newDeposits[0]?.leafIndex ?? 0} to ${newDeposits[newDeposits.length - 1]?.leafIndex ?? 0})`)
       }
 
-      // Verify root matches on-chain
+      for (const deposit of depositsToInsert) {
+        await merkleTree.insert(deposit.commitment)
+      }
+
+      console.log(`[DustSwap] Tree now has ${merkleTree.getLeafCount()} leaves`)
+
+      // Verify root matches on-chain (read at same block height to avoid race condition)
       if (poolAddress) {
         try {
           const onChainRoot = (await publicClient.readContract({
@@ -175,6 +251,7 @@ export function useSwapMerkleTree() {
             abi: DUST_SWAP_POOL_ABI,
             functionName: 'getLastRoot',
             args: [],
+            blockNumber: currentBlock, // Read at same block as deposits to avoid race condition
           })) as `0x${string}`
 
           const computedRoot = merkleTree.getRoot()
@@ -191,15 +268,32 @@ export function useSwapMerkleTree() {
         }
       }
 
-      await saveTree(merkleTree, Number(currentBlock))
+          await saveTree(merkleTree, Number(currentBlock))
 
-      setTree(merkleTree)
-      setState('synced')
+          setTree(merkleTree)
+          setState('synced')
+
+          // Reset retry count on success
+          retryCountRef.current = 0
+          nextRetryTimeRef.current = 0
+        })(),
+        timeoutPromise,
+      ])
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sync failed'
       setError(message)
       setState('error')
       console.error('[DustSwap] Tree sync failed:', err)
+
+      // Exponential backoff: 5s, 10s, 20s, 40s, 60s (max)
+      retryCountRef.current += 1
+      const backoffSeconds = Math.min(5 * Math.pow(2, retryCountRef.current - 1), 60)
+      nextRetryTimeRef.current = Date.now() + backoffSeconds * 1000
+      console.log(`[DustSwap] Retry ${retryCountRef.current}, backing off ${backoffSeconds}s`)
+    } finally {
+      // Release lock and cleanup
+      syncingLockRef.current = false
+      abortControllerRef.current = null
     }
   }, [publicClient, tree, lastSyncedBlock, chainId, poolAddress, loadTree, fetchDeposits, saveTree])
 
@@ -214,7 +308,7 @@ export function useSwapMerkleTree() {
       }
 
       try {
-        return tree.getProof(leafIndex)
+        return await tree.getProof(leafIndex)
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to generate proof'
         setError(message)
@@ -251,35 +345,90 @@ export function useSwapMerkleTree() {
 
   /**
    * Force refresh (clear cache and resync)
+   * Fixed: Create new tree directly to avoid stale closure
    */
   const forceRefresh = useCallback(async (): Promise<void> => {
-    setLastSyncedBlock(0)
-    setTree(null)
-    await syncTree()
-  }, [syncTree])
+    setState('syncing')
+    setError(null)
 
-  // Auto-load tree on mount
+    try {
+      // Create brand new tree (bypass stale state)
+      const newTree = new MerkleTree()
+      await newTree.initialize()
+
+      setLastSyncedBlock(0)
+      setTree(newTree)
+
+      // Fetch all deposits from deployment
+      if (!publicClient) return
+
+      const currentBlock = await publicClient.getBlockNumber()
+      const deploymentBlock = getSwapDeploymentBlock(chainId)
+      const fromBlock = BigInt(deploymentBlock ?? 0)
+
+      const deposits = await fetchDeposits(fromBlock, currentBlock)
+
+      console.log(`[DustSwap] Force refresh: fetched ${deposits.length} deposits from deployment`)
+
+      for (const deposit of deposits) {
+        await newTree.insert(deposit.commitment)
+      }
+
+      console.log(`[DustSwap] Force refresh: tree now has ${newTree.getLeafCount()} leaves`)
+
+      await saveTree(newTree, Number(currentBlock))
+      setTree(newTree)
+      setState('synced')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Refresh failed'
+      setError(message)
+      setState('error')
+      console.error('[DustSwap] Force refresh failed:', err)
+    }
+  }, [publicClient, chainId, fetchDeposits, saveTree])
+
+  // Auto-load tree on mount and trigger initial sync
+  // FIX: Use ref for syncTree to avoid infinite re-render loop
+  const syncTreeRef = useRef<(tree?: MerkleTreeInstance, fromBlock?: number) => Promise<void>>()
+  syncTreeRef.current = syncTree
+
   useEffect(() => {
+    let mounted = true
+    let loadedLastBlock = 0
     loadTree().then((loadedTree) => {
-      if (loadedTree) {
-        setTree(loadedTree)
-        setState('synced')
+      if (loadedTree && mounted) {
+        // Get the lastSyncedBlock from loaded tree state BEFORE calling syncTree
+        loadMerkleTreeState(treeId).then((stored) => {
+          if (!mounted) return
+          loadedLastBlock = stored?.lastSyncedBlock ?? 0
+
+          setTree(loadedTree)
+          setLastSyncedBlock(loadedLastBlock)
+          setState('synced')
+
+          // Pass loaded tree and lastSyncedBlock explicitly to avoid stale closure (fixes double-insertion bug)
+          syncTreeRef.current?.(loadedTree, loadedLastBlock)
+        })
       }
     })
-  }, [loadTree])
+    return () => { mounted = false }
+  }, [loadTree, treeId]) // ✅ syncTree removed from deps, treeId added for loadMerkleTreeState
 
-  // Auto-sync every 30 seconds
+  // Auto-sync every 30 seconds (balanced: fast enough for updates, stable UI)
+  // Fixed: Use ref for state check to avoid resetting interval
+  const stateRef = useRef(state)
+  stateRef.current = state
+
   useEffect(() => {
     const interval = setInterval(() => {
-      needsSync().then((needs) => {
-        if (needs && state !== 'syncing') {
-          syncTree()
-        }
-      })
-    }, 30000)
+      // Skip if already syncing (concurrency lock handles this too, but check early)
+      if (stateRef.current !== 'syncing') {
+        syncTree()
+      }
+    }, 30000) // 30 seconds - balance between speed and stability
 
     return () => clearInterval(interval)
-  }, [syncTree, needsSync, state])
+  }, [syncTree]) // ✅ Removed state from deps - prevents interval reset
 
   return {
     tree,

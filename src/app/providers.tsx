@@ -3,16 +3,21 @@
 import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
 import { PrivyProvider } from "@privy-io/react-auth";
 import { WagmiProvider, createConfig } from "@privy-io/wagmi";
-import { http } from "wagmi";
+import { http, fallback } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getSupportedChains } from "@/config/chains";
 import { PRIVY_APP_ID, PRIVY_CONFIG, isPrivyEnabled } from "@/config/privy";
 
-// Build wagmi config from chain registry
+// Build wagmi config from chain registry with fallback RPCs
 const supportedChains = getSupportedChains();
 const viemChains = supportedChains.map(c => c.viemChain);
 const transports = Object.fromEntries(
-  supportedChains.map(c => [c.id, http(c.rpcUrl)])
+  supportedChains.map(c => [
+    c.id,
+    c.rpcUrls.length > 1
+      ? fallback(c.rpcUrls.map(url => http(url))) // Multiple RPCs → fallback
+      : http(c.rpcUrls[0]) // Single RPC → direct http
+  ])
 );
 
 const config = createConfig({

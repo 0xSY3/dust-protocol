@@ -1,11 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { Box, Text, VStack, HStack, Spinner, Link } from "@chakra-ui/react";
 import { colors, radius, shadows, glass, buttonVariants, transitions, typography, getExplorerBase } from "@/lib/design/tokens";
 import { ShieldCheckIcon, XIcon, CheckCircleIcon, AlertCircleIcon, ArrowUpRightIcon } from "@/components/stealth/icons";
 import type { SwapToken } from "@/lib/swap/constants";
 
-type SwapStep = "preparing" | "generating-proof" | "submitting" | "success" | "error";
+export type SwapStep =
+  | "preparing"
+  | "building-merkle"
+  | "creating-stealth"
+  | "computing-proof"
+  | "submitting"
+  | "success"
+  | "error";
 
 interface SwapExecuteModalProps {
   isOpen: boolean;
@@ -17,20 +25,42 @@ interface SwapExecuteModalProps {
   fromAmount: string;
   toAmount: string;
   error?: string | null;
+  rawError?: string | null;
   txHash?: string | null;
   stealthAddress?: string | null;
+  retryCount?: number;
   onRetry?: () => void;
   chainId?: number;
 }
+
+const STEPS_ORDER: SwapStep[] = [
+  "preparing",
+  "building-merkle",
+  "creating-stealth",
+  "computing-proof",
+  "submitting",
+];
+
+const STEP_LABELS: Record<string, string> = {
+  "preparing": "Preparing swap...",
+  "building-merkle": "Building Merkle tree...",
+  "creating-stealth": "Creating stealth address...",
+  "computing-proof": "Computing ZK-SNARK proof...",
+  "submitting": "Submitting transaction...",
+};
 
 function StepIndicator({
   label,
   isActive,
   isComplete,
+  showSpinner,
+  suffix,
 }: {
   label: string;
   isActive: boolean;
   isComplete: boolean;
+  showSpinner?: boolean;
+  suffix?: string;
 }) {
   return (
     <HStack gap="12px">
@@ -41,6 +71,7 @@ function StepIndicator({
         display="flex"
         alignItems="center"
         justifyContent="center"
+        flexShrink={0}
         bg={
           isComplete
             ? "rgba(34,197,94,0.15)"
@@ -61,25 +92,32 @@ function StepIndicator({
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.accent.green} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
-        ) : isActive ? (
+        ) : isActive && showSpinner !== false ? (
           <Spinner size="xs" color={colors.accent.indigo} />
         ) : (
           <Box w="6px" h="6px" borderRadius="50%" bg={colors.text.muted} />
         )}
       </Box>
-      <Text
-        fontSize="13px"
-        fontWeight={isActive ? 600 : 400}
-        color={
-          isComplete
-            ? colors.accent.green
-            : isActive
-            ? colors.text.primary
-            : colors.text.muted
-        }
-      >
-        {label}
-      </Text>
+      <HStack gap="6px">
+        <Text
+          fontSize="13px"
+          fontWeight={isActive ? 600 : 400}
+          color={
+            isComplete
+              ? colors.accent.green
+              : isActive
+              ? colors.text.primary
+              : colors.text.muted
+          }
+        >
+          {label}
+        </Text>
+        {suffix && isActive && (
+          <Text fontSize="11px" fontWeight={500} color={colors.accent.amber}>
+            {suffix}
+          </Text>
+        )}
+      </HStack>
     </HStack>
   );
 }
@@ -94,15 +132,20 @@ export function SwapExecuteModal({
   fromAmount,
   toAmount,
   error,
+  rawError,
   txHash,
   stealthAddress,
+  retryCount,
   onRetry,
   chainId,
 }: SwapExecuteModalProps) {
+  const [showRawError, setShowRawError] = useState(false);
+
   if (!isOpen) return null;
 
-  const isProcessing = ["preparing", "generating-proof", "submitting"].includes(step);
+  const isProcessing = STEPS_ORDER.includes(step as SwapStep);
   const explorerBase = getExplorerBase(chainId);
+  const currentStepIndex = STEPS_ORDER.indexOf(step as SwapStep);
 
   return (
     <Box
@@ -167,7 +210,7 @@ export function SwapExecuteModal({
                   ? "Privacy-preserving swap succeeded"
                   : step === "error"
                   ? "Something went wrong"
-                  : stepMessage || "Processing..."}
+                  : stepMessage || STEP_LABELS[step] || "Processing..."}
               </Text>
             </VStack>
           </HStack>
@@ -190,22 +233,26 @@ export function SwapExecuteModal({
         <Box p="24px" pt="0">
           {/* Processing steps */}
           {isProcessing && (
-            <VStack gap="16px" align="stretch" py="8px">
-              <StepIndicator
-                label="Preparing swap parameters..."
-                isActive={step === "preparing"}
-                isComplete={step !== "preparing"}
-              />
-              <StepIndicator
-                label="Generating ZK proof..."
-                isActive={step === "generating-proof"}
-                isComplete={step === "submitting"}
-              />
-              <StepIndicator
-                label="Submitting to relayer..."
-                isActive={step === "submitting"}
-                isComplete={false}
-              />
+            <VStack gap="14px" align="stretch" py="8px">
+              {STEPS_ORDER.map((s, i) => {
+                const isActive = s === step;
+                const isComplete = currentStepIndex > i;
+                const suffix =
+                  s === "submitting" && isActive && retryCount && retryCount > 1
+                    ? `(retry ${retryCount}/3)`
+                    : undefined;
+
+                return (
+                  <StepIndicator
+                    key={s}
+                    label={STEP_LABELS[s]}
+                    isActive={isActive}
+                    isComplete={isComplete}
+                    showSpinner={isActive}
+                    suffix={suffix}
+                  />
+                );
+              })}
 
               {/* Swap summary */}
               <Box
@@ -336,6 +383,69 @@ export function SwapExecuteModal({
                 <Text fontSize="12px" color={colors.text.tertiary} lineHeight="1.5">
                   {error || "An unknown error occurred"}
                 </Text>
+
+                {/* Collapsible raw error */}
+                {rawError && (
+                  <Box mt="8px">
+                    <Box
+                      as="button"
+                      display="flex"
+                      alignItems="center"
+                      gap="4px"
+                      cursor="pointer"
+                      onClick={() => setShowRawError(!showRawError)}
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={colors.text.muted}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{
+                          transform: showRawError ? "rotate(90deg)" : "rotate(0deg)",
+                          transition: "transform 0.15s ease",
+                        }}
+                      >
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                      <Text fontSize="11px" color={colors.text.muted} fontWeight={500}>
+                        {showRawError ? "Hide" : "Show"} raw error
+                      </Text>
+                    </Box>
+                    {showRawError && (
+                      <Box
+                        mt="8px"
+                        p="10px"
+                        borderRadius={radius.xs}
+                        bg="rgba(0,0,0,0.3)"
+                        border={`1px solid ${colors.border.light}`}
+                        maxH="140px"
+                        overflowY="auto"
+                        css={{
+                          "&::-webkit-scrollbar": { width: "4px" },
+                          "&::-webkit-scrollbar-thumb": {
+                            background: "rgba(255,255,255,0.1)",
+                            borderRadius: "4px",
+                          },
+                        }}
+                      >
+                        <Text
+                          fontSize="10px"
+                          fontFamily={typography.fontFamily.mono}
+                          color={colors.text.muted}
+                          whiteSpace="pre-wrap"
+                          wordBreak="break-all"
+                          lineHeight="1.5"
+                        >
+                          {rawError}
+                        </Text>
+                      </Box>
+                    )}
+                  </Box>
+                )}
               </Box>
 
               <HStack gap="12px">

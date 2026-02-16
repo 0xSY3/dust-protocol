@@ -1,5 +1,5 @@
 // Client-side incremental Merkle tree matching on-chain MerkleTree.sol
-// Reconstructed from Deposit events for proof generation
+// MUST match Solidity logic exactly for root consistency
 
 import { poseidon2 } from './poseidon';
 
@@ -13,18 +13,22 @@ export interface MerkleProof {
 
 export class MerkleTree {
   private depth: number;
-  private leaves: bigint[];
   private zeros: bigint[];
-  private layers: bigint[][];
+  private filledSubtrees: bigint[];
+  private roots: bigint[];
+  private currentRootIndex: number;
+  private nextIndex: number;
+  private leaves: bigint[]; // Store leaves for proof generation
 
   private constructor(depth: number, zeros: bigint[]) {
     this.depth = depth;
-    this.leaves = [];
     this.zeros = zeros;
-    this.layers = [];
-    for (let i = 0; i <= depth; i++) {
-      this.layers.push([]);
-    }
+    // Initialize filledSubtrees to match Solidity (zeros[0] to zeros[depth-1])
+    this.filledSubtrees = zeros.slice(0, depth);
+    this.roots = [zeros[depth]]; // Initial root is the top-level zero
+    this.currentRootIndex = 0;
+    this.nextIndex = 0;
+    this.leaves = [];
   }
 
   static async create(depth = TREE_DEPTH): Promise<MerkleTree> {
@@ -37,80 +41,97 @@ export class MerkleTree {
   }
 
   async insert(leaf: bigint): Promise<number> {
-    const index = this.leaves.length;
-    this.leaves.push(leaf);
-    await this.rebuild();
+    if (this.nextIndex >= 2 ** this.depth) {
+      throw new Error('Merkle tree is full');
+    }
+
+    this.leaves.push(leaf); // Store for proof generation
+    const index = this.nextIndex;
+    let currentHash = leaf;
+    let tempIndex = index;
+
+    // Incremental update matching Solidity logic exactly
+    for (let i = 0; i < this.depth; i++) {
+      if (tempIndex % 2 === 0) {
+        this.filledSubtrees[i] = currentHash;
+        currentHash = await poseidon2(currentHash, this.zeros[i]);
+      } else {
+        currentHash = await poseidon2(this.filledSubtrees[i], currentHash);
+      }
+      tempIndex >>= 1;
+    }
+
+    // Update root history (circular buffer of 100 roots like contract)
+    this.roots.push(currentHash);
+    if (this.roots.length > 100) {
+      this.roots.shift();
+    } else {
+      this.currentRootIndex++;
+    }
+
+    this.nextIndex++;
     return index;
   }
 
   async insertMany(newLeaves: bigint[]): Promise<void> {
-    this.leaves.push(...newLeaves);
-    await this.rebuild();
-  }
-
-  private async rebuild(): Promise<void> {
-    this.layers[0] = [...this.leaves];
-
-    for (let level = 0; level < this.depth; level++) {
-      const currentLayer = this.layers[level];
-      const nextLayer: bigint[] = [];
-      const pairCount = Math.ceil(currentLayer.length / 2);
-
-      for (let i = 0; i < pairCount; i++) {
-        const left = currentLayer[i * 2];
-        const right = i * 2 + 1 < currentLayer.length
-          ? currentLayer[i * 2 + 1]
-          : this.zeros[level];
-        nextLayer.push(await poseidon2(left, right));
-      }
-
-      // If no pairs existed, the next level is just the zero for that level
-      if (nextLayer.length === 0) {
-        nextLayer.push(this.zeros[level + 1]);
-      }
-
-      this.layers[level + 1] = nextLayer;
+    for (const leaf of newLeaves) {
+      await this.insert(leaf);
     }
   }
 
   get root(): bigint {
-    if (this.layers[this.depth].length === 0) return this.zeros[this.depth];
-    return this.layers[this.depth][0];
+    return this.roots[this.roots.length - 1];
   }
 
   get leafCount(): number {
-    return this.leaves.length;
+    return this.nextIndex;
   }
 
-  getLeaf(index: number): bigint | undefined {
-    return this.leaves[index];
-  }
-
-  getProof(leafIndex: number): MerkleProof {
+  async getProofAsync(leafIndex: number): Promise<MerkleProof> {
     if (leafIndex < 0 || leafIndex >= this.leaves.length) {
       throw new Error(`Leaf index ${leafIndex} out of range`);
     }
 
-    const pathElements: bigint[] = [];
-    const pathIndices: number[] = [];
-    let idx = leafIndex;
-
-    for (let level = 0; level < this.depth; level++) {
-      const siblingIdx = idx % 2 === 0 ? idx + 1 : idx - 1;
-      const currentLayer = this.layers[level];
-
-      pathIndices.push(idx % 2);
-      pathElements.push(
-        siblingIdx < currentLayer.length ? currentLayer[siblingIdx] : this.zeros[level]
-      );
-
-      idx = Math.floor(idx / 2);
+    // Build tree bottom-up using sparse maps (efficient for few leaves in large tree)
+    let currentLevel: Map<number, bigint> = new Map();
+    for (let i = 0; i < this.leaves.length; i++) {
+      currentLevel.set(i, this.leaves[i]);
     }
 
-    return {
-      pathElements,
-      pathIndices,
-      root: this.root,
-    };
+    const pathElements: bigint[] = [];
+    const pathIndices: number[] = [];
+    let nodeIndex = leafIndex;
+
+    for (let level = 0; level < this.depth; level++) {
+      // Get sibling (zero hash if not present)
+      const siblingIndex = nodeIndex ^ 1;
+      pathElements.push(currentLevel.get(siblingIndex) ?? this.zeros[level]);
+      pathIndices.push(nodeIndex & 1);
+
+      // Build next level from all non-zero nodes
+      const nextLevel: Map<number, bigint> = new Map();
+      const parentIndices = new Set<number>();
+      for (const idx of currentLevel.keys()) {
+        parentIndices.add(idx >> 1);
+      }
+
+      for (const parentIdx of parentIndices) {
+        const left = currentLevel.get(parentIdx * 2) ?? this.zeros[level];
+        const right = currentLevel.get(parentIdx * 2 + 1) ?? this.zeros[level];
+        nextLevel.set(parentIdx, await poseidon2(left, right));
+      }
+
+      currentLevel = nextLevel;
+      nodeIndex >>= 1;
+    }
+
+    const root = currentLevel.get(0) ?? this.zeros[this.depth];
+
+    return { pathElements, pathIndices, root };
+  }
+
+  // Synchronous wrapper for compatibility
+  getProof(leafIndex: number): MerkleProof {
+    throw new Error('Use getProofAsync() instead - proof generation requires async poseidon hashing');
   }
 }

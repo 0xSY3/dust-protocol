@@ -37,9 +37,9 @@ export class MerkleTree {
     return this.tree.root
   }
 
-  getProof(leafIndex: number): MerkleProof {
+  async getProof(leafIndex: number): Promise<MerkleProof> {
     if (!this.tree) throw new Error('Tree not initialized')
-    return this.tree.getProof(leafIndex)
+    return await this.tree.getProofAsync(leafIndex)
   }
 
   getLeafCount(): number {

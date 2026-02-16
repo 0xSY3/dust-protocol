@@ -8,11 +8,20 @@ import { ShieldIcon, XIcon, CheckCircleIcon, AlertCircleIcon } from "@/component
 
 type DepositStep = "input" | "approving" | "depositing" | "confirming" | "success" | "error";
 
+interface DepositNote {
+  commitment: bigint;
+  nullifier: bigint;
+  secret: bigint;
+  amount: bigint;
+  nullifierHash: bigint;
+  leafIndex?: number;
+}
+
 interface DepositModalProps {
   isOpen: boolean;
   onClose: () => void;
   token: SwapToken;
-  onDeposit?: (amount: string) => Promise<{ commitment: string; leafIndex: number } | null>;
+  onDeposit?: (amount: string) => Promise<{ note: DepositNote; txHash: string; leafIndex: number } | null>;
 }
 
 const FIXED_DENOMINATIONS: Record<string, string[]> = {
@@ -82,7 +91,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<DepositStep>("input");
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ commitment: string; leafIndex: number } | null>(null);
+  const [result, setResult] = useState<{ note: DepositNote; txHash: string; leafIndex: number } | null>(null);
 
   if (!isOpen) return null;
 
@@ -383,9 +392,38 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
                   <HStack justify="space-between">
                     <Text fontSize="11px" color={colors.text.muted}>Commitment</Text>
                     <Text fontSize="11px" fontFamily={typography.fontFamily.mono} color={colors.text.primary}>
-                      {result.commitment.slice(0, 10)}...{result.commitment.slice(-8)}
+                      {(() => {
+                        const hex = '0x' + result.note.commitment.toString(16).padStart(64, '0');
+                        return `${hex.slice(0, 10)}...${hex.slice(-8)}`;
+                      })()}
                     </Text>
                   </HStack>
+                  <Box
+                    as="button"
+                    mt="4px"
+                    py="8px"
+                    px="12px"
+                    borderRadius={radius.sm}
+                    bg="rgba(34,197,94,0.1)"
+                    border="1px solid rgba(34,197,94,0.2)"
+                    cursor="pointer"
+                    onClick={() => {
+                      const noteData = {
+                        commitment: '0x' + result.note.commitment.toString(16).padStart(64, '0'),
+                        nullifier: '0x' + result.note.nullifier.toString(16).padStart(64, '0'),
+                        secret: '0x' + result.note.secret.toString(16).padStart(64, '0'),
+                        amount: result.note.amount.toString(),
+                        leafIndex: result.leafIndex,
+                        txHash: result.txHash,
+                      };
+                      navigator.clipboard.writeText(JSON.stringify(noteData, null, 2));
+                    }}
+                    _hover={{ bg: "rgba(34,197,94,0.15)" }}
+                  >
+                    <Text fontSize="11px" color={colors.accent.green} fontWeight={600}>
+                      📋 Copy Full Note Details
+                    </Text>
+                  </Box>
                 </VStack>
               </Box>
 

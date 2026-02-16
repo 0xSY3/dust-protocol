@@ -14,12 +14,13 @@ interface IERC20 {
 ///         later validates ZK proofs referencing this pool's Merkle tree to execute
 ///         private swaps with full unlinkability.
 contract DustSwapPoolUSDC is MerkleTree {
-    address public owner;
-    address public dustSwapHook;
+    address public owner;        // slot 0: 20 bytes
+    bool private _locked;        // slot 0: 1 byte (packed)
+    address public dustSwapHook; // slot 1: 20 bytes
     IERC20 public immutable usdc;
 
-    mapping(bytes32 => bool) public commitments;
-    mapping(bytes32 => bool) public nullifierHashes;
+    mapping(bytes32 => bool) public commitments;      // slot 2
+    mapping(bytes32 => bool) public nullifierHashes;  // slot 3
 
     event Deposit(
         bytes32 indexed commitment,
@@ -45,8 +46,6 @@ contract DustSwapPoolUSDC is MerkleTree {
     error ZeroDeposit();
     error TransferFailed();
     error ReentrancyGuardReentrantCall();
-
-    bool private _locked;
 
     modifier nonReentrant() {
         if (_locked) revert ReentrancyGuardReentrantCall();

@@ -7,7 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ConnectButton } from "@/components/ConnectButton";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { DustLogo } from "@/components/DustLogo";
-import { FlickeringGrid } from "@/components/FlickeringGrid";
+
+import { SpiritPortal } from "@/components/SpiritPortal";
 
 export default function OnboardingPage() {
   const { isConnected, isOnboarded, isHydrated, address } = useAuth();
@@ -36,43 +37,32 @@ export default function OnboardingPage() {
         }
       `}</style>
 
+      {/* Container with Unicorn Studio Background */}
       <Box minH="100vh" bg="#06080F" color="white" display="flex" flexDirection="column" position="relative" overflow="hidden">
-        <FlickeringGrid
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none",
-            zIndex: 0,
-            maskImage: "radial-gradient(ellipse 80% 60% at 50% 45%, white, transparent)",
-            WebkitMaskImage: "radial-gradient(ellipse 80% 60% at 50% 45%, white, transparent)",
-          }}
-          squareSize={5}
-          gridGap={6}
-          color="#4A75F0"
-          maxOpacity={0.25}
-          flickerChance={0.3}
-        />
 
-        {/* Ambient glow — centered on page */}
         <Box
           position="absolute"
-          top="45%"
-          left="50%"
-          transform="translate(-50%, -50%)"
-          w="800px"
-          h="600px"
-          borderRadius="50%"
-          bg="radial-gradient(ellipse, rgba(43,90,226,0.06) 0%, rgba(74,117,240,0.02) 40%, transparent 70%)"
-          pointerEvents="none"
-        />
+          top="0"
+          left="0"
+          w="100%"
+          h="100%"
+          zIndex={0}
+        >
+          <Box
+            position="absolute"
+            inset="0"
+            backgroundImage="url('/nature_privacy_portal_bg.png')"
+            backgroundSize="cover"
+            backgroundPosition="center"
+            filter="brightness(0.7)"
+          />
+        </Box>
 
-        {/* Header */}
+        {/* Header - Transparent overlay */}
         <Box
           as="header"
           borderBottom="1px solid rgba(255,255,255,0.06)"
-          bg="rgba(6,8,15,0.8)"
+          bg="rgba(6,8,15,0.2)"
           backdropFilter="blur(12px)"
           position="relative"
           zIndex={100}
@@ -82,7 +72,7 @@ export default function OnboardingPage() {
           <HStack justify="space-between" align="center" maxW="1200px" mx="auto">
             <HStack gap="10px" align="center">
               <DustLogo size={26} color="#4A75F0" />
-              <Text fontSize="22px" fontWeight="800" color="white" letterSpacing="-0.02em">
+              <Text fontSize="22px" fontWeight="800" color="white" letterSpacing="-0.02em" fontFamily="var(--font-instrument-serif), serif">
                 Dust
               </Text>
               <Text fontSize="13px" fontWeight="500" color="rgba(255,255,255,0.35)">

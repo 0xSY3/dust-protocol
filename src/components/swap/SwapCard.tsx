@@ -1,27 +1,99 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
+import { type Address } from "viem";
+import { useSwitchChain } from "wagmi";
 import { colors, radius, shadows, glass, buttonVariants, transitions, typography } from "@/lib/design/tokens";
-import { SUPPORTED_TOKENS, type SwapToken, isSwapSupported } from "@/lib/swap/constants";
+import { SUPPORTED_TOKENS, RELAYER_FEE_BPS, type SwapToken, isSwapSupported } from "@/lib/swap/constants";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSwapNotes, useDustSwap, useSwapMerkleTree, useDustSwapPool, useSwapQuote } from "@/hooks/swap";
+import { checkRelayerHealth, getRelayerInfo, type RelayerInfo } from "@/lib/swap/relayer";
 import { TokenInput } from "./TokenInput";
 import { TokenSelector } from "./TokenSelector";
-import { SwapExecuteModal } from "./SwapExecuteModal";
+import { SwapExecuteModal, type SwapStep } from "./SwapExecuteModal";
 import { DepositModal } from "./DepositModal";
-import { LockIcon, ShieldIcon, AlertCircleIcon } from "@/components/stealth/icons";
+import { LockIcon, ShieldIcon, AlertCircleIcon, ExternalLinkIcon } from "@/components/stealth/icons";
+import { getExplorerBase } from "@/lib/design/tokens";
 
-type SwapState = "idle" | "preparing" | "generating-proof" | "submitting" | "success" | "error";
+type SwapState = "idle" | SwapStep;
+
+/** Map useDustSwap hook states → SwapExecuteModal step */
+function mapDustSwapStateToStep(hookState: string): SwapStep {
+  switch (hookState) {
+    case "selecting-note": return "preparing";
+    case "syncing-tree": return "building-merkle";
+    case "generating-proof": return "computing-proof";
+    case "submitting":
+    case "confirming": return "submitting";
+    case "success": return "success";
+    case "error": return "error";
+    default: return "preparing";
+  }
+}
+
+/** Human-readable step message for each useDustSwap state */
+function getDustSwapStepMessage(hookState: string): string {
+  switch (hookState) {
+    case "selecting-note": return "Preparing swap...";
+    case "syncing-tree": return "Building Merkle tree...";
+    case "generating-proof": return "Computing ZK-SNARK proof...";
+    case "submitting": return "Submitting to relayer...";
+    case "confirming": return "Waiting for confirmation...";
+    case "success": return "Swap complete!";
+    case "error": return "Swap failed";
+    default: return "Preparing swap...";
+  }
+}
 
 export function SwapCard() {
-  const { isConnected, activeChainId } = useAuth();
+  const { isConnected, activeChainId, selectedClaimAddress } = useAuth();
   const swapSupported = isSwapSupported(activeChainId);
+  const { switchChain } = useSwitchChain();
 
-  // Token state
+  // ── Real hooks ──────────────────────────────────────────────────────────────
+  const { unspentNotes, loading: notesLoading } = useSwapNotes();
+  const {
+    leafCount,
+    isSyncing: treeSyncing,
+    isSynced: treeSynced,
+    isError: treeError,
+    error: treeErrorMessage,
+    syncTree,
+    forceRefresh,
+    getProof,
+    getRoot,
+  } = useSwapMerkleTree(activeChainId);
+  const {
+    state: dustSwapState,
+    error: dustSwapError,
+    txHash: dustSwapTxHash,
+    executeSwap,
+    reset: resetDustSwap,
+    isLoading: isDustSwapLoading,
+  } = useDustSwap({
+    chainId: activeChainId,
+    merkleTree: { getProof, syncTree, getRoot, isSyncing: treeSyncing },
+  });
+  const { deposit: depositToPool } = useDustSwapPool(activeChainId);
+
+  // Token state (declared before useSwapQuote so fromToken/toToken are available)
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
   const [fromToken, setFromToken] = useState<SwapToken>(SUPPORTED_TOKENS.ETH);
   const [toToken, setToToken] = useState<SwapToken>(SUPPORTED_TOKENS.USDC);
+
+  // Price quote from Uniswap V4 quoter
+  const {
+    amountOut: quotedAmountOut,
+    isLoading: isQuoteLoading,
+    error: quoteError,
+  } = useSwapQuote({
+    fromToken: fromToken.address as Address,
+    toToken: toToken.address as Address,
+    amountIn: fromAmount,
+    chainId: activeChainId,
+  });
 
   // UI state
   const [showSettings, setShowSettings] = useState(false);
@@ -30,41 +102,66 @@ export function SwapCard() {
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [arrowRotation, setArrowRotation] = useState(0);
 
-  // Swap state
-  const [swapState, setSwapState] = useState<SwapState>("idle");
-  const [swapStep, setSwapStep] = useState("");
-  const [swapError, setSwapError] = useState<string | null>(null);
+  // Swap UI state
   const [showSwapModal, setShowSwapModal] = useState(false);
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [stealthAddress, setStealthAddress] = useState<string | null>(null);
+  const [completedStealthAddress, setCompletedStealthAddress] = useState<string | null>(null);
 
   // Note selector state
   const [selectedNoteIndex, setSelectedNoteIndex] = useState(0);
   const [showNoteSelector, setShowNoteSelector] = useState(false);
 
-  // Placeholder: Pool / Quote state (will be wired to hooks later)
-  const poolLoading = false;
-  const isInitialized = true;
-  const isPrivacyPool = true;
-  const currentPrice: number | null = null; // Will come from useSwapQuote hook
-  const isQuoting = false;
-  const relayerOnline = false;
-  const relayerFee = 200; // bps
-  const availableNotes: Array<{
-    id?: string;
-    amount: string;
-    leafIndex?: number;
-    createdAt: number;
-  }> = [];
+  // Relayer state
+  const [relayerOnline, setRelayerOnline] = useState(false);
+  const [relayerInfo, setRelayerInfo] = useState<RelayerInfo | null>(null);
+  const relayerFee = relayerInfo?.feeBps ?? RELAYER_FEE_BPS;
 
-  // Derived state
-  const exchangeRate = currentPrice ?? 0;
+  // Auto-switch to Ethereum Sepolia if on wrong chain
+  useEffect(() => {
+    if (isConnected && !swapSupported && switchChain) {
+      // Auto-prompt to switch to Ethereum Sepolia (11155111)
+      const timer = setTimeout(() => {
+        switchChain({ chainId: 11155111 });
+      }, 1000); // 1 second delay to avoid immediate popup
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected, swapSupported, switchChain]);
+
+  // ── Derived: available notes filtered for current from-token ────────────────
+  const availableNotes = useMemo(() => {
+    return unspentNotes.filter(
+      (note) =>
+        note.tokenAddress.toLowerCase() === fromToken.address.toLowerCase() &&
+        note.leafIndex !== undefined
+    );
+  }, [unspentNotes, fromToken.address]);
+
+  // Pool / quote state derived from hooks
+  const poolLoading = notesLoading || treeSyncing;
+  const isInitialized = treeSynced || leafCount > 0;
+  const isPrivacyPool = true;
+  const isQuoting = isQuoteLoading;
+
+  // Exchange rate derived from quoted amounts
+  const exchangeRate =
+    fromAmount && toAmount && parseFloat(fromAmount) > 0
+      ? parseFloat(toAmount) / parseFloat(fromAmount)
+      : 0;
   const priceImpact = 0;
   const minReceived = toAmount
     ? (parseFloat(toAmount) * 0.99).toFixed(toToken.decimals > 6 ? 6 : 2)
     : "0";
 
-  const isSwapping = ["preparing", "generating-proof", "submitting"].includes(swapState);
+  // Map dustSwap hook state to component state
+  const swapState: SwapState = dustSwapState === "idle" ? "idle" : mapDustSwapStateToStep(dustSwapState);
+  const isSwapping = isDustSwapLoading;
+  const swapError = dustSwapError;
+  const txHash = dustSwapTxHash;
+  const swapStep = getDustSwapStepMessage(dustSwapState);
+
+  // Calculate total notes balance
+  const totalNotesBalance = availableNotes.reduce((acc, note) => {
+    return acc + Number(note.amount) / Math.pow(10, fromToken.decimals);
+  }, 0);
 
   const canSwap =
     isConnected &&
@@ -72,11 +169,66 @@ export function SwapCard() {
     parseFloat(fromAmount) > 0 &&
     toAmount &&
     parseFloat(toAmount) > 0 &&
-    swapState === "idle" &&
+    dustSwapState === "idle" &&
     !poolLoading &&
-    !isQuoting;
+    !treeError &&
+    !isQuoting &&
+    availableNotes.length > 0 &&
+    !!selectedClaimAddress;
 
-  // Handlers
+  // ── Effects ─────────────────────────────────────────────────────────────────
+
+  // Auto-set fromAmount when a note is selected (privacy pool = full note)
+  useEffect(() => {
+    if (availableNotes.length > 0 && selectedNoteIndex < availableNotes.length) {
+      const note = availableNotes[selectedNoteIndex];
+      const amount = Number(note.amount) / Math.pow(10, fromToken.decimals);
+      setFromAmount(amount.toString());
+    }
+  }, [selectedNoteIndex, availableNotes, fromToken.decimals]);
+
+  // Sync toAmount from quoter result
+  useEffect(() => {
+    if (quotedAmountOut > 0n) {
+      const amount = Number(quotedAmountOut) / Math.pow(10, toToken.decimals);
+      setToAmount(amount.toFixed(toToken.decimals > 6 ? 6 : 2));
+    } else if (!fromAmount || parseFloat(fromAmount) <= 0) {
+      setToAmount("");
+    }
+  }, [quotedAmountOut, toToken.decimals, fromAmount]);
+
+  // Reset selected note index when from-token changes
+  useEffect(() => {
+    setSelectedNoteIndex(0);
+  }, [fromToken.address]);
+
+  // useSwapMerkleTree already handles initial sync on mount - no need to duplicate
+
+  // Check relayer health periodically (every 30s)
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      const healthy = await checkRelayerHealth();
+      if (cancelled) return;
+      setRelayerOnline(healthy);
+      if (healthy) {
+        const info = await getRelayerInfo();
+        if (!cancelled && info) setRelayerInfo(info);
+      }
+    }
+    check();
+    const interval = setInterval(check, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  // Show swap modal when swap is in progress
+  useEffect(() => {
+    if (isDustSwapLoading || dustSwapState === "success" || dustSwapState === "error") {
+      setShowSwapModal(true);
+    }
+  }, [isDustSwapLoading, dustSwapState]);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
   const handleFlipTokens = () => {
     setArrowRotation((prev) => prev + 180);
     const tempToken = fromToken;
@@ -103,48 +255,80 @@ export function SwapCard() {
   };
 
   const resetSwapState = useCallback(() => {
-    setSwapState("idle");
-    setSwapStep("");
-    setSwapError(null);
-    setTxHash(null);
-    setStealthAddress(null);
+    resetDustSwap();
+    setCompletedStealthAddress(null);
     setShowSwapModal(false);
-  }, []);
+  }, [resetDustSwap]);
+
+  const handleDeposit = useCallback(
+    async (amount: string) => {
+      if (!depositToPool) return null;
+
+      const amountWei = BigInt(
+        Math.floor(parseFloat(amount) * Math.pow(10, fromToken.decimals))
+      );
+
+      const result = await depositToPool(
+        fromToken.address as Address,
+        fromToken.symbol,
+        amountWei
+      );
+
+      if (!result) return null;
+
+      return result;
+    },
+    [depositToPool, fromToken]
+  );
 
   const handleSwap = useCallback(async () => {
     if (!canSwap) return;
 
-    setSwapError(null);
-    setSwapState("preparing");
-    setSwapStep("Preparing swap...");
+    const selectedNote = availableNotes[selectedNoteIndex];
+    if (!selectedNote || selectedNote.id === undefined) return;
+
+    const recipient = selectedClaimAddress?.address;
+    if (!recipient) return;
+
     setShowSwapModal(true);
+    setCompletedStealthAddress(null);
 
-    // TODO: Wire to useDustSwap hook when available
-    // For now, the modal shows the UI flow
-    try {
-      setSwapState("generating-proof");
-      setSwapStep("Generating ZK proof...");
-      // await generateProof(...)
+    const minAmountOut = BigInt(
+      Math.floor(parseFloat(toAmount) * Math.pow(10, toToken.decimals) * 0.99)
+    );
 
-      setSwapState("submitting");
-      setSwapStep("Submitting to relayer...");
-      // await submitToRelayer(...)
+    const result = await executeSwap({
+      fromToken: fromToken.address as Address,
+      toToken: toToken.address as Address,
+      minAmountOut,
+      recipient: recipient as Address,
+      depositNoteId: selectedNote.id,
+    });
 
-      setSwapState("success");
-    } catch (err) {
-      setSwapState("error");
-      setSwapError(err instanceof Error ? err.message : "Swap failed");
+    if (result) {
+      setCompletedStealthAddress(result.stealthAddress);
     }
-  }, [canSwap]);
+  }, [
+    canSwap,
+    availableNotes,
+    selectedNoteIndex,
+    selectedClaimAddress,
+    toAmount,
+    toToken,
+    fromToken,
+    executeSwap,
+  ]);
 
   // Button content
   const getButtonContent = () => {
     if (!isConnected) return "Connect Wallet";
     if (!swapSupported) return "Swaps Not Available on This Chain";
+    if (treeError) return "Pool Connection Failed";
     if (poolLoading) return "Loading Pool...";
     if (!isInitialized) return "Pool Not Initialized";
     if (isQuoting) return "Getting Quote...";
     if (isPrivacyPool && availableNotes.length === 0 && isConnected) return "Deposit Required";
+    if (!selectedClaimAddress && isConnected) return "No Stealth Address";
     if (isSwapping) return swapStep || "Processing...";
     if (swapState === "success") return "Swap Complete!";
     if (swapState === "error") return "Try Again";
@@ -208,6 +392,110 @@ export function SwapCard() {
               </Box>
             </HStack>
 
+            {/* Unsupported Chain Banner */}
+            {!swapSupported && isConnected && (
+              <Box
+                mb="16px"
+                p="14px"
+                borderRadius={radius.md}
+                bg="rgba(245,158,11,0.08)"
+                border="1px solid rgba(245,158,11,0.2)"
+              >
+                <VStack gap="12px" align="stretch">
+                  <HStack gap="10px" align="flex-start">
+                    <Box mt="2px">
+                      <AlertCircleIcon size={16} color={colors.accent.amber} />
+                    </Box>
+                    <VStack gap="6px" align="flex-start" flex="1">
+                      <Text fontSize="13px" fontWeight={600} color={colors.accent.amber}>
+                        Privacy Swaps Only Available on Ethereum Sepolia
+                      </Text>
+                      <Text fontSize="12px" color={colors.text.tertiary} lineHeight="1.5">
+                        DustSwap is currently deployed on Ethereum Sepolia testnet. More chains coming soon!
+                      </Text>
+                    </VStack>
+                  </HStack>
+                  <Box
+                    as="button"
+                    w="100%"
+                    py="10px"
+                    borderRadius={radius.sm}
+                    bg="rgba(245,158,11,0.12)"
+                    border="1px solid rgba(245,158,11,0.3)"
+                    cursor="pointer"
+                    transition={transitions.fast}
+                    onClick={() => switchChain?.({ chainId: 11155111 })}
+                    _hover={{
+                      bg: "rgba(245,158,11,0.18)",
+                      borderColor: "rgba(245,158,11,0.4)",
+                    }}
+                  >
+                    <Text fontSize="13px" fontWeight={600} color={colors.accent.amber}>
+                      Switch to Ethereum Sepolia
+                    </Text>
+                  </Box>
+                </VStack>
+              </Box>
+            )}
+
+            {/* Pool Error */}
+            {treeError && (
+              <Box
+                mb="16px"
+                p="12px"
+                borderRadius={radius.sm}
+                bg="rgba(239,68,68,0.06)"
+                border="1px solid rgba(239,68,68,0.2)"
+              >
+                <VStack gap="8px" align="flex-start">
+                  <HStack gap="8px" fontSize="13px" color="rgb(239,68,68)">
+                    <AlertCircleIcon boxSize="14px" />
+                    <Text fontWeight={600}>Pool Sync Failed</Text>
+                  </HStack>
+                  <Text fontSize="12px" color="rgba(255,255,255,0.6)" lineHeight="1.5">
+                    {treeErrorMessage || "Unable to connect to RPC endpoints"}
+                  </Text>
+                  <Box
+                    as="button"
+                    mt="4px"
+                    px="10px"
+                    py="6px"
+                    fontSize="12px"
+                    fontWeight={600}
+                    color={colors.accent.indigo}
+                    bg="rgba(74,117,240,0.08)"
+                    borderRadius={radius.xs}
+                    border="1px solid rgba(74,117,240,0.2)"
+                    cursor="pointer"
+                    transition={transitions.fast}
+                    _hover={{
+                      bg: "rgba(74,117,240,0.12)",
+                      border: "1px solid rgba(74,117,240,0.3)",
+                    }}
+                    onClick={() => forceRefresh()}
+                  >
+                    Retry Connection
+                  </Box>
+                </VStack>
+              </Box>
+            )}
+
+            {/* Pool Loading */}
+            {poolLoading && !treeError && (
+              <Box
+                mb="16px"
+                p="12px"
+                borderRadius={radius.sm}
+                bg="rgba(74,117,240,0.06)"
+                border="1px solid rgba(74,117,240,0.15)"
+              >
+                <HStack gap="8px" fontSize="13px" color={colors.accent.indigo}>
+                  <Spinner size="xs" color={colors.accent.indigo} />
+                  <Text>Loading pool...</Text>
+                </HStack>
+              </Box>
+            )}
+
             {/* Pool Status */}
             {!poolLoading && isInitialized && isPrivacyPool && (
               <Box
@@ -215,7 +503,7 @@ export function SwapCard() {
                 p="12px"
                 borderRadius={radius.sm}
                 bg="rgba(74,117,240,0.06)"
-                border={`1px solid rgba(74,117,240,0.15)`}
+                border="1px solid rgba(74,117,240,0.15)"
               >
                 <HStack justify="space-between">
                   <HStack gap="8px">
@@ -233,6 +521,11 @@ export function SwapCard() {
                       </Text>
                     </HStack>
                   </HStack>
+                  {leafCount > 0 && (
+                    <Text fontSize="11px" color={colors.text.muted} fontFamily={typography.fontFamily.mono}>
+                      {leafCount} deposits
+                    </Text>
+                  )}
                 </HStack>
               </Box>
             )}
@@ -244,7 +537,7 @@ export function SwapCard() {
                 p="12px"
                 borderRadius={radius.sm}
                 bg="rgba(34,197,94,0.04)"
-                border={`1px solid rgba(34,197,94,0.15)`}
+                border="1px solid rgba(34,197,94,0.15)"
               >
                 <HStack justify="space-between" fontSize="12px">
                   <HStack gap="6px" color={colors.text.muted}>
@@ -265,7 +558,7 @@ export function SwapCard() {
                 p="12px"
                 borderRadius={radius.sm}
                 bg="rgba(239,68,68,0.06)"
-                border={`1px solid rgba(239,68,68,0.15)`}
+                border="1px solid rgba(239,68,68,0.15)"
               >
                 <HStack gap="8px" align="flex-start">
                   <Box mt="2px" flexShrink={0}>
@@ -297,13 +590,14 @@ export function SwapCard() {
             {/* Note Selector */}
             {isPrivacyPool && availableNotes.length > 0 && !poolLoading && (
               <Box mb="16px">
+                {/* Selected Note Display / Toggle */}
                 <Box
                   as="button"
                   w="100%"
                   p="12px"
                   borderRadius={radius.sm}
                   bg="rgba(74,117,240,0.04)"
-                  border={`1px solid rgba(74,117,240,0.12)`}
+                  border="1px solid rgba(74,117,240,0.12)"
                   cursor={availableNotes.length > 1 ? "pointer" : "default"}
                   transition={transitions.fast}
                   textAlign="left"
@@ -319,15 +613,29 @@ export function SwapCard() {
                 >
                   <HStack justify="space-between" mb="6px">
                     <HStack gap="6px" fontSize="11px" color={colors.text.muted}>
+                      {/* FileKey icon */}
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
                         <line x1="12" y1="18" x2="12" y2="12" /><line x1="9" y1="15" x2="15" y2="15" />
                       </svg>
                       <Text fontWeight={600}>Using Deposit Note</Text>
                     </HStack>
-                    <Text fontSize="11px" color={colors.text.muted}>
-                      {availableNotes.length} note{availableNotes.length > 1 ? "s" : ""}
-                    </Text>
+                    <HStack gap="8px">
+                      <Text fontSize="11px" color={colors.text.muted}>
+                        {availableNotes.length} note{availableNotes.length > 1 ? "s" : ""}
+                      </Text>
+                      {availableNotes.length > 1 && (
+                        <Box
+                          transition={transitions.fast}
+                          transform={showNoteSelector ? "rotate(180deg)" : "rotate(0deg)"}
+                        >
+                          {/* ChevronDown icon */}
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={colors.text.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </Box>
+                      )}
+                    </HStack>
                   </HStack>
                   {availableNotes[selectedNoteIndex] && (
                     <HStack justify="space-between">
@@ -358,16 +666,24 @@ export function SwapCard() {
                           </Box>
                         )}
                       </HStack>
+                      <Text fontSize="10px" color={colors.text.muted}>
+                        {new Date(availableNotes[selectedNoteIndex].createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </Text>
                     </HStack>
+                  )}
+                  {availableNotes.length > 1 && !showNoteSelector && (
+                    <Text fontSize="10px" color={colors.text.muted} opacity={0.5} mt="4px" px="4px">
+                      One note per swap. Tap to choose a different note.
+                    </Text>
                   )}
                 </Box>
 
-                {/* Expanded note list */}
+                {/* Expanded Note List */}
                 {showNoteSelector && availableNotes.length > 1 && (
                   <Box
                     mt="4px"
                     borderRadius={radius.sm}
-                    border={`1px solid rgba(74,117,240,0.12)`}
+                    border="1px solid rgba(74,117,240,0.12)"
                     bg={colors.bg.cardSolid}
                     overflow="hidden"
                   >
@@ -400,13 +716,14 @@ export function SwapCard() {
                             textAlign="left"
                             cursor="pointer"
                             borderBottom={`1px solid ${colors.border.light}`}
+                            _last={{ borderBottom: "none" }}
                             _hover={{ bg: isSelected ? "rgba(74,117,240,0.1)" : colors.bg.hover }}
                             onClick={() => {
                               setSelectedNoteIndex(index);
                               setShowNoteSelector(false);
                             }}
                           >
-                            <HStack gap="8px">
+                            <HStack gap="10px">
                               <Box
                                 w="20px"
                                 h="20px"
@@ -414,6 +731,7 @@ export function SwapCard() {
                                 display="flex"
                                 alignItems="center"
                                 justifyContent="center"
+                                flexShrink={0}
                                 bg={
                                   isSelected
                                     ? "rgba(34,197,94,0.15)"
@@ -425,24 +743,59 @@ export function SwapCard() {
                                     <polyline points="20 6 9 17 4 12" />
                                   </svg>
                                 ) : (
-                                  <Box w="6px" h="6px" borderRadius="50%" bg={colors.text.muted} />
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.text.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                                  </svg>
                                 )}
                               </Box>
-                              <Text
-                                fontSize="13px"
-                                fontFamily={typography.fontFamily.mono}
-                                fontWeight={600}
-                                color={isSelected ? colors.accent.green : colors.text.primary}
-                              >
-                                {noteAmt.toFixed(4)} {fromToken.symbol}
-                              </Text>
+                              <VStack gap="0px" align="flex-start">
+                                <HStack gap="8px">
+                                  <Text
+                                    fontSize="13px"
+                                    fontFamily={typography.fontFamily.mono}
+                                    fontWeight={600}
+                                    color={isSelected ? colors.accent.green : colors.text.primary}
+                                  >
+                                    {noteAmt.toFixed(4)} {fromToken.symbol}
+                                  </Text>
+                                  {note.leafIndex !== undefined && (
+                                    <Text
+                                      fontSize="10px"
+                                      fontFamily={typography.fontFamily.mono}
+                                      color={colors.text.muted}
+                                    >
+                                      Leaf #{note.leafIndex}
+                                    </Text>
+                                  )}
+                                </HStack>
+                              </VStack>
                             </HStack>
-                            <Text fontSize="10px" color={colors.text.muted}>
-                              {note.leafIndex !== undefined ? `Leaf #${note.leafIndex}` : ""}
+                            <Text fontSize="10px" color={colors.text.muted} flexShrink={0}>
+                              {new Date(note.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                             </Text>
                           </Box>
                         );
                       })}
+                    </Box>
+                    {/* Total Balance Footer */}
+                    <Box
+                      px="12px"
+                      py="8px"
+                      borderTop={`1px solid ${colors.border.light}`}
+                      bg="rgba(255,255,255,0.02)"
+                    >
+                      <VStack gap="2px" align="flex-start">
+                        <Text fontSize="10px" color={colors.text.muted}>
+                          Total:{" "}
+                          <Text as="span" fontFamily={typography.fontFamily.mono} color={colors.accent.indigo}>
+                            {totalNotesBalance.toFixed(fromToken.decimals > 6 ? 4 : 2)} {fromToken.symbol}
+                          </Text>
+                          {" "}across {availableNotes.length} notes
+                        </Text>
+                        <Text fontSize="10px" color={colors.text.muted} opacity={0.6}>
+                          Only one note can be used per swap. Each note is spent in full.
+                        </Text>
+                      </VStack>
                     </Box>
                   </Box>
                 )}
@@ -456,7 +809,7 @@ export function SwapCard() {
                 p="12px"
                 borderRadius={radius.sm}
                 bg="rgba(239,68,68,0.06)"
-                border={`1px solid rgba(239,68,68,0.15)`}
+                border="1px solid rgba(239,68,68,0.15)"
               >
                 <HStack gap="8px" align="flex-start">
                   <Box mt="2px" flexShrink={0}>
@@ -481,7 +834,6 @@ export function SwapCard() {
               onAmountChange={setFromAmount}
               token={fromToken}
               onTokenSelect={() => openTokenSelector("from")}
-              balance={isConnected ? undefined : undefined} // Will come from useSwapQuote hook
               disabled={isSwapping || (isPrivacyPool && availableNotes.length > 0)}
             />
 
@@ -538,7 +890,7 @@ export function SwapCard() {
             />
 
             {/* Price Info */}
-            {fromAmount && parseFloat(fromAmount) > 0 && !isSwapping && isInitialized && exchangeRate > 0 && (
+            {fromAmount && parseFloat(fromAmount) > 0 && !isSwapping && isInitialized && (
               <Box
                 mt="16px"
                 p="12px"
@@ -560,9 +912,11 @@ export function SwapCard() {
                       fontSize="12px"
                     >
                       1 {fromToken.symbol} {"\u2248"}{" "}
-                      {exchangeRate >= 1
-                        ? exchangeRate.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                        : exchangeRate.toFixed(6)}{" "}
+                      {exchangeRate > 0
+                        ? exchangeRate >= 1
+                          ? exchangeRate.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                          : exchangeRate.toFixed(6)
+                        : "\u2014"}{" "}
                       {toToken.symbol}
                     </Text>
                   </HStack>
@@ -581,7 +935,7 @@ export function SwapCard() {
                         priceImpact < 1
                           ? colors.accent.green
                           : priceImpact < 3
-                          ? colors.accent.amber
+                          ? colors.accent.cyan
                           : colors.accent.red
                       }
                     >
@@ -673,13 +1027,14 @@ export function SwapCard() {
         isOpen={showDepositModal}
         onClose={() => setShowDepositModal(false)}
         token={fromToken}
+        onDeposit={handleDeposit}
       />
 
       {/* Swap Execute Modal */}
       <SwapExecuteModal
         isOpen={showSwapModal}
         onClose={resetSwapState}
-        step={swapState === "idle" ? "preparing" : (swapState as "preparing" | "generating-proof" | "submitting" | "success" | "error")}
+        step={swapState === "idle" ? "preparing" : (swapState as SwapStep)}
         stepMessage={swapStep}
         fromToken={fromToken}
         toToken={toToken}
@@ -687,7 +1042,7 @@ export function SwapCard() {
         toAmount={toAmount}
         error={swapError}
         txHash={txHash}
-        stealthAddress={stealthAddress}
+        stealthAddress={completedStealthAddress}
         onRetry={resetSwapState}
         chainId={activeChainId}
       />

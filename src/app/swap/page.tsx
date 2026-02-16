@@ -4,17 +4,17 @@ import { Box, Text, HStack } from "@chakra-ui/react";
 import { colors, radius, typography, transitions } from "@/lib/design/tokens";
 import { SwapCard } from "@/components/swap/SwapCard";
 import { PoolStats } from "@/components/swap/PoolStats";
+import { usePoolStats } from "@/hooks/swap/usePoolStats";
 
 export default function SwapPage() {
-  // TODO: Wire to useSwapQuote / useStateView hooks when available
-  const poolData = {
-    currentPrice: null as number | null,
-    ethReserve: 0,
-    usdcReserve: 0,
-    totalValueLocked: 0,
-    isLoading: false,
-    poolTick: undefined as number | undefined,
-  };
+  const {
+    currentPrice,
+    ethReserve,
+    usdcReserve,
+    totalValueLocked,
+    isLoading,
+    tick,
+  } = usePoolStats();
 
   return (
     <Box minH="100vh" p={{ base: "16px", md: "32px" }} position="relative">
@@ -48,7 +48,14 @@ export default function SwapPage() {
 
         {/* Pool Statistics — hidden on mobile */}
         <Box display={{ base: "none", xl: "block" }}>
-          <PoolStats {...poolData} />
+          <PoolStats
+            currentPrice={currentPrice}
+            ethReserve={ethReserve}
+            usdcReserve={usdcReserve}
+            totalValueLocked={totalValueLocked}
+            isLoading={isLoading}
+            poolTick={tick || undefined}
+          />
         </Box>
       </Box>
     </Box>

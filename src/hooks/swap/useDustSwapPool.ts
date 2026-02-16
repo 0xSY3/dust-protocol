@@ -34,12 +34,14 @@ interface DepositResult {
   leafIndex: number
 }
 
-export function useDustSwapPool() {
-  const { address, isConnected } = useAccount()
+export function useDustSwapPool(chainIdParam?: number) {
+  const { address, isConnected, chainId: accountChainId } = useAccount()
   const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
-  const chainId = useChainId()
   const { saveNote } = useSwapNotes()
+
+  // Use provided chainId, fall back to account chainId
+  const chainId = chainIdParam ?? accountChainId
 
   const [state, setState] = useState<DepositState>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -86,16 +88,19 @@ export function useDustSwapPool() {
 
   /**
    * Approve token spending for the pool
+   * Uses max approval (type(uint256).max) so subsequent deposits don't need re-approval
    */
   const approveToken = useCallback(
-    async (tokenAddress: Address, poolAddress: Address, amount: bigint): Promise<Hash | null> => {
+    async (tokenAddress: Address, poolAddress: Address, _amount: bigint): Promise<Hash | null> => {
       if (!walletClient || !address) throw new Error('Wallet not connected')
 
       try {
+        // Approve max amount so subsequent deposits don't need approval
+        const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
         const hash = await walletClient.writeContract({
           ...getERC20Config(tokenAddress),
           functionName: 'approve',
-          args: [poolAddress, amount],
+          args: [poolAddress, MAX_UINT256],
         })
         return hash
       } catch (err: any) {
@@ -130,20 +135,47 @@ export function useDustSwapPool() {
 
       const isETH = isNativeToken(tokenAddress)
 
+      console.log('[useDustSwapPool] Starting deposit:', {
+        tokenAddress,
+        tokenSymbol,
+        amount: amount.toString(),
+        poolAddress,
+        isETH,
+      })
+
       try {
         setState('generating')
         setError(null)
 
-        // 1. Generate deposit note
+        // 1. Check token balance for ERC20
+        if (!isETH) {
+          console.log('[useDustSwapPool] Checking USDC balance...')
+          const balance = await publicClient.readContract({
+            ...getERC20Config(tokenAddress),
+            functionName: 'balanceOf',
+            args: [address],
+          })
+
+          console.log('[useDustSwapPool] USDC balance:', balance.toString(), 'Required:', amount.toString())
+
+          if (balance < amount) {
+            throw new Error(`Insufficient ${tokenSymbol} balance. You have ${Number(balance) / Math.pow(10, tokenSymbol === 'USDC' ? 6 : 18)} ${tokenSymbol}`)
+          }
+        }
+
+        // 2. Generate deposit note
         const note = await createDepositNote(amount)
         setCurrentNote(note)
         const commitment = formatCommitmentForContract(note.commitment)
 
-        // 2. For ERC20, handle approval
+        // 3. For ERC20, handle approval
         if (!isETH) {
+          console.log('[useDustSwapPool] Checking USDC allowance...')
           const existingAllowance = await checkAllowance(tokenAddress, poolAddress)
+          console.log('[useDustSwapPool] Existing allowance:', existingAllowance.toString(), 'Required:', amount.toString())
 
           if (existingAllowance < amount) {
+            console.log('[useDustSwapPool] Insufficient allowance, requesting approval...')
             setState('approving')
 
             const approveTxHash = await approveToken(tokenAddress, poolAddress, amount)
@@ -151,30 +183,26 @@ export function useDustSwapPool() {
 
             const approvalReceipt = await publicClient.waitForTransactionReceipt({
               hash: approveTxHash,
+              timeout: 120_000, // 120s for Sepolia testnet
             })
 
             if (approvalReceipt.status === 'reverted') {
               throw new Error('Approval transaction reverted')
             }
 
-            // Wait for nonce to catch up
-            const approvalTx = await publicClient.getTransaction({ hash: approveTxHash })
-            const expectedNonce = approvalTx.nonce + 1
-            for (let i = 0; i < 10; i++) {
-              const currentNonce = await publicClient.getTransactionCount({ address })
-              if (currentNonce >= expectedNonce) break
-              await new Promise((r) => setTimeout(r, 500))
-            }
+            // Nonce is guaranteed to be synced after receipt confirmation
           }
         }
 
         // 3. Execute deposit
         setState('depositing')
+        console.log('[useDustSwapPool] Executing deposit transaction...')
 
         let hash: Hash
 
         try {
           if (isETH) {
+            console.log('[useDustSwapPool] Depositing ETH...')
             hash = await walletClient.writeContract({
               address: poolAddress,
               abi: DUST_SWAP_POOL_ABI,
@@ -183,12 +211,18 @@ export function useDustSwapPool() {
               value: amount,
             })
           } else {
+            console.log('[useDustSwapPool] Depositing USDC with params:', {
+              poolAddress,
+              commitment,
+              amount: amount.toString(),
+            })
             hash = await walletClient.writeContract({
               address: poolAddress,
               abi: DUST_SWAP_POOL_ABI,
-              functionName: 'depositToken',
-              args: [commitment as `0x${string}`, tokenAddress, amount],
+              functionName: 'deposit',
+              args: [commitment as `0x${string}`, amount],
             })
+            console.log('[useDustSwapPool] USDC deposit tx hash:', hash)
           }
         } catch (depositErr: any) {
           if (
@@ -205,7 +239,10 @@ export function useDustSwapPool() {
 
         // 4. Wait for confirmation
         setState('confirming')
-        const receipt = await publicClient.waitForTransactionReceipt({ hash })
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash,
+          timeout: 120_000, // 120s for Sepolia testnet
+        })
 
         if (receipt.status === 'reverted') {
           throw new Error('Deposit transaction failed. The contract rejected the deposit.')
