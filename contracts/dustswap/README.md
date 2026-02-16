@@ -11,7 +11,7 @@ Privacy swap system built on Uniswap V4 with ZK proof verification. Deposits go 
 | Quoter | `0xc3b43472250ab15dD91DB8900ce10f77fbDd22DB` |
 | DustSwapPoolETH | `0xD342940442AC499656a514e5C355d2b82975155B` |
 | DustSwapPoolUSDC | `0xa4218b115219ba96e2c5CAAaC42D0d04D60e3269` |
-| DustSwapHook | `0xE816bAb6204a8cdB0AD54AE57159652418b169a5` |
+| DustSwapHook | `0x06829AAC5bF68172158DE18972fb1107363500C0` |
 | DustSwapVerifier | `0x99D18d3dBC5cDFbE20539833D64426CdAd47F1Cd` |
 
 ## Quick Start: Initialize the Pool
@@ -86,7 +86,7 @@ These must stay in sync with `src/lib/swap/constants.ts`:
 | Tick Spacing | 10 | `POOL_TICK_SPACING` in constants.ts |
 | currency0 | `0x0000...0000` (ETH) | Native token |
 | currency1 | `0x1c7D...7238` (USDC) | Circle USDC on Sepolia |
-| Hook | `0xE816...69a5` | DustSwapHook |
+| Hook | `0x0682...00C0` | DustSwapHook |
 | sqrtPriceX96 | ~3.96e30 | ETH = $2500 USDC |
 
 ## Deployment Scripts
