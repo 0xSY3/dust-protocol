@@ -687,6 +687,14 @@ export const ETHIcon = ({ size = 24 }: IconProps) => (
   </svg>
 );
 
+export const SwapIcon = ({ size = 24, color = "currentColor" }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7 16l-4-4 4-4" />
+    <path d="M3 12h18" />
+    <path d="M17 8l4 4-4 4" />
+  </svg>
+);
+
 export const ChainIcon = ({ size = 24, chainId }: IconProps & { chainId?: number }) => {
   if (chainId === 11155111) return <ETHIcon size={size} />;
   return <TONIcon size={size} />;
