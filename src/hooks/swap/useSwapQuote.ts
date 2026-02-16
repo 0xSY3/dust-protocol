@@ -100,7 +100,6 @@ export function useSwapQuote({
               zeroForOne,
               exactAmount,
               hookData: '0x' as `0x${string}`,
-              sqrtPriceLimitX96,
             },
           ],
         })

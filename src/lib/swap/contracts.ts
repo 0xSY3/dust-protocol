@@ -186,18 +186,19 @@ export const QUOTER_ABI = [
         type: 'tuple',
         components: [
           {
-            name: 'poolKey', type: 'tuple', components: [
+            name: 'poolKey',
+            type: 'tuple',
+            components: [
               { name: 'currency0', type: 'address' },
               { name: 'currency1', type: 'address' },
               { name: 'fee', type: 'uint24' },
               { name: 'tickSpacing', type: 'int24' },
               { name: 'hooks', type: 'address' },
-            ]
+            ],
           },
           { name: 'zeroForOne', type: 'bool' },
           { name: 'exactAmount', type: 'uint128' },
           { name: 'hookData', type: 'bytes' },
-          { name: 'sqrtPriceLimitX96', type: 'uint160' },
         ],
       },
     ],
