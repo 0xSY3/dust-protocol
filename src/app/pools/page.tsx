@@ -446,7 +446,7 @@ function PoolDepositModal({
       setAmount("");
       onReset();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen || !pool) return null;
@@ -594,8 +594,7 @@ function PoolDepositModal({
                 <Text fontSize="11px" color={colors.text.muted} fontWeight={600} textTransform="uppercase" letterSpacing="0.04em">
                   Or Enter Custom Amount
                 </Text>
-                <Box
-                  as="input"
+                <input
                   type="text"
                   inputMode="decimal"
                   value={amount}
@@ -603,19 +602,27 @@ function PoolDepositModal({
                     setAmount(e.target.value.replace(/[^0-9.]/g, ""));
                   }}
                   placeholder={`0.0 ${pool.token.symbol}`}
-                  h="48px"
-                  w="100%"
-                  bg={glass.input.bg}
-                  border={`1px solid ${colors.border.default}`}
-                  borderRadius={radius.md}
-                  color={colors.text.primary}
-                  fontSize="16px"
-                  fontFamily={typography.fontFamily.mono}
-                  fontWeight={500}
-                  px="16px"
-                  outline="none"
-                  _placeholder={{ color: colors.text.muted }}
-                  _focus={{ borderColor: colors.border.focus, boxShadow: shadows.inputFocus }}
+                  style={{
+                    height: "48px",
+                    width: "100%",
+                    background: glass.input.bg,
+                    border: `1px solid ${colors.border.default}`,
+                    borderRadius: radius.md,
+                    color: colors.text.primary,
+                    fontSize: "16px",
+                    fontFamily: typography.fontFamily.mono,
+                    fontWeight: 500,
+                    padding: "0 16px",
+                    outline: "none",
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = colors.border.focus;
+                    e.target.style.boxShadow = shadows.inputFocus;
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = colors.border.default;
+                    e.target.style.boxShadow = "none";
+                  }}
                 />
               </VStack>
 
