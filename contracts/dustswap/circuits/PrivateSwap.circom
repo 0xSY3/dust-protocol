@@ -11,13 +11,15 @@ include "../../dustpool/node_modules/circomlib/circuits/comparators.circom";
 // Private: nullifier, secret, depositAmount, pathElements[20], pathIndices[20]
 
 template PrivateSwap(levels) {
-    // Public inputs (6 total)
+    // Public inputs (8 total — includes 2 reserved for future use)
     signal input merkleRoot;
     signal input nullifierHash;
     signal input recipient;
     signal input relayer;
     signal input relayerFee;       // Max 500 bps = 5%
     signal input swapAmountOut;    // Minimum expected output
+    signal input reserved1;        // Reserved for future gas optimizations
+    signal input reserved2;        // Reserved for future gas optimizations
 
     // Private inputs
     signal input nullifier;
@@ -92,4 +94,4 @@ template PrivateSwap(levels) {
     swapSquare <== swapAmountOut * swapAmountOut;
 }
 
-component main {public [merkleRoot, nullifierHash, recipient, relayer, relayerFee, swapAmountOut]} = PrivateSwap(20);
+component main {public [merkleRoot, nullifierHash, recipient, relayer, relayerFee, swapAmountOut, reserved1, reserved2]} = PrivateSwap(20);
