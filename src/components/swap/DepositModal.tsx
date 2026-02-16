@@ -1,0 +1,489 @@
+"use client";
+
+import { useState } from "react";
+import { Box, Text, VStack, HStack, Input, Spinner } from "@chakra-ui/react";
+import { colors, radius, shadows, glass, buttonVariants, transitions, typography } from "@/lib/design/tokens";
+import { SUPPORTED_TOKENS, type SwapToken } from "@/lib/swap/constants";
+import { ShieldIcon, XIcon, CheckCircleIcon, AlertCircleIcon } from "@/components/stealth/icons";
+
+type DepositStep = "input" | "approving" | "depositing" | "confirming" | "success" | "error";
+
+interface DepositModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  token: SwapToken;
+  onDeposit?: (amount: string) => Promise<{ commitment: string; leafIndex: number } | null>;
+}
+
+const FIXED_DENOMINATIONS: Record<string, string[]> = {
+  ETH: ["0.01", "0.1", "0.5", "1"],
+  USDC: ["10", "100", "500", "1000"],
+};
+
+function ProgressStep({
+  step,
+  label,
+  isActive,
+  isComplete,
+}: {
+  step: number;
+  label: string;
+  isActive: boolean;
+  isComplete: boolean;
+}) {
+  return (
+    <HStack gap="12px">
+      <Box
+        w="28px"
+        h="28px"
+        borderRadius="50%"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        bg={
+          isComplete
+            ? `rgba(34,197,94,0.15)`
+            : isActive
+            ? `rgba(74,117,240,0.15)`
+            : colors.bg.elevated
+        }
+        border={`1px solid ${
+          isComplete
+            ? "rgba(34,197,94,0.3)"
+            : isActive
+            ? "rgba(74,117,240,0.3)"
+            : colors.border.default
+        }`}
+        transition={transitions.base}
+      >
+        {isComplete ? (
+          <CheckCircleIcon size={14} color={colors.accent.green} />
+        ) : isActive ? (
+          <Spinner size="xs" color={colors.accent.indigo} />
+        ) : (
+          <Text fontSize="11px" fontWeight={600} color={colors.text.muted}>
+            {step}
+          </Text>
+        )}
+      </Box>
+      <Text
+        fontSize="13px"
+        fontWeight={isActive ? 600 : 400}
+        color={isComplete ? colors.accent.green : isActive ? colors.text.primary : colors.text.muted}
+        transition={transitions.fast}
+      >
+        {label}
+      </Text>
+    </HStack>
+  );
+}
+
+export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModalProps) {
+  const [amount, setAmount] = useState("");
+  const [step, setStep] = useState<DepositStep>("input");
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{ commitment: string; leafIndex: number } | null>(null);
+
+  if (!isOpen) return null;
+
+  const denominations = FIXED_DENOMINATIONS[token.symbol] ?? ["0.1", "1", "5", "10"];
+
+  const handleDeposit = async () => {
+    if (!amount || parseFloat(amount) <= 0) return;
+    if (!onDeposit) return;
+
+    try {
+      setError(null);
+      setStep("approving");
+
+      // For ERC20 tokens, approval step is needed
+      if (token.symbol !== "ETH") {
+        // Approval happens in the hook
+        await new Promise((r) => setTimeout(r, 500));
+      }
+
+      setStep("depositing");
+      const depositResult = await onDeposit(amount);
+
+      if (!depositResult) {
+        throw new Error("Deposit failed");
+      }
+
+      setStep("confirming");
+      await new Promise((r) => setTimeout(r, 1000));
+
+      setResult(depositResult);
+      setStep("success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Deposit failed");
+      setStep("error");
+    }
+  };
+
+  const handleClose = () => {
+    setAmount("");
+    setStep("input");
+    setError(null);
+    setResult(null);
+    onClose();
+  };
+
+  const isProcessing = ["approving", "depositing", "confirming"].includes(step);
+
+  return (
+    <Box
+      position="fixed"
+      inset={0}
+      bg={colors.bg.overlay}
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      zIndex={200}
+      onClick={(e: React.MouseEvent) => {
+        if (e.target === e.currentTarget && !isProcessing) handleClose();
+      }}
+    >
+      <Box
+        w="100%"
+        maxW="440px"
+        mx="16px"
+        bg={glass.modal.bg}
+        border={glass.modal.border}
+        borderRadius={radius.xl}
+        boxShadow={shadows.modal}
+        backdropFilter={glass.modal.backdropFilter}
+        overflow="hidden"
+      >
+        {/* Header */}
+        <HStack justify="space-between" p="20px 24px">
+          <HStack gap="12px">
+            <Box
+              w="36px"
+              h="36px"
+              borderRadius={radius.md}
+              bg={`linear-gradient(135deg, ${colors.accent.indigo}, ${colors.accent.violet})`}
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <ShieldIcon size={18} color="#fff" />
+            </Box>
+            <VStack align="flex-start" gap="0">
+              <Text fontSize="16px" fontWeight={700} color={colors.text.primary}>
+                Deposit to Pool
+              </Text>
+              <Text fontSize="11px" color={colors.text.muted} fontWeight={500}>
+                Add {token.symbol} to the privacy pool
+              </Text>
+            </VStack>
+          </HStack>
+          {!isProcessing && (
+            <Box
+              as="button"
+              onClick={handleClose}
+              cursor="pointer"
+              p="8px"
+              borderRadius={radius.full}
+              transition={transitions.fast}
+              _hover={{ bg: colors.bg.hover }}
+            >
+              <XIcon size={15} color={colors.text.muted} />
+            </Box>
+          )}
+        </HStack>
+
+        {/* Content */}
+        <Box p="24px" pt="0">
+          {step === "input" && (
+            <VStack gap="20px" align="stretch">
+              {/* Info box */}
+              <Box
+                p="12px"
+                borderRadius={radius.sm}
+                bg="rgba(74,117,240,0.06)"
+                border={`1px solid rgba(74,117,240,0.15)`}
+              >
+                <HStack gap="8px" align="flex-start">
+                  <Box mt="2px" flexShrink={0}>
+                    <ShieldIcon size={14} color={colors.accent.indigo} />
+                  </Box>
+                  <Text fontSize="12px" color={colors.text.tertiary} lineHeight="1.5">
+                    Deposits are added to a privacy pool using Poseidon commitments.
+                    Your deposit note will be stored locally for later swap execution.
+                  </Text>
+                </HStack>
+              </Box>
+
+              {/* Fixed denominations */}
+              <VStack gap="8px" align="stretch">
+                <Text fontSize="11px" color={colors.text.muted} fontWeight={600} textTransform="uppercase" letterSpacing="0.04em">
+                  Quick Select
+                </Text>
+                <HStack gap="8px">
+                  {denominations.map((denom) => (
+                    <Box
+                      key={denom}
+                      as="button"
+                      flex="1"
+                      py="10px"
+                      borderRadius={radius.sm}
+                      bg={amount === denom ? "rgba(74,117,240,0.12)" : colors.bg.elevated}
+                      border={`1px solid ${
+                        amount === denom ? "rgba(74,117,240,0.3)" : colors.border.default
+                      }`}
+                      cursor="pointer"
+                      transition={transitions.fast}
+                      onClick={() => setAmount(denom)}
+                      textAlign="center"
+                      _hover={{
+                        bg: amount === denom ? "rgba(74,117,240,0.15)" : colors.bg.hover,
+                      }}
+                    >
+                      <Text
+                        fontSize="13px"
+                        fontFamily={typography.fontFamily.mono}
+                        fontWeight={600}
+                        color={amount === denom ? colors.accent.indigo : colors.text.primary}
+                      >
+                        {denom} {token.symbol}
+                      </Text>
+                    </Box>
+                  ))}
+                </HStack>
+              </VStack>
+
+              {/* Custom amount */}
+              <VStack gap="8px" align="stretch">
+                <Text fontSize="11px" color={colors.text.muted} fontWeight={600} textTransform="uppercase" letterSpacing="0.04em">
+                  Or Enter Custom Amount
+                </Text>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9.]/g, "");
+                    setAmount(value);
+                  }}
+                  placeholder={`0.0 ${token.symbol}`}
+                  h="48px"
+                  bg={glass.input.bg}
+                  border={`1px solid ${colors.border.default}`}
+                  borderRadius={radius.md}
+                  color={colors.text.primary}
+                  fontSize="16px"
+                  fontFamily={typography.fontFamily.mono}
+                  fontWeight={500}
+                  px="16px"
+                  _placeholder={{ color: colors.text.muted }}
+                  _focus={{
+                    borderColor: colors.border.focus,
+                    boxShadow: shadows.inputFocus,
+                  }}
+                />
+              </VStack>
+
+              {/* Deposit button */}
+              <Box
+                as="button"
+                w="100%"
+                py="14px"
+                borderRadius={radius.full}
+                bg={
+                  amount && parseFloat(amount) > 0
+                    ? buttonVariants.primary.bg
+                    : colors.bg.elevated
+                }
+                boxShadow={
+                  amount && parseFloat(amount) > 0
+                    ? buttonVariants.primary.boxShadow
+                    : "none"
+                }
+                cursor={amount && parseFloat(amount) > 0 ? "pointer" : "not-allowed"}
+                opacity={amount && parseFloat(amount) > 0 ? 1 : 0.5}
+                transition={transitions.base}
+                onClick={handleDeposit}
+                _hover={
+                  amount && parseFloat(amount) > 0
+                    ? {
+                        boxShadow: buttonVariants.primary.hover.boxShadow,
+                        transform: buttonVariants.primary.hover.transform,
+                      }
+                    : {}
+                }
+                _active={
+                  amount && parseFloat(amount) > 0
+                    ? {
+                        transform: buttonVariants.primary.active.transform,
+                      }
+                    : {}
+                }
+              >
+                <Text fontSize="15px" fontWeight={700} color="#fff" textAlign="center">
+                  {amount && parseFloat(amount) > 0
+                    ? `Deposit ${amount} ${token.symbol}`
+                    : "Enter Amount"}
+                </Text>
+              </Box>
+            </VStack>
+          )}
+
+          {/* Processing steps */}
+          {isProcessing && (
+            <VStack gap="16px" align="stretch" py="8px">
+              <ProgressStep
+                step={1}
+                label={token.symbol === "ETH" ? "Preparing deposit..." : "Approving token..."}
+                isActive={step === "approving"}
+                isComplete={step !== "approving"}
+              />
+              <ProgressStep
+                step={2}
+                label="Depositing to privacy pool..."
+                isActive={step === "depositing"}
+                isComplete={step === "confirming"}
+              />
+              <ProgressStep
+                step={3}
+                label="Confirming on-chain..."
+                isActive={step === "confirming"}
+                isComplete={false}
+              />
+            </VStack>
+          )}
+
+          {/* Success */}
+          {step === "success" && result && (
+            <VStack gap="16px" align="stretch">
+              <Box textAlign="center" py="8px">
+                <Box display="inline-flex" mb="12px">
+                  <CheckCircleIcon size={40} color={colors.accent.green} />
+                </Box>
+                <Text fontSize="16px" fontWeight={700} color={colors.text.primary} mb="4px">
+                  Deposit Successful
+                </Text>
+                <Text fontSize="13px" color={colors.text.secondary}>
+                  {amount} {token.symbol} deposited to privacy pool
+                </Text>
+              </Box>
+
+              <Box
+                p="12px"
+                borderRadius={radius.sm}
+                bg="rgba(34,197,94,0.06)"
+                border={`1px solid rgba(34,197,94,0.15)`}
+              >
+                <VStack gap="8px" align="stretch">
+                  <HStack justify="space-between">
+                    <Text fontSize="11px" color={colors.text.muted}>Leaf Index</Text>
+                    <Text fontSize="11px" fontFamily={typography.fontFamily.mono} color={colors.text.primary}>
+                      #{result.leafIndex}
+                    </Text>
+                  </HStack>
+                  <HStack justify="space-between">
+                    <Text fontSize="11px" color={colors.text.muted}>Commitment</Text>
+                    <Text fontSize="11px" fontFamily={typography.fontFamily.mono} color={colors.text.primary}>
+                      {result.commitment.slice(0, 10)}...{result.commitment.slice(-8)}
+                    </Text>
+                  </HStack>
+                </VStack>
+              </Box>
+
+              <Box
+                p="12px"
+                borderRadius={radius.sm}
+                bg="rgba(245,158,11,0.06)"
+                border={`1px solid rgba(245,158,11,0.15)`}
+              >
+                <Text fontSize="12px" color={colors.accent.amber} fontWeight={600} mb="4px">
+                  Save Your Deposit Note
+                </Text>
+                <Text fontSize="11px" color={colors.text.tertiary} lineHeight="1.5">
+                  Your deposit note has been saved to this browser. If you clear browser data, you will lose access to this deposit.
+                </Text>
+              </Box>
+
+              <Box
+                as="button"
+                w="100%"
+                py="14px"
+                borderRadius={radius.full}
+                bg={buttonVariants.primary.bg}
+                boxShadow={buttonVariants.primary.boxShadow}
+                cursor="pointer"
+                transition={transitions.base}
+                onClick={handleClose}
+                _hover={{
+                  boxShadow: buttonVariants.primary.hover.boxShadow,
+                  transform: buttonVariants.primary.hover.transform,
+                }}
+              >
+                <Text fontSize="15px" fontWeight={700} color="#fff" textAlign="center">
+                  Done
+                </Text>
+              </Box>
+            </VStack>
+          )}
+
+          {/* Error */}
+          {step === "error" && (
+            <VStack gap="16px" align="stretch">
+              <Box textAlign="center" py="8px">
+                <Box display="inline-flex" mb="12px">
+                  <AlertCircleIcon size={40} color={colors.accent.red} />
+                </Box>
+                <Text fontSize="16px" fontWeight={700} color={colors.text.primary} mb="4px">
+                  Deposit Failed
+                </Text>
+                <Text fontSize="13px" color={colors.text.secondary}>
+                  {error}
+                </Text>
+              </Box>
+
+              <HStack gap="12px">
+                <Box
+                  as="button"
+                  flex="1"
+                  py="14px"
+                  borderRadius={radius.full}
+                  bg={buttonVariants.secondary.bg}
+                  border={buttonVariants.secondary.border}
+                  cursor="pointer"
+                  transition={transitions.base}
+                  onClick={handleClose}
+                  _hover={{ bg: buttonVariants.secondary.hover.bg }}
+                >
+                  <Text fontSize="14px" fontWeight={600} color={colors.text.primary} textAlign="center">
+                    Cancel
+                  </Text>
+                </Box>
+                <Box
+                  as="button"
+                  flex="1"
+                  py="14px"
+                  borderRadius={radius.full}
+                  bg={buttonVariants.primary.bg}
+                  boxShadow={buttonVariants.primary.boxShadow}
+                  cursor="pointer"
+                  transition={transitions.base}
+                  onClick={() => {
+                    setStep("input");
+                    setError(null);
+                  }}
+                  _hover={{
+                    boxShadow: buttonVariants.primary.hover.boxShadow,
+                    transform: buttonVariants.primary.hover.transform,
+                  }}
+                >
+                  <Text fontSize="14px" fontWeight={700} color="#fff" textAlign="center">
+                    Try Again
+                  </Text>
+                </Box>
+              </HStack>
+            </VStack>
+          )}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
