@@ -36,7 +36,7 @@ contract MockVerifier is IDustSwapVerifier {
         uint256[2] calldata,
         uint256[2][2] calldata,
         uint256[2] calldata,
-        uint256[8] calldata
+        uint256[6] calldata
     ) external view returns (bool) {
         return shouldSucceed;
     }
@@ -132,7 +132,7 @@ contract DustSwapHookTest is Test {
     }
 
     /// @dev Helper to create hookData with custom pubSignals
-    function createHookData(uint256[8] memory pubSignals, bool isETHPool)
+    function createHookData(uint256[6] memory pubSignals, bool isETHPool)
         internal
         view
         returns (bytes memory)
@@ -144,7 +144,7 @@ contract DustSwapHookTest is Test {
     function createValidPubSignals(uint256 swapAmountOut)
         internal
         view
-        returns (uint256[8] memory)
+        returns (uint256[6] memory)
     {
         bytes32 root = bytes32(uint256(0x123));
         bytes32 nullifierHash = keccak256("nullifier");
@@ -158,15 +158,13 @@ contract DustSwapHookTest is Test {
             uint256(uint160(recipient)),// pubSignals[2] - recipient
             uint256(uint160(relayer)),  // pubSignals[3] - relayer
             100,                        // pubSignals[4] - relayerFee (1%)
-            swapAmountOut,              // pubSignals[5] - swapAmountOut
-            0,                          // pubSignals[6] - unused
-            0                           // pubSignals[7] - unused
+            swapAmountOut               // pubSignals[5] - swapAmountOut
         ];
     }
 
     /// @notice Test 1: Zero output should revert with InvalidMinimumOutput
     function testRevertZeroOutput() public {
-        uint256[8] memory pubSignals = createValidPubSignals(0); // swapAmountOut = 0 (INVALID)
+        uint256[6] memory pubSignals = createValidPubSignals(0); // swapAmountOut = 0 (INVALID)
         bytes memory hookData = createHookData(pubSignals, true);
 
         vm.prank(address(poolManager));
@@ -182,7 +180,7 @@ contract DustSwapHookTest is Test {
         // Update swap params with exact input
         swapParams.amountSpecified = -int256(inputAmount);
 
-        uint256[8] memory pubSignals = createValidPubSignals(outputAmount);
+        uint256[6] memory pubSignals = createValidPubSignals(outputAmount);
         bytes memory hookData = createHookData(pubSignals, true);
 
         vm.prank(address(poolManager));
@@ -198,7 +196,7 @@ contract DustSwapHookTest is Test {
         // Update swap params with exact input
         swapParams.amountSpecified = -int256(inputAmount);
 
-        uint256[8] memory pubSignals = createValidPubSignals(outputAmount);
+        uint256[6] memory pubSignals = createValidPubSignals(outputAmount);
         bytes memory hookData = createHookData(pubSignals, true);
 
         vm.prank(address(poolManager));
@@ -218,7 +216,7 @@ contract DustSwapHookTest is Test {
 
         swapParams.amountSpecified = -int256(inputAmount);
 
-        uint256[8] memory pubSignals = createValidPubSignals(outputAmount);
+        uint256[6] memory pubSignals = createValidPubSignals(outputAmount);
         bytes memory hookData = createHookData(pubSignals, true);
 
         vm.prank(address(poolManager));
@@ -233,7 +231,7 @@ contract DustSwapHookTest is Test {
 
         swapParams.amountSpecified = -int256(inputAmount);
 
-        uint256[8] memory pubSignals = createValidPubSignals(outputAmount);
+        uint256[6] memory pubSignals = createValidPubSignals(outputAmount);
         bytes memory hookData = createHookData(pubSignals, true);
 
         vm.prank(address(poolManager));
@@ -249,7 +247,7 @@ contract DustSwapHookTest is Test {
         // Positive amountSpecified = exact output
         swapParams.amountSpecified = int256(outputAmount);
 
-        uint256[8] memory pubSignals = createValidPubSignals(inputAmount);
+        uint256[6] memory pubSignals = createValidPubSignals(inputAmount);
         bytes memory hookData = createHookData(pubSignals, true);
 
         vm.prank(address(poolManager));

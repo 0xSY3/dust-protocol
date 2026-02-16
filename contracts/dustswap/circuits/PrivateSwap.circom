@@ -7,19 +7,17 @@ include "../../dustpool/node_modules/circomlib/circuits/comparators.circom";
 
 // DustSwap Private Swap Circuit
 // Proves knowledge of (nullifier, secret, depositAmount) for a commitment in the Merkle tree
-// Public: merkleRoot, nullifierHash, recipient, relayer, relayerFee, swapAmountOut, reserved1, reserved2
+// Public: merkleRoot, nullifierHash, recipient, relayer, relayerFee, swapAmountOut
 // Private: nullifier, secret, depositAmount, pathElements[20], pathIndices[20]
 
 template PrivateSwap(levels) {
-    // Public inputs (8 total to match verification_key.json)
+    // Public inputs (6 total)
     signal input merkleRoot;
     signal input nullifierHash;
     signal input recipient;
     signal input relayer;
     signal input relayerFee;       // Max 500 bps = 5%
     signal input swapAmountOut;    // Minimum expected output
-    signal input reserved1;
-    signal input reserved2;
 
     // Private inputs
     signal input nullifier;
@@ -94,4 +92,4 @@ template PrivateSwap(levels) {
     swapSquare <== swapAmountOut * swapAmountOut;
 }
 
-component main {public [merkleRoot, nullifierHash, recipient, relayer, relayerFee, swapAmountOut, reserved1, reserved2]} = PrivateSwap(20);
+component main {public [merkleRoot, nullifierHash, recipient, relayer, relayerFee, swapAmountOut]} = PrivateSwap(20);
