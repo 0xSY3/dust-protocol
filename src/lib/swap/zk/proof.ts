@@ -181,8 +181,6 @@ export async function generateProof(
     relayer: BigInt(swapParams.relayer).toString(),
     relayerFee: swapParams.relayerFee.toString(),
     swapAmountOut: swapParams.swapAmountOut.toString(),
-    reserved1: '0',
-    reserved2: '0',
   }
 
   console.log('[DustSwap] Circuit inputs:', {
