@@ -41,7 +41,7 @@ contract InitializePoolSmall is Script {
     // ─── Liquidity amounts (small — suitable for testnet faucets) ───────────────
     uint256 constant ETH_AMOUNT = 0.001 ether;     // 0.001 ETH - reduced for low balance
     uint256 constant USDC_AMOUNT = 1 * 1e6;        // 1 USDC (6 decimals)
-    int256 constant LIQUIDITY_DELTA = 20_000;      // scaled down for 1 USDC
+    int256 constant LIQUIDITY_DELTA = 20_000_000_000; // scaled for 1 USDC (approx L = 2e10)
 
     // Full-range tick bounds (must be divisible by TICK_SPACING = 60)
     int24 constant TICK_LOWER = -887220;
