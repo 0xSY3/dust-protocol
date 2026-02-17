@@ -22,6 +22,9 @@ contract DustSwapPoolUSDC is MerkleTree {
     mapping(bytes32 => bool) public commitments;      // slot 2
     mapping(bytes32 => bool) public nullifierHashes;  // slot 3
 
+    /// @notice Authorized routers that can release deposited USDC for swaps
+    mapping(address => bool) public authorizedRouters; // slot 4
+
     event Deposit(
         bytes32 indexed commitment,
         uint32 leafIndex,
@@ -44,6 +47,7 @@ contract DustSwapPoolUSDC is MerkleTree {
     error InvalidRecipient();
     error Unauthorized();
     error ZeroDeposit();
+    error InsufficientPoolBalance();
     error TransferFailed();
     error ReentrancyGuardReentrantCall();
 
@@ -81,6 +85,16 @@ contract DustSwapPoolUSDC is MerkleTree {
         emit Deposit(commitment, uint32(leafIndex), address(usdc), amount, block.timestamp);
     }
 
+    /// @notice Release deposited USDC for a private swap
+    /// @dev Only callable by authorized routers or DustSwapHook.
+    /// @param amount Amount of USDC to release
+    function releaseForSwap(uint256 amount) external {
+        if (!authorizedRouters[msg.sender] && msg.sender != dustSwapHook) revert Unauthorized();
+        uint256 balance = usdc.balanceOf(address(this));
+        if (balance < amount) revert InsufficientPoolBalance();
+        if (!usdc.transfer(msg.sender, amount)) revert TransferFailed();
+    }
+
     /// @notice Check if a commitment has been deposited
     function isCommitmentExists(bytes32 commitment) external view returns (bool) {
         return commitments[commitment];
@@ -101,6 +115,13 @@ contract DustSwapPoolUSDC is MerkleTree {
     /// @notice Set the DustSwapHook address (owner only, set once after deployment)
     function setDustSwapHook(address _dustSwapHook) external onlyOwner {
         dustSwapHook = _dustSwapHook;
+    }
+
+    /// @notice Set authorized router for releasing deposited USDC
+    /// @param router Address of the router contract
+    /// @param authorized Whether the router is authorized
+    function setAuthorizedRouter(address router, bool authorized) external onlyOwner {
+        authorizedRouters[router] = authorized;
     }
 
     /// @notice Transfer ownership

@@ -4,9 +4,16 @@ pragma solidity ^0.8.20;
 import {IDustSwapPool} from "./IDustSwapPool.sol";
 import {IDustSwapVerifier} from "./DustSwapVerifier.sol";
 
+/// @title IERC20 — Minimal ERC20 interface for token transfers
+interface IERC20 {
+    function transfer(address to, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+}
+
 /// @title IPoolManager — Minimal Uniswap V4 PoolManager interface
 interface IPoolManager {
-    // We only need the hook callback context
+    /// @notice Take tokens from the pool to a specified address
+    function take(address currency, address to, uint256 amount) external;
 }
 
 /// @title IHooks — Uniswap V4 Hooks interface (minimal)
@@ -35,13 +42,15 @@ struct ModifyLiquidityParams {
 }
 
 /// @title DustSwapHook — Uniswap V4 hook for private swaps with ZK proof validation
-/// @notice Intercepts beforeSwap() to validate Groth16 proofs against DustSwapPool deposits.
-///         Enables fully private token swaps using Uniswap V4 liquidity.
+/// @notice Intercepts beforeSwap() to validate Groth16 proofs, afterSwap() to route output
+///         tokens to stealth addresses. Enables fully private token swaps on Uniswap V4.
 ///
-/// @dev Hook permissions: BEFORE_SWAP only (validates proof before swap executes).
+/// @dev Hook permissions: BEFORE_SWAP + AFTER_SWAP + AFTER_SWAP_RETURN_DELTA (flags: 0xC4)
 ///      Flow: User deposits to DustSwapPoolETH/USDC → generates ZK proof → relayer submits
-///      swap with proof encoded as hookData → this hook validates proof → swap executes →
-///      output sent to stealth address.
+///      swap with proof via DustSwapRouter → hook validates proof in beforeSwap → swap
+///      executes → afterSwap takes output from PoolManager and sends to stealth address.
+///
+///      Dual-mode: swaps without hookData pass through as regular (non-private) swaps.
 contract DustSwapHook {
     IPoolManager public immutable poolManager;
     IDustSwapVerifier public immutable verifier;
@@ -56,18 +65,27 @@ contract DustSwapHook {
     // Relayer whitelist
     mapping(address => bool) public authorizedRelayers; // slot 2
 
+    /// @notice Temporary storage for pending swap data between beforeSwap and afterSwap
+    struct PendingSwap {
+        address recipient;       // Stealth address to receive output tokens
+        address relayer;         // Relayer address (receives fee)
+        uint256 relayerFeeBps;   // Relayer fee in basis points
+        bytes32 nullifierHash;   // For event emission
+        bool initialized;        // Whether a private swap is pending
+    }
+
+    mapping(address => PendingSwap) private pendingSwaps; // slot 3
+
     // Max relayer fee: 5% (500 BPS)
     uint256 public constant MAX_RELAYER_FEE_BPS = 500;
     uint256 public constant BPS_DENOMINATOR = 10000;
-
-    // Max slippage: 50% (5000 BPS) - prevents obviously bad swaps
-    uint256 public constant MAX_SLIPPAGE_BPS = 5000;
 
     event PrivateSwapExecuted(
         bytes32 indexed nullifierHash,
         address indexed recipient,
         address indexed relayer,
-        uint256 fee,
+        uint256 recipientAmount,
+        uint256 feeAmount,
         uint256 timestamp
     );
 
@@ -75,7 +93,8 @@ contract DustSwapHook {
         address indexed stealthAddress,
         address token,
         uint256 amount,
-        bytes ephemeralPubKey
+        uint256 feeAmount,
+        address relayer
     );
 
     error HookNotImplemented();
@@ -90,6 +109,7 @@ contract DustSwapHook {
     error Unauthorized();
     error InvalidMinimumOutput();
     error SwapAmountTooLow();
+    error TransferFailed();
 
     modifier onlyPoolManager() {
         if (msg.sender != address(poolManager)) revert NotPoolManager();
@@ -105,22 +125,38 @@ contract DustSwapHook {
     /// @param _verifier DustSwapVerifier (Groth16) address
     /// @param _dustSwapPoolETH DustSwapPoolETH address
     /// @param _dustSwapPoolUSDC DustSwapPoolUSDC address
+    /// @param _owner Admin address (explicit because CREATE2 factory sets msg.sender to factory)
     constructor(
         IPoolManager _poolManager,
         IDustSwapVerifier _verifier,
         IDustSwapPool _dustSwapPoolETH,
-        IDustSwapPool _dustSwapPoolUSDC
+        IDustSwapPool _dustSwapPoolUSDC,
+        address _owner
     ) {
         poolManager = _poolManager;
         verifier = _verifier;
         dustSwapPoolETH = _dustSwapPoolETH;
         dustSwapPoolUSDC = _dustSwapPoolUSDC;
-        owner = msg.sender;
+        owner = _owner;
+    }
+
+    // ─── BalanceDelta Helpers ─────────────────────────────────────────────────────
+    // BalanceDelta is `type BalanceDelta is int256` — two int128 packed in one int256.
+    // Upper 128 bits = amount0, lower 128 bits = amount1.
+
+    function _amount0(int256 delta) internal pure returns (int128) {
+        return int128(delta >> 128);
+    }
+
+    function _amount1(int256 delta) internal pure returns (int128) {
+        return int128(delta);
     }
 
     // ─── Hook Callbacks ──────────────────────────────────────────────────────────
 
     /// @notice Called by PoolManager before a swap — validates the ZK proof
+    /// @dev Stores PendingSwap data for afterSwap to route tokens to stealth address.
+    ///      Dual-mode: if no hookData, swap passes through as regular (non-private).
     /// @param hookData ABI-encoded Groth16 proof:
     ///        abi.encode(uint256[2] pA, uint256[2][2] pB, uint256[2] pC, uint256[8] pubSignals)
     function beforeSwap(
@@ -129,7 +165,7 @@ contract DustSwapHook {
         SwapParams calldata params,
         bytes calldata hookData
     ) external onlyPoolManager returns (bytes4, int256, uint24) {
-        // If no hookData, this is a vanilla swap (no privacy) — allow it
+        // DUAL-MODE: If no hookData, this is a vanilla swap (no privacy) — allow it
         if (hookData.length == 0) {
             return (this.beforeSwap.selector, 0, 0);
         }
@@ -158,22 +194,6 @@ contract DustSwapHook {
         // Validate minimum output (slippage protection)
         if (swapAmountOut == 0) revert InvalidMinimumOutput();
 
-        // Validate excessive slippage (max 50% = MAX_SLIPPAGE_BPS)
-        // Get absolute value of amountSpecified for comparison
-        /*
-        int256 amountSpecified = params.amountSpecified;
-        uint256 absAmountSpecified = amountSpecified < 0
-            ? uint256(-amountSpecified)
-            : uint256(amountSpecified);
-
-        // Ensure minimum output meets maximum slippage threshold
-        // Formula: swapAmountOut >= absAmountSpecified * (1 - MAX_SLIPPAGE_BPS / BPS_DENOMINATOR)
-        // Simplified: swapAmountOut * BPS_DENOMINATOR >= absAmountSpecified * (BPS_DENOMINATOR - MAX_SLIPPAGE_BPS)
-        if (swapAmountOut * BPS_DENOMINATOR < absAmountSpecified * (BPS_DENOMINATOR - MAX_SLIPPAGE_BPS)) {
-            revert SwapAmountTooLow();
-        }
-        */
-
         // Validate recipient
         if (recipient == address(0)) revert InvalidRecipient();
 
@@ -197,26 +217,117 @@ contract DustSwapHook {
         // Mark nullifier as spent in the pool
         pool.markNullifierAsSpent(nullifierHash);
 
-        // Update stats
-        totalPrivateSwaps++;
-
-        emit PrivateSwapExecuted(nullifierHash, recipient, relayer, relayerFee, block.timestamp);
+        // Store pending swap data for afterSwap to route tokens
+        pendingSwaps[sender] = PendingSwap({
+            recipient: recipient,
+            relayer: relayer,
+            relayerFeeBps: relayerFee,
+            nullifierHash: nullifierHash,
+            initialized: true
+        });
 
         return (this.beforeSwap.selector, 0, 0);
     }
 
-    /// @notice Called by PoolManager after a swap — tracks volume
+    /// @notice Called by PoolManager after a swap — routes output tokens to stealth address
+    /// @dev Takes output tokens from PoolManager, deducts relayer fee, sends remainder
+    ///      to the stealth recipient address. Returns hook delta to claim the output.
     function afterSwap(
         address sender,
         PoolKey calldata key,
         SwapParams calldata params,
-        int256 delta,
+        int256 delta, // BalanceDelta (int256): upper 128 = amount0, lower 128 = amount1
         bytes calldata hookData
     ) external onlyPoolManager returns (bytes4, int128) {
-        if (hookData.length > 0 && delta > 0) {
-            totalPrivateVolume += uint128(uint256(delta));
+        PendingSwap memory pending = pendingSwaps[sender];
+
+        // DUAL-MODE: If no pending swap, this is a regular swap — pass through
+        if (!pending.initialized) {
+            return (this.afterSwap.selector, 0);
         }
-        return (this.afterSwap.selector, 0);
+
+        // Determine output token and amount from BalanceDelta
+        int128 outputAmount;
+        address outputCurrency;
+
+        if (params.zeroForOne) {
+            // Swapping token0 → token1: output is token1 (currency1)
+            outputAmount = _amount1(delta);
+            outputCurrency = key.currency1;
+        } else {
+            // Swapping token1 → token0: output is token0 (currency0)
+            outputAmount = _amount0(delta);
+            outputCurrency = key.currency0;
+        }
+
+        // Output amount is negative (tokens owed to swapper from the pool)
+        // Convert to positive for transfer calculations
+        uint256 absOutput = outputAmount < 0
+            ? uint256(uint128(-outputAmount))
+            : uint256(uint128(outputAmount));
+
+        // Calculate relayer fee
+        uint256 feeAmount = 0;
+        if (pending.relayer != address(0) && pending.relayerFeeBps > 0) {
+            feeAmount = (absOutput * pending.relayerFeeBps) / BPS_DENOMINATOR;
+        }
+        uint256 recipientAmount = absOutput - feeAmount;
+
+        // Take output tokens from PoolManager to this hook
+        poolManager.take(outputCurrency, address(this), absOutput);
+
+        // Transfer output tokens to stealth recipient
+        if (outputCurrency == address(0)) {
+            // Native ETH
+            (bool success, ) = pending.recipient.call{value: recipientAmount}("");
+            if (!success) revert TransferFailed();
+        } else {
+            // ERC20
+            if (!IERC20(outputCurrency).transfer(pending.recipient, recipientAmount)) {
+                revert TransferFailed();
+            }
+        }
+
+        // Transfer fee to relayer (if applicable)
+        if (feeAmount > 0 && pending.relayer != address(0)) {
+            if (outputCurrency == address(0)) {
+                (bool success, ) = pending.relayer.call{value: feeAmount}("");
+                if (!success) revert TransferFailed();
+            } else {
+                if (!IERC20(outputCurrency).transfer(pending.relayer, feeAmount)) {
+                    revert TransferFailed();
+                }
+            }
+        }
+
+        // Update stats
+        totalPrivateSwaps++;
+        totalPrivateVolume += uint128(absOutput);
+
+        // Emit events for stealth payment tracking
+        emit StealthPayment(
+            pending.recipient,
+            outputCurrency,
+            recipientAmount,
+            feeAmount,
+            pending.relayer
+        );
+
+        emit PrivateSwapExecuted(
+            pending.nullifierHash,
+            pending.recipient,
+            pending.relayer,
+            recipientAmount,
+            feeAmount,
+            block.timestamp
+        );
+
+        // Clear pending swap data
+        delete pendingSwaps[sender];
+
+        // Return the output amount as hook delta
+        // This tells PoolManager that the hook consumed these output tokens
+        return (this.afterSwap.selector, outputAmount);
     }
 
     // ─── Hook Permission Stubs (not implemented) ─────────────────────────────────
@@ -280,12 +391,12 @@ contract DustSwapHook {
             afterAddLiquidity: false,
             beforeRemoveLiquidity: false,
             afterRemoveLiquidity: false,
-            beforeSwap: true,       // Validate ZK proof before swap
-            afterSwap: true,        // Track volume after swap
+            beforeSwap: true,              // Validate ZK proof before swap
+            afterSwap: true,               // Route output to stealth address
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
-            afterSwapReturnDelta: false,
+            afterSwapReturnDelta: true,    // Redirect output tokens via hook delta
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
@@ -315,4 +426,9 @@ contract DustSwapHook {
     function setRelayerWhitelistEnabled(bool enabled) external onlyOwner {
         relayerWhitelistEnabled = enabled;
     }
+
+    // ─── Receive ETH ─────────────────────────────────────────────────────────────
+
+    /// @notice Allow contract to receive ETH from PoolManager for native token swaps
+    receive() external payable {}
 }

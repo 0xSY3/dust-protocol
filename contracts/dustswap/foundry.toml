@@ -7,6 +7,9 @@ solc = "0.8.26"
 optimizer = true
 optimizer_runs = 200
 via_ir = true
+libraries = [
+  "poseidon-solidity/PoseidonT3.sol:PoseidonT3:0x203a488c06e9add25d4b51f7ede8e56bcc4b1a1c",
+]
 remappings = [
   "forge-std/=lib/forge-std/src/",
   "poseidon-solidity/=node_modules/poseidon-solidity/",

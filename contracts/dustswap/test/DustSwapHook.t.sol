@@ -14,7 +14,7 @@ import {IDustSwapPool} from "../src/IDustSwapPool.sol";
 contract DustSwapHookForkTest is Test {
     // ─── Deployed Sepolia Addresses ─────────────────────────────────────────────
     address constant POOL_MANAGER      = 0x93805603e0167574dFe2F50ABdA8f42C85002FD8;
-    address constant DUST_SWAP_HOOK    = 0x605F8a92D488960174108035c41d376Ed25A00C0;
+    address payable constant DUST_SWAP_HOOK    = payable(0x605F8a92D488960174108035c41d376Ed25A00C0);
     address constant DUST_SWAP_VERIFIER = 0x1677C9c4E575C910B9bCaF398D615B9F3775d0f1;
     address constant POOL_ETH          = 0xD342940442AC499656a514e5C355d2b82975155B;
     address constant POOL_USDC         = 0xa4218b115219ba96e2c5CAAaC42D0d04D60e3269;
