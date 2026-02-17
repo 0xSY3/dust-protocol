@@ -180,7 +180,7 @@ export default function WalletPage() {
   const explorerBase = getExplorerBase(activeChainId);
   const nativeSymbol = chainConfig.nativeCurrency.symbol;
 
-  // ─── Swap Notes (equivalent to grimswap's deposit notes) ──────────────────
+  // ─── Swap Notes (DustSwap deposit notes) ───────────────────────────────────
   const {
     notes,
     unspentNotes,
