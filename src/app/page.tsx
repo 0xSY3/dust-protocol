@@ -256,42 +256,164 @@ export default function Home() {
           </Box>
         </Box>
 
+        {/* Mobile Layout (Cards) */}
+        <Box
+          display={{ base: "flex", lg: "none" }}
+          flexDirection="column"
+          w="100%"
+          px="20px"
+          pt="40px"
+          gap="24px"
+          zIndex={10}
+          minH="calc(100vh - 100px)"
+        >
+          {/* Title */}
+          <Text
+            fontFamily="var(--font-instrument-serif), serif"
+            fontSize="32px"
+            color="white"
+            textAlign="center"
+            mb="8px"
+          >
+            Privacy Hub
+          </Text>
+
+          {/* Transfer Card */}
+          <Box
+            w="100%"
+            borderRadius="24px"
+            border="1px solid rgba(255, 255, 255, 0.08)"
+            bg="rgba(10, 10, 15, 0.4)"
+            backdropFilter="blur(20px)"
+            p="24px"
+            display="flex"
+            flexDirection="column"
+            gap="20px"
+            boxShadow="0 8px 32px rgba(0, 0, 0, 0.2)"
+          >
+            <VStack align="flex-start" gap="8px">
+              <Text
+                fontFamily="var(--font-instrument-serif), serif"
+                fontSize="28px"
+                color="white"
+                lineHeight="1.1"
+              >
+                Private Transfers
+              </Text>
+              <Text fontSize="14px" color="rgba(255,255,255,0.7)" lineHeight="1.5">
+                Untraceable payments that dissolve into the blockchain.
+              </Text>
+            </VStack>
+
+            {/* Mobile Input */}
+            <VStack gap="12px" w="100%">
+              <HStack gap="8px" w="100%">
+                <Input
+                  placeholder="username.tok"
+                  value={searchName}
+                  onChange={(e) => setSearchName(e.target.value)}
+                  onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handlePaySearch(); }}
+                  h="48px"
+                  flex={1}
+                  bgColor="rgba(0, 0, 0, 0.3)"
+                  border="1px solid rgba(255, 255, 255, 0.1)"
+                  borderRadius={radius.md}
+                  color="white"
+                  fontSize="16px"
+                  px="16px"
+                  _placeholder={{ color: "rgba(255, 255, 255, 0.4)" }}
+                  _focus={{ borderColor: colors.border.focus, bgColor: "rgba(0, 0, 0, 0.5)" }}
+                />
+                <Box
+                  as="button"
+                  w="48px"
+                  h="48px"
+                  flexShrink={0}
+                  bg={colors.accent.indigo}
+                  borderRadius={radius.md}
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  onClick={handlePaySearch}
+                >
+                  <ArrowUpRightIcon size={20} color="white" />
+                </Box>
+              </HStack>
+            </VStack>
+          </Box>
+
+          {/* Swap Card */}
+          <Box
+            w="100%"
+            borderRadius="24px"
+            border="1px solid rgba(255, 255, 255, 0.08)"
+            bg="rgba(10, 10, 15, 0.3)"
+            backdropFilter="blur(12px)"
+            p="24px"
+            display="flex"
+            flexDirection="column"
+            gap="16px"
+          >
+            <HStack justify="space-between" align="center" w="100%">
+              <Text
+                fontFamily="var(--font-instrument-serif), serif"
+                fontSize="28px"
+                color="rgba(255, 255, 255, 0.8)"
+              >
+                Privacy Swap
+              </Text>
+              <Box
+                px="10px"
+                py="4px"
+                borderRadius="full"
+                bg="rgba(255, 255, 255, 0.1)"
+                border="1px solid rgba(255, 255, 255, 0.1)"
+              >
+                <Text fontSize="10px" fontWeight="700" color="rgba(255, 255, 255, 0.6)" letterSpacing="0.05em">
+                  SOON
+                </Text>
+              </Box>
+            </HStack>
+            <Text fontSize="14px" color="rgba(255,255,255,0.6)" lineHeight="1.5">
+              Swap tokens anonymously without leaving a trace.
+            </Text>
+          </Box>
+        </Box>
+
+        {/* Desktop Layout (Split View) */}
         <Box
           position="relative"
           zIndex={10}
           flex="1"
-          display="flex"
-          flexDirection={{ base: "column", lg: "row" }}
+          display={{ base: "none", lg: "flex" }} // Hidden on mobile
+          flexDirection="row"
           w="100%"
-          px={{ base: "20px", md: "60px" }}
+          px="60px"
           alignItems="center"
           justifyContent="center"
-          gap={{ base: "40px", lg: "0" }}
-          minH={{ base: "auto", lg: "calc(100vh - 100px)" }}
-          pb={{ base: "80px", lg: "0" }}
-          pt={{ base: "20px", lg: "0" }}
+          minH="calc(100vh - 100px)"
         >
 
           {/* Left Side: Privacy Transfers */}
-          <Box flex="1" display="flex" flexDirection="column" gap="24px" alignItems={{ base: "center", lg: "flex-start" }} justifyContent="center" textAlign={{ base: "center", lg: "left" }} w="100%">
+          <Box flex="1" display="flex" flexDirection="column" gap="24px" alignItems="flex-start" justifyContent="center" textAlign="left" w="100%">
             <Box className="fade-up d1">
               <Text
                 fontFamily="var(--font-instrument-serif), serif"
-                fontSize={{ base: "42px", md: "52px", lg: "72px" }}
+                fontSize="72px"
                 color="white"
                 lineHeight="1.1"
                 letterSpacing="-0.03em"
-                mb="12px"
+                mb="16px"
               >
                 Private<br />Transfers
               </Text>
-              <Text fontSize={{ base: "16px", md: "16px" }} color="rgba(255,255,255,0.8)" maxW="320px" lineHeight="1.5" mx={{ base: "auto", lg: "0" }}>
+              <Text fontSize="16px" color="rgba(255,255,255,0.7)" maxW="320px" lineHeight="1.6">
                 Untraceable payments that dissolve into the blockchain.
               </Text>
             </Box>
 
             {/* Pay Search Input form */}
-            <VStack gap="12px" w="100%" maxW="380px" align={{ base: "center", lg: "flex-start" }} className="fade-up d2">
+            <VStack gap="12px" w="100%" maxW="380px" align="flex-start" className="fade-up d2">
               <HStack gap="8px" w="100%">
                 <Input
                   placeholder="username.tok"
@@ -347,10 +469,10 @@ export default function Home() {
               </HStack>
               <Text
                 fontSize="11px"
-                color="rgba(255, 255, 255, 0.6)"
+                color="rgba(255, 255, 255, 0.5)"
                 letterSpacing="0.05em"
                 fontFamily={typography.fontFamily.mono}
-                textAlign={{ base: "center", lg: "left" }}
+                textAlign="left"
                 w="100%"
               >
                 ENTER A USERNAME TO PAY
@@ -359,19 +481,19 @@ export default function Home() {
           </Box>
 
           {/* Right Side: Privacy Swap */}
-          <Box flex="1" display="flex" flexDirection="column" gap="20px" alignItems={{ base: "center", lg: "flex-end" }} justifyContent="center" textAlign={{ base: "center", lg: "right" }}>
+          <Box flex="1" display="flex" flexDirection="column" gap="24px" alignItems="flex-end" justifyContent="center" textAlign="right">
             <Box className="fade-up d3">
               <Text
                 fontFamily="var(--font-instrument-serif), serif"
-                fontSize={{ base: "42px", md: "52px", lg: "72px" }}
+                fontSize="72px"
                 color="white"
                 lineHeight="1.1"
                 letterSpacing="-0.03em"
-                mb="12px"
+                mb="16px"
               >
                 Privacy<br />Swap
               </Text>
-              <Text fontSize={{ base: "16px", md: "16px" }} color="rgba(255,255,255,0.8)" maxW="320px" lineHeight="1.5" ml={{ base: "0", lg: "auto" }} mr={{ base: "auto", lg: "0" }}>
+              <Text fontSize="16px" color="rgba(255,255,255,0.7)" maxW="320px" lineHeight="1.6" ml="auto">
                 Swap tokens anonymously without leaving a trace.
               </Text>
             </Box>
@@ -386,7 +508,7 @@ export default function Home() {
               bg="rgba(255,255,255,0.05)"
               backdropFilter="blur(8px)"
             >
-              <Text fontSize="13px" color="rgba(255,255,255,0.8)" fontFamily={typography.fontFamily.mono} fontWeight="600">
+              <Text fontSize="13px" color="rgba(255,255,255,0.6)" fontFamily={typography.fontFamily.mono}>
                 COMING SOON
               </Text>
             </Box>
