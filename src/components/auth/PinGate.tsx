@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, KeyboardEvent, ChangeEvent } from "react";
-import { Box, Text, VStack, HStack, Input, Spinner } from "@chakra-ui/react";
-import { colors, radius, shadows, inputStates, buttonVariants, transitions } from "@/lib/design/tokens";
 import { AlertCircleIcon, ShieldIcon } from "@/components/stealth/icons";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -70,40 +68,27 @@ export function PinGate({ onUnlocked }: PinGateProps) {
   }, [pin, handleUnlock]);
 
   return (
-    <Box
-      minH="100vh"
-      bg={colors.bg.page}
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      p="16px"
-    >
-      <Box
-        w="100%"
-        maxW="400px"
-        p="40px 32px"
-        bg={colors.bg.cardSolid}
-        border={`1px solid ${colors.border.default}`}
-        borderRadius={radius.xl}
-        boxShadow={shadows.modal}
-      >
-        <VStack gap="28px">
-          <VStack gap="12px" textAlign="center">
-            <Box
-              w="56px" h="56px"
-              borderRadius={radius.full}
-              bg="linear-gradient(135deg, rgba(43, 90, 226, 0.1) 0%, rgba(43, 90, 226, 0.05) 100%)"
-              display="flex" alignItems="center" justifyContent="center"
-            >
-              <ShieldIcon size={28} color={colors.accent.indigo} />
-            </Box>
-            <Text fontSize="20px" fontWeight={700} color={colors.text.primary}>Welcome back</Text>
-            <Text fontSize="14px" color={colors.text.muted}>Enter your PIN to unlock</Text>
-          </VStack>
+    <div className="fixed inset-0 z-50 bg-[#06080F] flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-[400px] px-8 py-10 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.08)] rounded-sm">
+        <div className="flex flex-col items-center gap-7">
 
-          <HStack gap="10px" justify="center">
+          {/* Icon + Title */}
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="w-14 h-14 rounded-full bg-[rgba(0,255,65,0.06)] border border-[rgba(0,255,65,0.15)] flex items-center justify-center">
+              <ShieldIcon size={28} color="#00FF41" />
+            </div>
+            <p className="text-[11px] font-mono font-bold tracking-[0.25em] text-[#00FF41] uppercase">
+              ENTER_PIN
+            </p>
+            <p className="text-[13px] font-mono text-white/40">
+              Enter your PIN to unlock
+            </p>
+          </div>
+
+          {/* PIN Digit Boxes */}
+          <div className="flex gap-2.5 justify-center">
             {Array.from({ length: 6 }).map((_, i) => (
-              <Input
+              <input
                 key={i}
                 ref={(el) => { refs.current[i] = el; }}
                 type="text"
@@ -114,37 +99,34 @@ export function PinGate({ onUnlocked }: PinGateProps) {
                 value={pin[i] || ""}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => handleChange(i, e.target.value)}
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => handleKeyDown(i, e)}
-                w="48px" h="56px"
-                textAlign="center"
-                fontSize="24px"
-                fontWeight={700}
-                bgColor={inputStates.default.bg}
-                border={inputStates.default.border}
-                borderRadius={radius.sm}
-                color={inputStates.default.color}
-                css={{ WebkitTextSecurity: "disc" }}
-                _focus={{ borderColor: inputStates.focus.borderColor, boxShadow: inputStates.focus.boxShadow }}
-                transition={transitions.fast}
                 disabled={isVerifying}
+                style={{ WebkitTextSecurity: "disc" } as React.CSSProperties}
+                className="w-12 h-14 rounded-sm border border-[rgba(255,255,255,0.1)] bg-[rgba(255,255,255,0.02)] text-center text-xl font-bold font-mono text-white focus:border-[#00FF41] focus:outline-none focus:bg-[rgba(0,255,65,0.02)] transition-all caret-[#00FF41] disabled:opacity-40"
               />
             ))}
-          </HStack>
+          </div>
 
+          {/* Verifying spinner */}
           {isVerifying && (
-            <HStack gap="8px">
-              <Spinner size="sm" color={colors.accent.indigo} />
-              <Text fontSize="13px" color={colors.text.muted}>Verifying...</Text>
-            </HStack>
+            <div className="flex items-center gap-2">
+              <svg className="animate-spin w-4 h-4 text-[#00FF41]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="text-[13px] font-mono text-white/40">Verifying...</span>
+            </div>
           )}
 
+          {/* Error message */}
           {(error || pinError) && (
-            <HStack gap="8px" p="12px 16px" bg={buttonVariants.danger.bg} border={buttonVariants.danger.border} borderRadius={radius.sm}>
-              <AlertCircleIcon size={14} color={colors.accent.red} />
-              <Text fontSize="13px" color={colors.accent.red}>{error || pinError}</Text>
-            </HStack>
+            <div className="flex items-center gap-2 px-4 py-3 bg-[rgba(255,59,48,0.08)] border border-[rgba(255,59,48,0.25)] rounded-sm w-full">
+              <AlertCircleIcon size={14} color="#FF3B30" />
+              <span className="text-[13px] font-mono text-[#FF3B30]">{error || pinError}</span>
+            </div>
           )}
-        </VStack>
-      </Box>
-    </Box>
+
+        </div>
+      </div>
+    </div>
   );
 }

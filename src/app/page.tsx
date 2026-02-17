@@ -2,9 +2,7 @@
 
 import { useState, useEffect, KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Box, Text, VStack, HStack, Input } from "@chakra-ui/react";
 import { useAuth } from "@/contexts/AuthContext";
-import { colors, glass, typography, transitions, shadows, radius, buttonVariants } from "@/lib/design/tokens";
 import { WalletIcon, ArrowUpRightIcon, MailIcon } from "@/components/stealth/icons";
 import { DustLogo } from "@/components/DustLogo";
 import { useLogin } from "@privy-io/react-auth";
@@ -96,14 +94,14 @@ export default function Home() {
 
   if (!isHydrated || (isConnected && !address) || (isConnected && isOnboarded)) {
     return (
-      <Box minH="100vh" bg={colors.bg.page} display="flex" alignItems="center" justifyContent="center">
-        <VStack gap="16px">
-          <Box opacity={0.6}>
-            <DustLogo size={40} color={colors.accent.indigoBright} />
-          </Box>
-          <Text fontSize="14px" color={colors.text.muted} fontFamily={typography.fontFamily.body}>Loading...</Text>
-        </VStack>
-      </Box>
+      <div className="min-h-screen bg-[#06080F] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="opacity-60">
+            <DustLogo size={40} color="#00FF41" />
+          </div>
+          <p className="text-[14px] font-mono text-white/40">Loading...</p>
+        </div>
+      </div>
     );
   }
 
@@ -115,8 +113,8 @@ export default function Home() {
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes btn-glow {
-          0%, 100% { box-shadow: 0 0 20px rgba(43,90,226,0.3), 0 0 60px rgba(43,90,226,0.1); }
-          50% { box-shadow: 0 0 30px rgba(43,90,226,0.5), 0 0 80px rgba(43,90,226,0.15); }
+          0%, 100% { box-shadow: 0 0 20px rgba(0,255,65,0.2), 0 0 60px rgba(0,255,65,0.06); }
+          50% { box-shadow: 0 0 30px rgba(0,255,65,0.35), 0 0 80px rgba(0,255,65,0.1); }
         }
         .fade-up { animation: fade-up 0.8s cubic-bezier(0.16,1,0.3,1) forwards; opacity: 0; }
         .d1 { animation-delay: 0.1s; }
@@ -126,33 +124,18 @@ export default function Home() {
         .d5 { animation-delay: 0.7s; }
         .d6 { animation-delay: 0.85s; }
         .d7 { animation-delay: 1.0s; }
-        
+
         .split-layout-text {
-             font-family: var(--font-instrument-serif), serif;
-             font-style: italic;
-             font-weight: 400;
+          font-family: var(--font-instrument-serif), serif;
+          font-style: italic;
+          font-weight: 400;
         }
       `}</style>
 
-      <Box
-        minH="100vh"
-        bg={colors.bg.page}
-        display="flex"
-        flexDirection="column"
-        position="relative"
-        overflowX="hidden"
-      >
-        {/* Mobile Background Image (Next.js Image for optimization) */}
-        <Box
-          position="absolute"
-          top="0"
-          left="0"
-          w="100%"
-          h="100%"
-          zIndex={0}
-          display={{ base: "block", lg: "none" }}
-          opacity={0.6}
-        >
+      <div className="min-h-screen bg-[#06080F] flex flex-col relative overflow-x-hidden">
+
+        {/* Mobile Background Image */}
+        <div className="absolute top-0 left-0 w-full h-full z-0 lg:hidden opacity-60">
           <Image
             src="/mobile.png"
             alt="Background"
@@ -161,327 +144,181 @@ export default function Home() {
             style={{ objectFit: "cover", objectPosition: "center" }}
             quality={90}
           />
-        </Box>
+        </div>
 
         {/* Dust Spirit Portal (Desktop Only) */}
-        <Box display={{ base: "none", lg: "block" }}>
+        <div className="hidden lg:block">
           <SpiritPortal />
-        </Box>
+        </div>
 
         {/* Header */}
-        <Box as="header" position="relative" zIndex={100} px={{ base: "20px", md: "40px" }} py={{ base: "20px", md: "32px" }}>
-          <Box w="100%" display="flex" alignItems="center" justifyContent="space-between">
+        <header className="relative z-[100] px-5 py-5 md:px-10 md:py-8">
+          <div className="w-full flex items-center justify-between">
             {/* Left: Logo */}
-            <HStack gap="12px" align="center">
-              <DustLogo size={32} color={colors.accent.indigoBright} />
-              <HStack gap="6px" align="baseline" display={{ base: "none", sm: "flex" }}>
-                <Text
-                  fontSize="24px"
-                  fontWeight="400"
-                  color={colors.text.primary}
-                  fontFamily="var(--font-instrument-serif), serif"
-                  letterSpacing="-0.02em"
+            <div className="flex items-center gap-3">
+              <DustLogo size={32} color="#00FF41" />
+              <div className="hidden sm:flex items-baseline gap-1.5">
+                <span
+                  className="text-2xl font-normal text-white tracking-tight"
+                  style={{ fontFamily: "var(--font-instrument-serif), serif" }}
                 >
                   Dust
-                </Text>
-                <Text
-                  fontSize="24px"
-                  fontWeight="400"
-                  color={colors.text.secondary}
-                  fontFamily="var(--font-instrument-serif), serif"
-                  letterSpacing="-0.02em"
+                </span>
+                <span
+                  className="text-2xl font-normal text-white/50 tracking-tight"
+                  style={{ fontFamily: "var(--font-instrument-serif), serif" }}
                 >
                   Protocol
-                </Text>
-              </HStack>
-            </HStack>
+                </span>
+              </div>
+            </div>
 
             {/* Right: Connect & Auth */}
-            <HStack gap="16px">
+            <div className="flex items-center gap-4">
               {hasPrivy && !isConnected && (
-                <HStack gap="8px">
+                <div className="flex items-center gap-2">
                   {[
                     { icon: GoogleIcon, method: "google" as const },
                     { icon: MailIcon, method: "email" as const },
                     { icon: FarcasterIcon, method: "farcaster" as const },
                   ].map((opt) => (
-                    <Box
+                    <button
                       key={opt.method}
-                      as="button"
-                      w="40px"
-                      h="40px"
-                      bg="rgba(255, 255, 255, 0.05)"
-                      border="1px solid rgba(255, 255, 255, 0.1)"
-                      borderRadius={radius.full}
-                      cursor="pointer"
-                      display="flex"
-                      alignItems="center"
-                      justifyContent="center"
-                      transition={transitions.base}
-                      _hover={{
-                        bg: "rgba(255, 255, 255, 0.1)",
-                        borderColor: "rgba(255, 255, 255, 0.2)",
-                        transform: "translateY(-1px)",
-                      }}
+                      className="w-10 h-10 bg-white/5 border border-white/10 rounded-full flex items-center justify-center cursor-pointer transition-all hover:bg-white/10 hover:border-white/20 hover:-translate-y-px"
                       onClick={() => privyLogin({ loginMethods: [opt.method] })}
                     >
                       <opt.icon size={16} />
-                    </Box>
+                    </button>
                   ))}
-                </HStack>
+                </div>
               )}
               {/* Manual Connect Button */}
-              <Box
-                as="button"
-                px={{ base: "16px", md: "20px" }}
-                py="10px"
-                bg={buttonVariants.primary.bg}
-                boxShadow={buttonVariants.primary.boxShadow}
-                borderRadius={radius.sm}
-                cursor="pointer"
-                display="flex"
-                alignItems="center"
-                gap="8px"
-                _hover={{ boxShadow: buttonVariants.primary.hover.boxShadow, transform: buttonVariants.primary.hover.transform }}
-                _active={{ transform: buttonVariants.primary.active.transform }}
-                transition={transitions.fast}
+              <button
+                className="flex items-center gap-2 px-4 md:px-5 py-2.5 bg-[#00FF41] text-[#06080F] rounded-sm font-mono font-bold text-sm tracking-wider uppercase cursor-pointer transition-all hover:-translate-y-px hover:shadow-[0_0_20px_rgba(0,255,65,0.4)] active:translate-y-0"
+                style={{ animation: "btn-glow 3s ease-in-out infinite" }}
                 onClick={() => connect({ connector: injected() })}
               >
-                <WalletIcon size={16} color="white" />
-                <Text fontSize="14px" color="white" fontWeight="600">
-                  Connect
-                </Text>
-              </Box>
-            </HStack>
-          </Box>
-        </Box>
+                <WalletIcon size={16} color="#06080F" />
+                Connect
+              </button>
+            </div>
+          </div>
+        </header>
 
-        {/* Mobile Layout (Minimalist Overlay) */}
-        {/* Mobile Layout (Unified Hero) */}
-        <Box
-          display={{ base: "flex", lg: "none" }}
-          flexDirection="column"
-          w="100%"
-          px="24px"
-          pt="80px"
-          pb="48px"
-          gap="24px"
-          zIndex={10}
-          minH="calc(100vh - 80px)"
-          justifyContent="flex-end"
+        {/* Mobile Layout */}
+        <div
+          className="flex lg:hidden flex-col w-full px-6 pt-20 pb-12 gap-6 z-10 min-h-[calc(100vh-80px)] justify-end"
         >
-          <VStack align="flex-start" gap="16px" w="100%">
-            <Box>
-              <Text
-                fontFamily="var(--font-instrument-serif), serif"
-                fontSize="42px"
-                color="white"
-                lineHeight="1.1"
-                letterSpacing="-0.03em"
-                mb="8px"
-                textShadow="0 4px 24px rgba(0,0,0,0.6)"
+          <div className="flex flex-col items-start gap-4 w-full">
+            <div>
+              <p
+                className="text-[42px] text-white leading-[1.1] tracking-[-0.03em] mb-2"
+                style={{
+                  fontFamily: "var(--font-instrument-serif), serif",
+                  textShadow: "0 4px 24px rgba(0,0,0,0.6)",
+                }}
               >
                 Private Transfers<br />and Privacy Swap
-              </Text>
-              <Text fontSize="16px" color="rgba(255,255,255,0.85)" lineHeight="1.5" textShadow="0 2px 8px rgba(0,0,0,0.6)" maxW="300px">
+              </p>
+              <p
+                className="text-base text-white/85 leading-relaxed max-w-[300px]"
+                style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}
+              >
                 Swap tokens anonymously without leaving a trace.
-              </Text>
-            </Box>
+              </p>
+            </div>
 
-            {/* Input */}
-            <HStack gap="8px" w="100%">
-              <Input
+            {/* Pay Search Input */}
+            <div className="flex items-center gap-2 w-full">
+              <input
+                className="flex-1 h-14 bg-[rgba(20,20,25,0.6)] border border-white/15 rounded-2xl text-white text-base px-5 backdrop-blur-lg placeholder:text-white/50 focus:border-[#00FF41] focus:outline-none focus:bg-[rgba(20,20,25,0.8)] transition-all"
                 placeholder="username.tok"
                 value={searchName}
                 onChange={(e) => setSearchName(e.target.value)}
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handlePaySearch(); }}
-                h="56px"
-                flex={1}
-                bgColor="rgba(20, 20, 25, 0.6)"
-                border="1px solid rgba(255, 255, 255, 0.15)"
-                borderRadius="16px"
-                color="white"
-                fontSize="16px"
-                px="20px"
-                backdropFilter="blur(16px)"
-                _placeholder={{ color: "rgba(255, 255, 255, 0.5)" }}
-                _focus={{
-                  borderColor: colors.border.focus,
-                  bgColor: "rgba(20, 20, 25, 0.8)",
-                  boxShadow: "0 0 0 1px rgba(74, 117, 240, 0.5)"
-                }}
               />
-              <Box
-                as="button"
-                w="56px"
-                h="56px"
-                flexShrink={0}
-                bg={colors.accent.indigo}
-                borderRadius="16px"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
+              <button
+                className="w-14 h-14 shrink-0 bg-[#00FF41] rounded-2xl flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_0_20px_rgba(0,255,65,0.4)] transition-all"
                 onClick={handlePaySearch}
-                boxShadow="0 4px 12px rgba(0,0,0,0.3)"
               >
-                <ArrowUpRightIcon size={24} color="white" />
-              </Box>
-            </HStack>
-          </VStack>
-        </Box>
+                <ArrowUpRightIcon size={24} color="#06080F" />
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Desktop Layout (Split View) */}
-        <Box
-          position="relative"
-          zIndex={10}
-          flex="1"
-          display={{ base: "none", lg: "flex" }} // Hidden on mobile
-          flexDirection="row"
-          w="100%"
-          px="60px"
-          alignItems="center"
-          justifyContent="center"
-          minH="calc(100vh - 100px)"
-        >
+        <div className="relative z-10 flex-1 hidden lg:flex flex-row w-full px-[60px] items-center justify-center min-h-[calc(100vh-100px)]">
 
           {/* Left Side: Privacy Transfers */}
-          <Box flex="1" display="flex" flexDirection="column" gap="24px" alignItems="flex-start" justifyContent="center" textAlign="left" w="100%">
-            <Box className="fade-up d1">
-              <Text
-                fontFamily="var(--font-instrument-serif), serif"
-                fontSize="72px"
-                color="white"
-                lineHeight="1.1"
-                letterSpacing="-0.03em"
-                mb="16px"
+          <div className="flex-1 flex flex-col gap-6 items-start justify-center text-left w-full">
+            <div className="fade-up d1">
+              <p
+                className="text-[72px] text-white leading-[1.1] tracking-[-0.03em] mb-4"
+                style={{ fontFamily: "var(--font-instrument-serif), serif" }}
               >
                 Private<br />Transfers
-              </Text>
-              <Text fontSize="16px" color="rgba(255,255,255,0.7)" maxW="320px" lineHeight="1.6">
+              </p>
+              <p className="text-base text-white/70 max-w-[320px] leading-relaxed">
                 Untraceable payments that dissolve into the blockchain.
-              </Text>
-            </Box>
+              </p>
+            </div>
 
             {/* Pay Search Input form */}
-            <VStack gap="12px" w="100%" maxW="380px" align="flex-start" className="fade-up d2">
-              <HStack gap="8px" w="100%">
-                <Input
+            <div className="flex flex-col gap-3 w-full max-w-[380px] items-start fade-up d2">
+              <div className="flex items-center gap-2 w-full">
+                <input
+                  className="flex-1 h-14 bg-[rgba(0,0,0,0.4)] border border-white/15 rounded-sm text-white text-base px-5 font-mono backdrop-blur-lg placeholder:text-white/50 hover:border-[rgba(0,255,65,0.3)] focus:border-[#00FF41] focus:outline-none focus:bg-[rgba(0,0,0,0.6)] focus:shadow-[0_0_0_1px_rgba(0,255,65,0.2)] transition-all"
                   placeholder="username.tok"
                   value={searchName}
                   onChange={(e) => setSearchName(e.target.value)}
                   onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") handlePaySearch(); }}
-                  h="56px"
-                  flex={1}
-                  bgColor="rgba(0, 0, 0, 0.4)"
-                  border="1px solid rgba(255, 255, 255, 0.15)"
-                  borderRadius={radius.md}
-                  color="white"
-                  fontSize="16px"
-                  fontWeight={400}
-                  fontFamily={typography.fontFamily.body}
-                  px="20px"
-                  backdropFilter="blur(16px)"
-                  _placeholder={{ color: "rgba(255, 255, 255, 0.5)" }}
-                  _hover={{
-                    borderColor: "rgba(74, 117, 240, 0.5)",
-                    bgColor: "rgba(0, 0, 0, 0.5)",
-                  }}
-                  _focus={{
-                    borderColor: colors.border.focus,
-                    boxShadow: `${shadows.inputFocus}`,
-                    bgColor: "rgba(0, 0, 0, 0.6)",
-                  }}
-                  transition={transitions.base}
                 />
-                <Box
-                  as="button"
-                  w="56px"
-                  h="56px"
-                  flexShrink={0}
-                  bg="rgba(255, 255, 255, 0.1)"
-                  border={`1px solid rgba(255, 255, 255, 0.15)`}
-                  borderRadius={radius.md}
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  cursor="pointer"
-                  backdropFilter="blur(16px)"
-                  transition={transitions.base}
-                  _hover={{
-                    bg: colors.accent.indigo,
-                    borderColor: colors.accent.indigo,
-                    transform: "translateY(-1px)",
-                  }}
+                <button
+                  className="w-14 h-14 shrink-0 bg-white/10 border border-white/15 rounded-sm flex items-center justify-center cursor-pointer backdrop-blur-lg transition-all hover:bg-[#00FF41] hover:border-[#00FF41] hover:-translate-y-px"
                   onClick={handlePaySearch}
                 >
                   <ArrowUpRightIcon size={20} color="white" />
-                </Box>
-              </HStack>
-              <Text
-                fontSize="11px"
-                color="rgba(255, 255, 255, 0.5)"
-                letterSpacing="0.05em"
-                fontFamily={typography.fontFamily.mono}
-                textAlign="left"
-                w="100%"
-              >
+                </button>
+              </div>
+              <p className="text-[11px] font-mono text-white/50 tracking-[0.05em] text-left w-full">
                 ENTER A USERNAME TO PAY
-              </Text>
-            </VStack>
-          </Box>
+              </p>
+            </div>
+          </div>
 
           {/* Right Side: Privacy Swap */}
-          <Box flex="1" display="flex" flexDirection="column" gap="24px" alignItems="flex-end" justifyContent="center" textAlign="right">
-            <Box className="fade-up d3">
-              <Text
-                fontFamily="var(--font-instrument-serif), serif"
-                fontSize="72px"
-                color="white"
-                lineHeight="1.1"
-                letterSpacing="-0.03em"
-                mb="16px"
+          <div className="flex-1 flex flex-col gap-6 items-end justify-center text-right">
+            <div className="fade-up d3">
+              <p
+                className="text-[72px] text-white leading-[1.1] tracking-[-0.03em] mb-4"
+                style={{ fontFamily: "var(--font-instrument-serif), serif" }}
               >
                 Privacy<br />Swap
-              </Text>
-              <Text fontSize="16px" color="rgba(255,255,255,0.7)" maxW="320px" lineHeight="1.6" ml="auto">
+              </p>
+              <p className="text-base text-white/70 max-w-[320px] leading-relaxed ml-auto">
                 Swap tokens anonymously without leaving a trace.
-              </Text>
-            </Box>
+              </p>
+            </div>
 
-            {/* Placeholder for Swap Action */}
-            <Box
-              className="fade-up d4"
-              px="24px"
-              py="12px"
-              borderRadius={radius.full}
-              border="1px solid rgba(255,255,255,0.15)"
-              bg="rgba(255,255,255,0.05)"
-              backdropFilter="blur(8px)"
-            >
-              <Text fontSize="13px" color="rgba(255,255,255,0.6)" fontFamily={typography.fontFamily.mono}>
-                COMING SOON
-              </Text>
-            </Box>
-          </Box>
+            {/* Coming Soon pill */}
+            <div className="fade-up d4 px-6 py-3 rounded-full border border-white/15 bg-white/5 backdrop-blur-md">
+              <p className="text-[13px] font-mono text-white/60 tracking-[0.1em]">
+                COMING_SOON
+              </p>
+            </div>
+          </div>
 
-        </Box>
+        </div>
 
-        {/* Footer Placeholder */}
-        <Box
-          position="absolute"
-          bottom="20px"
-          left="0"
-          w="100%"
-          textAlign="center"
-          zIndex={10}
-          pointerEvents="none"
-        >
-          <Text color="rgba(255,255,255,0.5)" fontSize="11px">
-            © 2026 Dust Protocol. All rights reserved.
-          </Text>
-        </Box>
+        {/* Footer */}
+        <div className="absolute bottom-5 left-0 w-full text-center z-10 pointer-events-none">
+          <p className="text-white/50 text-[11px] font-mono">
+            &copy; 2026 Dust Protocol. All rights reserved.
+          </p>
+        </div>
 
-      </Box >
+      </div>
     </>
   );
 }
