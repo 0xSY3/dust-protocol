@@ -14,11 +14,12 @@
 
 import { useState, useCallback } from 'react'
 import { useAccount, usePublicClient, useWalletClient, useChainId } from 'wagmi'
-import { type Address, type Hash, encodeAbiParameters, parseAbiParameters } from 'viem'
+import { type Address, type Hash, encodeAbiParameters, parseAbiParameters, decodeErrorResult, encodeFunctionData } from 'viem'
 import {
   getDustSwapPoolKey,
   DUST_SWAP_POOL_ABI,
   POOL_HELPER_ABI,
+  SWAP_ERROR_ABI,
   getSwapDirection,
   type PoolKey,
 } from '@/lib/swap/contracts'
@@ -91,6 +92,128 @@ function encodeHookData(
 function toBytes32(n: bigint): `0x${string}` {
   return `0x${n.toString(16).padStart(64, '0')}`
 }
+
+/**
+ * Human-readable messages for known hook errors
+ */
+const HOOK_ERROR_MESSAGES: Record<string, string> = {
+  InvalidMerkleRoot: 'Merkle root not recognized by pool. The pool may need re-syncing.',
+  InvalidProof: 'ZK proof verification failed on-chain.',
+  NullifierAlreadyUsed: 'This deposit note has already been used.',
+  InvalidRecipient: 'Invalid recipient address.',
+  InvalidRelayerFee: 'Relayer fee exceeds maximum allowed.',
+  UnauthorizedRelayer: 'Relayer is not authorized.',
+  SwapAmountTooLow: 'Output amount too low (excessive slippage).',
+  InvalidMinimumOutput: 'Minimum output amount is zero.',
+  SwapNotInitialized: 'Swap pool not initialized.',
+  NotPoolManager: 'Hook called by wrong address (deployment misconfiguration).',
+  Unauthorized: 'Caller not authorized for this operation.',
+  HookNotImplemented: 'Hook callback not implemented.',
+}
+
+/**
+ * Decode swap simulation errors, unwrapping Uniswap V4 WrappedError(0x90bfb865)
+ *
+ * Viem wraps contract reverts in ContractFunctionExecutionError → cause chain.
+ * We walk the cause chain to find the raw revert data, decode WrappedError,
+ * then decode the inner hook error.
+ */
+function decodeSwapError(simErr: unknown): Error {
+  const simMsg = simErr instanceof Error ? simErr.message : String(simErr)
+  console.error('[DustSwap] decodeSwapError called with:', simMsg)
+  if (simErr instanceof Error && (simErr as any).data) console.error('[DustSwap] Error data property:', (simErr as any).data)
+
+
+  // Walk the error cause chain to find the raw revert data
+  let rawData: `0x${string}` | null = null
+  let current: any = simErr
+
+  while (current) {
+    // viem's ContractFunctionRevertedError stores revert data in .data
+    if (current.data && typeof current.data === 'string' && current.data.startsWith('0x') && current.data.length > 10) {
+      rawData = current.data as `0x${string}`
+      break
+    }
+    // Some viem versions use .cause.data or nested .error
+    current = current.cause || current.error || null
+  }
+
+  // Fallback: extract long hex sequences from the message (the full ABI-encoded revert)
+  if (!rawData) {
+    // Match hex strings that are at least 10 chars (4-byte selector + some data)
+    const hexMatches = simMsg.match(/0x[0-9a-fA-F]{8,}/g)
+    if (hexMatches) {
+      // Use the longest hex string (most likely the full revert data)
+      rawData = hexMatches.sort((a, b) => b.length - a.length)[0] as `0x${string}`
+    }
+  }
+
+  if (rawData && rawData.length >= 10) {
+    console.log('[DustSwap] Raw revert data found:', rawData.slice(0, 66) + '...')
+
+    try {
+      // Try decoding as WrappedError first
+      console.log('[DustSwap] Decoding with ABI length:', SWAP_ERROR_ABI.length)
+      console.log('[DustSwap] ABI error names:', SWAP_ERROR_ABI.map((e: any) => e.name).join(', '))
+      const decoded = decodeErrorResult({
+        abi: SWAP_ERROR_ABI,
+        data: rawData,
+      })
+
+      if (decoded.errorName === 'WrappedError') {
+        const [target, selector, reason] = decoded.args as [string, string, string, string]
+        console.log('[DustSwap] WrappedError decoded:', { target, selector, reason })
+
+        let innerError: string | null = null
+
+        // Decode the inner reason against hook error ABI
+        if (reason && reason !== '0x' && reason.length >= 10) {
+          try {
+            const innerDecoded = decodeErrorResult({
+              abi: SWAP_ERROR_ABI,
+              data: reason as `0x${string}`,
+            })
+            innerError = HOOK_ERROR_MESSAGES[innerDecoded.errorName]
+              || `Hook error: ${innerDecoded.errorName}`
+          } catch {
+            // Failed to decode reason - fall through to selector check
+          }
+        }
+
+        if (innerError) {
+          return new Error(`Swap failed: ${innerError}`)
+        }
+
+        // Handle specific unknown selectors
+        if (selector === '0x575e24b4') {
+          return new Error('Swap failed: Proof Verification Failed (Verifier Rejected)')
+        }
+
+        return new Error(`Swap failed: Hook reverted (selector: ${selector})`)
+      }
+
+      // Not WrappedError — check if it's a direct hook error
+      const message = HOOK_ERROR_MESSAGES[decoded.errorName]
+      if (message) {
+        return new Error(`Swap failed: ${message}`)
+      }
+      return new Error(`Swap failed: ${decoded.errorName}`)
+    } catch {
+      // Raw data didn't decode as any known error — log for debugging
+      console.log('[DustSwap] Could not decode revert data:', rawData.slice(0, 66))
+    }
+  }
+
+  // Fallback: string matching for error names in the message
+  for (const [errorName, message] of Object.entries(HOOK_ERROR_MESSAGES)) {
+    if (simMsg.includes(errorName)) {
+      return new Error(`Swap failed: ${message}`)
+    }
+  }
+
+  return new Error(`Swap simulation failed: ${simMsg.slice(0, 300)}`)
+}
+
 
 interface UseDustSwapOptions {
   chainId?: number
@@ -182,6 +305,102 @@ export function useDustSwap(options?: UseDustSwapOptions) {
         )
         const hookData = encodeHookData(contractProof)
 
+        // Step 5.5: Pre-swap diagnostics — verify on-chain state before submitting
+        // This catches InvalidMerkleRoot / NullifierAlreadyUsed / InvalidProof early
+        // with clear messages instead of opaque WrappedError reverts
+        {
+          const poolKey = params.poolKey || getDustSwapPoolKey(chainId)
+          const { zeroForOne } = getSwapDirection(params.fromToken, params.toToken, poolKey)
+
+          // Select the correct pool (same logic as DustSwapHook.sol line 147)
+          const poolAddress = zeroForOne
+            ? contracts.dustSwapPoolETH as Address
+            : contracts.dustSwapPoolUSDC as Address
+
+          if (!poolAddress) throw new Error('DustSwapPool not configured for this chain')
+
+          const rootHex = `0x${contractProof.pubSignals[0].toString(16).padStart(64, '0')}` as `0x${string}`
+          const nullifierHex = `0x${contractProof.pubSignals[1].toString(16).padStart(64, '0')}` as `0x${string}`
+
+          console.log('[DustSwap] Pre-swap diagnostics:', {
+            pool: zeroForOne ? 'ETH' : 'USDC',
+            poolAddress,
+            merkleRoot: rootHex,
+            nullifierHash: nullifierHex,
+            recipient: `0x${contractProof.pubSignals[2].toString(16)}`,
+            relayer: `0x${contractProof.pubSignals[3].toString(16)}`,
+            relayerFee: contractProof.pubSignals[4].toString(),
+            swapAmountOut: contractProof.pubSignals[5].toString(),
+            depositAmount: depositNote.amount.toString(),
+          })
+
+          // Check 1: Is the Merkle root known on-chain?
+          const isRootKnown = await publicClient.readContract({
+            address: poolAddress,
+            abi: DUST_SWAP_POOL_ABI,
+            functionName: 'isKnownRoot',
+            args: [rootHex],
+          })
+
+          if (!isRootKnown) {
+            // Also check what root the chain currently has
+            const onChainRoot = await publicClient.readContract({
+              address: poolAddress,
+              abi: DUST_SWAP_POOL_ABI,
+              functionName: 'getLastRoot',
+            })
+            const depositCount = await publicClient.readContract({
+              address: poolAddress,
+              abi: DUST_SWAP_POOL_ABI,
+              functionName: 'getDepositCount',
+            })
+            console.error('[DustSwap] ROOT MISMATCH:', {
+              clientRoot: rootHex,
+              onChainRoot,
+              depositCount,
+            })
+            throw new Error(
+              `Merkle root not recognized by pool. Client root: ${rootHex.slice(0, 18)}... ` +
+              `On-chain root: ${(onChainRoot as string).slice(0, 18)}... ` +
+              `(${depositCount} deposits). Try re-syncing the Merkle tree.`
+            )
+          }
+          console.log('[DustSwap] ✅ Merkle root is known on-chain')
+
+          // Check 2: Is the nullifier already spent?
+          const isNullifierSpent = await publicClient.readContract({
+            address: poolAddress,
+            abi: DUST_SWAP_POOL_ABI,
+            functionName: 'isSpent',
+            args: [nullifierHex],
+          })
+
+          if (isNullifierSpent) {
+            throw new Error('This deposit note has already been used (nullifier is spent on-chain)')
+          }
+          console.log('[DustSwap] ✅ Nullifier not yet spent')
+
+          // Check 3: Verify proof locally before submitting
+          try {
+            const { verifyProofLocally } = await import('@/lib/swap/zk/proof')
+            const isProofValid = await verifyProofLocally(proofResult.proof, proofResult.publicSignals)
+            if (!isProofValid) {
+              console.error('[DustSwap] LOCAL PROOF VERIFICATION FAILED')
+              throw new Error(
+                'ZK proof failed local verification. The proof may be invalid or the circuit/keys may be mismatched. ' +
+                'Check that /circuits/verification_key.json matches the deployed verifier.'
+              )
+            }
+            console.log('[DustSwap] ✅ Proof verified locally')
+          } catch (verifyErr) {
+            if (verifyErr instanceof Error && verifyErr.message.includes('ZK proof failed')) {
+              throw verifyErr
+            }
+            // If local verification fails to load, warn but continue
+            console.warn('[DustSwap] Could not verify proof locally (non-fatal):', verifyErr)
+          }
+        }
+
         // Step 6: Execute swap through PoolHelper (SINGLE SIGNATURE)
         setState('submitting')
 
@@ -199,7 +418,7 @@ export function useDustSwap(options?: UseDustSwapOptions) {
 
         const swapArgs = {
           address: poolHelperAddress,
-          abi: POOL_HELPER_ABI,
+          abi: [...POOL_HELPER_ABI, ...SWAP_ERROR_ABI],
           functionName: 'swap' as const,
           args: [
             poolKey,
@@ -221,25 +440,24 @@ export function useDustSwap(options?: UseDustSwapOptions) {
           gas: BigInt(500_000),
         }
 
-        // Pre-flight simulation: catch reverts with a clear error before MetaMask opens
+        // Pre-flight simulation: use raw call to capture revert data
+        // simulateContract fails to decode 0x90bfb865 (WrappedError) properly
         try {
-          await publicClient.simulateContract(swapArgs)
+          const callData = encodeFunctionData({
+            abi: swapArgs.abi,
+            functionName: swapArgs.functionName,
+            args: swapArgs.args
+          })
+
+          await publicClient.call({
+            account: address,
+            to: swapArgs.address,
+            data: callData,
+            value: zeroForOne ? BigInt(depositNote.amount) : 0n,
+            gas: swapArgs.gas
+          })
         } catch (simErr) {
-          const simMsg = simErr instanceof Error ? simErr.message : String(simErr)
-          // Extract useful revert reason if available
-          if (simMsg.includes('InvalidMerkleRoot')) {
-            throw new Error('Swap failed: Merkle root not recognized by pool. The pool may need re-syncing.')
-          } else if (simMsg.includes('NullifierAlreadyUsed')) {
-            throw new Error('Swap failed: This deposit note has already been used.')
-          } else if (simMsg.includes('InvalidProof')) {
-            throw new Error('Swap failed: ZK proof verification failed on-chain.')
-          } else if (simMsg.includes('InvalidRecipient')) {
-            throw new Error('Swap failed: Invalid recipient address.')
-          } else if (simMsg.includes('SwapAmountTooLow')) {
-            throw new Error('Swap failed: Output amount too low (excessive slippage).')
-          } else {
-            throw new Error(`Swap simulation failed: ${simMsg.slice(0, 200)}`)
-          }
+          throw decodeSwapError(simErr)
         }
 
         const hash = await walletClient.writeContract(swapArgs)

@@ -4,7 +4,7 @@
  */
 
 import { groth16 } from 'snarkjs'
-import type { Address } from 'viem'
+import { type Address, encodeAbiParameters, parseAbiParameters } from 'viem'
 import type { DepositNote, MerkleProof, Groth16Proof, ContractProof } from './commitment'
 import { formatProofForCircuit } from './merkle'
 import type { WorkerResponse } from './proof.worker'
@@ -281,10 +281,17 @@ export async function generateProofForRelayer(
  * Uses viem's encodeAbiParameters for proper ABI encoding
  */
 export function encodeProofAsHookData(contractProof: ContractProof): `0x${string}` {
-  // This should use ABI encoding in production
-  // For now, using JSON encoding as placeholder
-  const encoded = JSON.stringify(contractProof)
-  return `0x${Buffer.from(encoded).toString('hex')}`
+  // ABI-encode matching DustSwapHook.sol's abi.decode:
+  // (uint256[2] pA, uint256[2][2] pB, uint256[2] pC, uint256[8] pubSignals)
+  const pA = contractProof.pA.map(BigInt) as [bigint, bigint]
+  const pB = contractProof.pB.map((row) => row.map(BigInt) as [bigint, bigint]) as [[bigint, bigint], [bigint, bigint]]
+  const pC = contractProof.pC.map(BigInt) as [bigint, bigint]
+  const pubSignals = contractProof.pubSignals.map(BigInt) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint]
+
+  return encodeAbiParameters(
+    parseAbiParameters('uint256[2], uint256[2][2], uint256[2], uint256[8]'),
+    [pA, pB, pC, pubSignals]
+  )
 }
 
 /**

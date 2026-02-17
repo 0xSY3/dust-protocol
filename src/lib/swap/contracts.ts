@@ -80,13 +80,6 @@ export const DUST_SWAP_POOL_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
-  {
-    inputs: [{ name: 'root', type: 'bytes32' }],
-    name: 'addKnownRoot',
-    outputs: [],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
 ] as const
 
 // ─── PoolHelper ABI ──────────────────────────────────────────────────────────
@@ -130,6 +123,42 @@ export const POOL_HELPER_ABI = [
     stateMutability: 'payable',
     type: 'function',
   },
+] as const
+
+// ─── Swap Error ABIs (WrappedError + Hook custom errors) ─────────────────────
+// Uniswap V4 wraps inner reverts in WrappedError(0x90bfb865).
+// We include hook errors so viem can decode the nested reason.
+
+export const SWAP_ERROR_ABI = [
+  // Uniswap V4 PoolManager WrappedError — wraps reverts from hooks
+  {
+    inputs: [
+      { name: 'target', type: 'address' },
+      { name: 'selector', type: 'bytes4' },
+      { name: 'reason', type: 'bytes' },
+      { name: 'details', type: 'bytes' },
+    ],
+    name: 'WrappedError',
+    type: 'error',
+  },
+  // DustSwapHook custom errors
+  { inputs: [], name: 'HookNotImplemented', type: 'error' },
+  { inputs: [], name: 'NotPoolManager', type: 'error' },
+  { inputs: [], name: 'InvalidProof', type: 'error' },
+  { inputs: [], name: 'InvalidMerkleRoot', type: 'error' },
+  { inputs: [], name: 'NullifierAlreadyUsed', type: 'error' },
+  { inputs: [], name: 'InvalidRecipient', type: 'error' },
+  { inputs: [], name: 'InvalidRelayerFee', type: 'error' },
+  { inputs: [], name: 'UnauthorizedRelayer', type: 'error' },
+  { inputs: [], name: 'SwapNotInitialized', type: 'error' },
+  { inputs: [], name: 'Unauthorized', type: 'error' },
+  { inputs: [], name: 'InvalidMinimumOutput', type: 'error' },
+  { inputs: [], name: 'SwapAmountTooLow', type: 'error' },
+  // DustSwapPool custom errors
+  { inputs: [], name: 'InvalidCommitment', type: 'error' },
+  { inputs: [], name: 'CommitmentAlreadyExists', type: 'error' },
+  { inputs: [], name: 'ZeroDeposit', type: 'error' },
+  { inputs: [], name: 'ReentrancyGuardReentrantCall', type: 'error' },
 ] as const
 
 // ─── ERC20 ABI ──────────────────────────────────────────────────────────────
