@@ -9,7 +9,7 @@
 
 import { useState, useCallback } from 'react'
 import { useAccount, usePublicClient, useWalletClient, useChainId } from 'wagmi'
-import { type Address, type Hash, parseEventLogs } from 'viem'
+import { type Address, type Hash, parseEventLogs, publicActions } from 'viem'
 import {
   DUST_SWAP_POOL_ABI,
   getERC20Config,
@@ -181,9 +181,12 @@ export function useDustSwapPool(chainIdParam?: number) {
             const approveTxHash = await approveToken(tokenAddress, poolAddress, amount)
             if (!approveTxHash) throw new Error('Approval transaction was not submitted')
 
-            const approvalReceipt = await publicClient.waitForTransactionReceipt({
+            // Poll receipt via wallet's transport (MetaMask's RPC) to avoid
+            // RPC mismatch with publicClient's fallback RPCs
+            const walletPublicApproval = walletClient.extend(publicActions)
+            const approvalReceipt = await walletPublicApproval.waitForTransactionReceipt({
               hash: approveTxHash,
-              timeout: 120_000, // 120s for Sepolia testnet
+              timeout: 120_000,
             })
 
             if (approvalReceipt.status === 'reverted') {
@@ -238,10 +241,12 @@ export function useDustSwapPool(chainIdParam?: number) {
         }
 
         // 4. Wait for confirmation
+        // Poll receipt via wallet's transport to match the RPC that submitted the tx
         setState('confirming')
-        const receipt = await publicClient.waitForTransactionReceipt({
+        const walletPublicDeposit = walletClient.extend(publicActions)
+        const receipt = await walletPublicDeposit.waitForTransactionReceipt({
           hash,
-          timeout: 120_000, // 120s for Sepolia testnet
+          timeout: 120_000,
         })
 
         if (receipt.status === 'reverted') {

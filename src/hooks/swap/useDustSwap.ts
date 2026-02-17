@@ -14,7 +14,7 @@
 
 import { useState, useCallback } from 'react'
 import { useAccount, usePublicClient, useWalletClient, useChainId } from 'wagmi'
-import { type Address, type Hash, encodeAbiParameters, parseAbiParameters, decodeErrorResult, encodeFunctionData } from 'viem'
+import { type Address, type Hash, encodeAbiParameters, parseAbiParameters, decodeErrorResult, encodeFunctionData, publicActions } from 'viem'
 import {
   getDustSwapPoolKey,
   DUST_SWAP_POOL_ABI,
@@ -24,6 +24,7 @@ import {
   type PoolKey,
 } from '@/lib/swap/contracts'
 import { getSwapContracts } from '@/lib/swap/constants'
+import { getChainConfig } from '@/config/chains'
 import { type SwapParams as ZKSwapParams } from '@/lib/swap/zk'
 import { useSwapZKProof } from './useSwapZKProof'
 import { useSwapMerkleTree } from './useSwapMerkleTree'
@@ -463,11 +464,16 @@ export function useDustSwap(options?: UseDustSwapOptions) {
         const hash = await walletClient.writeContract(swapArgs)
 
         // Step 7: Wait for confirmation
+        // Use walletClient's transport (MetaMask's RPC) to poll for receipt.
+        // This avoids the RPC mismatch where publicClient polls different RPCs
+        // (dRPC/1RPC/Tenderly) that may not have seen the tx submitted via MetaMask (Infura).
         setState('confirming')
+        setTxHash(hash)
 
-        const receipt = await publicClient.waitForTransactionReceipt({
+        const walletPublic = walletClient.extend(publicActions)
+        const receipt = await walletPublic.waitForTransactionReceipt({
           hash,
-          timeout: 120_000, // 120s for Sepolia testnet
+          timeout: 120_000,
         })
 
         if (receipt.status === 'reverted') {
@@ -480,7 +486,6 @@ export function useDustSwap(options?: UseDustSwapOptions) {
         }
 
         setState('success')
-        setTxHash(hash)
 
         return {
           hash,
@@ -489,6 +494,21 @@ export function useDustSwap(options?: UseDustSwapOptions) {
           gasUsed: receipt.gasUsed,
         }
       } catch (err) {
+        // Detect receipt timeout — tx was submitted but confirmation timed out.
+        // Don't mark note as spent since we don't know the tx outcome.
+        const isReceiptTimeout =
+          err instanceof Error &&
+          (err.name === 'TransactionReceiptNotFoundError' ||
+           err.message.includes('could not be found'))
+
+        if (isReceiptTimeout && txHash) {
+          const explorerUrl = getChainConfig(chainId)?.blockExplorerUrl
+          const txLink = explorerUrl ? `${explorerUrl}/tx/${txHash}` : txHash
+          setError(`Transaction submitted but confirmation timed out. Check status: ${txLink}`)
+          setState('error')
+          return null
+        }
+
         const message = err instanceof Error ? err.message : 'Swap failed'
         setError(message)
         setState('error')
