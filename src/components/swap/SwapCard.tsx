@@ -1,10 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
 import { type Address } from "viem";
 import { useSwitchChain } from "wagmi";
-import { colors, radius, shadows, glass, buttonVariants, transitions, typography } from "@/lib/design/tokens";
 import { SUPPORTED_TOKENS, RELAYER_FEE_BPS, DEFAULT_SLIPPAGE_MULTIPLIER, type SwapToken, isSwapSupported } from "@/lib/swap/constants";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,8 +12,9 @@ import { TokenInput } from "./TokenInput";
 import { TokenSelector } from "./TokenSelector";
 import { SwapExecuteModal, type SwapStep } from "./SwapExecuteModal";
 import { DepositModal } from "./DepositModal";
-import { LockIcon, ShieldIcon, AlertCircleIcon, ExternalLinkIcon } from "@/components/stealth/icons";
-import { getExplorerBase } from "@/lib/design/tokens";
+import { AlertCircleIcon } from "@/components/stealth/icons";
+import { NoteSelector } from "./NoteSelector";
+import { type StoredSwapNote } from "@/lib/swap/storage/swap-notes";
 
 type SwapState = "idle" | SwapStep;
 
@@ -111,7 +110,7 @@ export function SwapCard() {
   const [showSwapModal, setShowSwapModal] = useState(false);
   const [completedStealthAddress, setCompletedStealthAddress] = useState<string | null>(null);
 
-  // Note selector state
+  // Note selector state — switched from index to object for NoteSelector compatibility
   const [selectedNoteIndex, setSelectedNoteIndex] = useState(0);
   const [showNoteSelector, setShowNoteSelector] = useState(false);
 
@@ -167,6 +166,9 @@ export function SwapCard() {
   const totalNotesBalance = availableNotes.reduce((acc, note) => {
     return acc + Number(note.amount) / Math.pow(10, fromToken.decimals);
   }, 0);
+
+  // Derive selected note object from index (for NoteSelector compatibility)
+  const selectedNote: StoredSwapNote | null = availableNotes[selectedNoteIndex] ?? null;
 
   const canSwap =
     isConnected &&
@@ -259,6 +261,12 @@ export function SwapCard() {
     }
   };
 
+  // Handle note selection from NoteSelector component (object → index)
+  const handleNoteSelect = useCallback((note: StoredSwapNote) => {
+    const idx = availableNotes.findIndex((n) => n.id === note.id && n.id !== undefined);
+    if (idx !== -1) setSelectedNoteIndex(idx);
+  }, [availableNotes]);
+
   const resetSwapState = useCallback(() => {
     resetDustSwap();
     setCompletedStealthAddress(null);
@@ -289,8 +297,8 @@ export function SwapCard() {
   const handleSwap = useCallback(async () => {
     if (!canSwap) return;
 
-    const selectedNote = availableNotes[selectedNoteIndex];
-    if (!selectedNote || selectedNote.id === undefined) return;
+    const selectedNoteObj = availableNotes[selectedNoteIndex];
+    if (!selectedNoteObj || selectedNoteObj.id === undefined) return;
 
     const recipient = selectedClaimAddress?.address;
     if (!recipient) return;
@@ -307,7 +315,7 @@ export function SwapCard() {
       toToken: toToken.address as Address,
       minAmountOut,
       recipient: recipient as Address,
-      depositNoteId: selectedNote.id,
+      depositNoteId: selectedNoteObj.id,
     });
 
     if (result) {
@@ -346,47 +354,35 @@ export function SwapCard() {
 
   return (
     <>
-      <Box w="100%" maxW="480px">
-        {/* Card with gradient border */}
-        <Box
-          p="3px"
-          borderRadius={radius.lg}
-          bg={`linear-gradient(135deg, ${colors.accent.indigoDark} 0%, ${colors.accent.indigo} 50%, ${colors.accent.indigoDark} 100%)`}
-          boxShadow={shadows.card}
-          transition={transitions.smooth}
-          _hover={{ boxShadow: shadows.cardHover }}
-        >
-          <Box
-            bg={colors.bg.cardSolid}
-            borderRadius="17px"
-            p={{ base: "20px", sm: "24px" }}
-          >
-            {/* Header */}
-            <HStack justify="space-between" mb="20px">
-              <Text
-                fontSize="20px"
-                fontWeight={700}
-                color={colors.text.primary}
-                fontFamily={typography.fontFamily.heading}
-                letterSpacing="-0.015em"
-              >
-                Swap
-              </Text>
-              <Box
-                as="button"
-                p="8px"
-                borderRadius={radius.sm}
-                transition={transitions.fast}
-                cursor="pointer"
-                _hover={{ bg: colors.bg.hover }}
+      <div className="w-full max-w-[480px]">
+        {/* Terminal card */}
+        <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm relative overflow-hidden">
+          {/* Corner accents */}
+          <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)]" />
+          <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)]" />
+          <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
+          <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
+
+          <div className="p-5 sm:p-6">
+            {/* Terminal header */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-[#00FF41] animate-pulse" />
+                <span className="text-xs font-mono text-[#00FF41] tracking-widest uppercase">
+                  [ PRIVACY_SWAP ]
+                </span>
+              </div>
+              <button
                 onClick={() => setShowSettings(!showSettings)}
+                className="p-2 rounded-sm hover:bg-[rgba(255,255,255,0.04)] transition-all group"
+                aria-label="Settings"
               >
                 <svg
-                  width="20"
-                  height="20"
+                  width="16"
+                  height="16"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke={showSettings ? colors.accent.indigo : colors.text.muted}
+                  stroke={showSettings ? "#00FF41" : "rgba(255,255,255,0.4)"}
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -394,442 +390,153 @@ export function SwapCard() {
                   <circle cx="12" cy="12" r="3" />
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
                 </svg>
-              </Box>
-            </HStack>
+              </button>
+            </div>
 
             {/* Unsupported Chain Banner */}
             {!swapSupported && isConnected && (
-              <Box
-                mb="16px"
-                p="14px"
-                borderRadius={radius.md}
-                bg="rgba(245,158,11,0.08)"
-                border="1px solid rgba(245,158,11,0.2)"
-              >
-                <VStack gap="12px" align="stretch">
-                  <HStack gap="10px" align="flex-start">
-                    <Box mt="2px">
-                      <AlertCircleIcon size={16} color={colors.accent.amber} />
-                    </Box>
-                    <VStack gap="6px" align="flex-start" flex="1">
-                      <Text fontSize="13px" fontWeight={600} color={colors.accent.amber}>
-                        Privacy Swaps Only Available on Ethereum Sepolia
-                      </Text>
-                      <Text fontSize="12px" color={colors.text.tertiary} lineHeight="1.5">
-                        DustSwap is currently deployed on Ethereum Sepolia testnet. More chains coming soon!
-                      </Text>
-                    </VStack>
-                  </HStack>
-                  <Box
-                    as="button"
-                    w="100%"
-                    py="10px"
-                    borderRadius={radius.sm}
-                    bg="rgba(245,158,11,0.12)"
-                    border="1px solid rgba(245,158,11,0.3)"
-                    cursor="pointer"
-                    transition={transitions.fast}
-                    onClick={() => switchChain?.({ chainId: DEFAULT_CHAIN_ID })}
-                    _hover={{
-                      bg: "rgba(245,158,11,0.18)",
-                      borderColor: "rgba(245,158,11,0.4)",
-                    }}
-                  >
-                    <Text fontSize="13px" fontWeight={600} color={colors.accent.amber}>
-                      Switch to Ethereum Sepolia
-                    </Text>
-                  </Box>
-                </VStack>
-              </Box>
+              <div className="mb-4 p-3 rounded-sm bg-[rgba(255,176,0,0.06)] border border-[rgba(255,176,0,0.2)]">
+                <div className="flex items-start gap-2 mb-3">
+                  <AlertCircleIcon size={14} color="#FFB000" />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-[#FFB000] font-mono">
+                      PRIVACY_SWAPS: CHAIN_UNSUPPORTED
+                    </span>
+                    <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono leading-relaxed">
+                      DustSwap is deployed on Ethereum Sepolia testnet only.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => switchChain?.({ chainId: DEFAULT_CHAIN_ID })}
+                  className="w-full py-2 rounded-sm text-xs font-bold font-mono text-[#FFB000] bg-[rgba(255,176,0,0.08)] border border-[rgba(255,176,0,0.25)] hover:bg-[rgba(255,176,0,0.14)] hover:border-[#FFB000] transition-all tracking-wider"
+                >
+                  SWITCH TO ETHEREUM SEPOLIA
+                </button>
+              </div>
             )}
 
             {/* Pool Error */}
             {treeError && (
-              <Box
-                mb="16px"
-                p="12px"
-                borderRadius={radius.sm}
-                bg="rgba(239,68,68,0.06)"
-                border="1px solid rgba(239,68,68,0.2)"
-              >
-                <VStack gap="8px" align="flex-start">
-                  <HStack gap="8px" fontSize="13px" color="rgb(239,68,68)">
-                    <AlertCircleIcon size={14} />
-                    <Text fontWeight={600}>Pool Sync Failed</Text>
-                  </HStack>
-                  <Text fontSize="12px" color="rgba(255,255,255,0.6)" lineHeight="1.5">
-                    {treeErrorMessage || "Unable to connect to RPC endpoints"}
-                  </Text>
-                  <Box
-                    as="button"
-                    mt="4px"
-                    px="10px"
-                    py="6px"
-                    fontSize="12px"
-                    fontWeight={600}
-                    color={colors.accent.indigo}
-                    bg="rgba(74,117,240,0.08)"
-                    borderRadius={radius.xs}
-                    border="1px solid rgba(74,117,240,0.2)"
-                    cursor="pointer"
-                    transition={transitions.fast}
-                    _hover={{
-                      bg: "rgba(74,117,240,0.12)",
-                      border: "1px solid rgba(74,117,240,0.3)",
-                    }}
-                    onClick={() => forceRefresh()}
-                  >
-                    Retry Connection
-                  </Box>
-                </VStack>
-              </Box>
+              <div className="mb-4 p-3 rounded-sm bg-[rgba(239,68,68,0.06)] border border-[rgba(239,68,68,0.2)]">
+                <div className="flex items-start gap-2 mb-2">
+                  <AlertCircleIcon size={14} color="rgb(239,68,68)" />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-[rgb(239,68,68)] font-mono">POOL_SYNC: FAILED</span>
+                    <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono leading-relaxed">
+                      {treeErrorMessage || "Unable to connect to RPC endpoints"}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => forceRefresh()}
+                  className="px-3 py-1.5 text-[11px] font-bold font-mono text-[#00FF41] bg-[rgba(0,255,65,0.06)] border border-[rgba(0,255,65,0.2)] rounded-sm hover:bg-[rgba(0,255,65,0.1)] hover:border-[#00FF41] transition-all tracking-wider"
+                >
+                  RETRY_CONNECTION
+                </button>
+              </div>
             )}
 
             {/* Pool Loading */}
             {poolLoading && !treeError && (
-              <Box
-                mb="16px"
-                p="12px"
-                borderRadius={radius.sm}
-                bg="rgba(74,117,240,0.06)"
-                border="1px solid rgba(74,117,240,0.15)"
-              >
-                <HStack gap="8px" fontSize="13px" color={colors.accent.indigo}>
-                  <Spinner size="xs" color={colors.accent.indigo} />
-                  <Text>Loading pool...</Text>
-                </HStack>
-              </Box>
+              <div className="mb-4 p-3 rounded-sm bg-[rgba(0,255,65,0.03)] border border-[rgba(0,255,65,0.1)]">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs font-mono text-[rgba(255,255,255,0.5)]">Loading pool...</span>
+                </div>
+              </div>
             )}
 
             {/* Pool Status */}
             {!poolLoading && isInitialized && isPrivacyPool && (
-              <Box
-                mb="16px"
-                p="12px"
-                borderRadius={radius.sm}
-                bg="rgba(74,117,240,0.06)"
-                border="1px solid rgba(74,117,240,0.15)"
-              >
-                <HStack justify="space-between">
-                  <HStack gap="8px">
-                    <Box
-                      w="8px"
-                      h="8px"
-                      borderRadius="50%"
-                      bg={colors.accent.indigo}
-                      animation="pulse 2s infinite"
-                    />
-                    <HStack gap="6px" fontSize="13px" color={colors.accent.indigo}>
-                      <LockIcon size={14} />
-                      <Text fontWeight={600}>
-                        Privacy Pool ({fromToken.symbol} {"\u2192"} {toToken.symbol})
-                      </Text>
-                    </HStack>
-                  </HStack>
+              <div className="mb-4 p-3 rounded-sm bg-[rgba(0,255,65,0.03)] border border-[rgba(0,255,65,0.1)]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-[#00FF41] animate-pulse" />
+                    <span className="text-[11px] font-mono text-[#00FF41] font-bold tracking-wider">
+                      PRIVACY_POOL: {fromToken.symbol} &rarr; {toToken.symbol}
+                    </span>
+                  </div>
                   {leafCount > 0 && (
-                    <Text fontSize="11px" color={colors.text.muted} fontFamily={typography.fontFamily.mono}>
+                    <span className="text-[10px] font-mono text-[rgba(255,255,255,0.3)]">
                       {leafCount} deposits
-                    </Text>
+                    </span>
                   )}
-                </HStack>
-              </Box>
+                </div>
+              </div>
             )}
 
             {/* Relayer Status */}
             {relayerOnline && !poolLoading && (
-              <Box
-                mb="16px"
-                p="12px"
-                borderRadius={radius.sm}
-                bg="rgba(34,197,94,0.04)"
-                border="1px solid rgba(34,197,94,0.15)"
-              >
-                <HStack justify="space-between" fontSize="12px">
-                  <HStack gap="6px" color={colors.text.muted}>
-                    <Box w="8px" h="8px" borderRadius="50%" bg={colors.accent.green} />
-                    <Text>Relayer Online</Text>
-                  </HStack>
-                  <Text color={colors.text.muted}>
-                    Fee: {relayerFee / 100}%
-                  </Text>
-                </HStack>
-              </Box>
+              <div className="mb-4 p-3 rounded-sm bg-[rgba(0,255,65,0.02)] border border-[rgba(0,255,65,0.08)]">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-[#00FF41]" />
+                    <span className="text-[11px] font-mono text-[rgba(255,255,255,0.4)]">RELAYER: ONLINE</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-[rgba(255,255,255,0.3)]">
+                    FEE: {relayerFee / 100}%
+                  </span>
+                </div>
+              </div>
             )}
 
             {/* Deposit Warning */}
             {isPrivacyPool && availableNotes.length === 0 && isConnected && !poolLoading && swapSupported && (
-              <Box
-                mb="16px"
-                p="12px"
-                borderRadius={radius.sm}
-                bg="rgba(239,68,68,0.06)"
-                border="1px solid rgba(239,68,68,0.15)"
-              >
-                <HStack gap="8px" align="flex-start">
-                  <Box mt="2px" flexShrink={0}>
-                    <AlertCircleIcon size={14} color={colors.accent.red} />
-                  </Box>
-                  <VStack gap="4px" align="flex-start">
-                    <Text fontSize="13px" color={colors.accent.red} fontWeight={600}>
-                      No {fromToken.symbol} Deposit Notes
-                    </Text>
-                    <Text fontSize="12px" color={colors.text.muted}>
-                      You need to{" "}
-                      <Box
-                        as="button"
-                        color={colors.accent.indigo}
-                        fontWeight={600}
-                        cursor="pointer"
-                        _hover={{ textDecoration: "underline" }}
+              <div className="mb-4 p-3 rounded-sm bg-[rgba(239,68,68,0.06)] border border-[rgba(239,68,68,0.15)]">
+                <div className="flex items-start gap-2">
+                  <AlertCircleIcon size={14} color="rgb(239,68,68)" />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-[rgb(239,68,68)] font-mono">
+                      NO_{fromToken.symbol}_DEPOSIT_NOTES
+                    </span>
+                    <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">
+                      Deposit {fromToken.symbol} to the privacy pool first.{" "}
+                      <button
+                        className="text-[#00FF41] underline font-bold hover:opacity-80 transition-opacity"
                         onClick={() => setShowDepositModal(true)}
                       >
-                        deposit {fromToken.symbol}
-                      </Box>{" "}
-                      to the privacy pool first.
-                    </Text>
-                  </VStack>
-                </HStack>
-              </Box>
+                        Deposit now
+                      </button>
+                    </span>
+                  </div>
+                </div>
+              </div>
             )}
 
-            {/* Note Selector */}
+            {/* Note Selector — using NoteSelector component */}
             {isPrivacyPool && availableNotes.length > 0 && !poolLoading && (
-              <Box mb="16px">
-                {/* Selected Note Display / Toggle */}
-                <Box
-                  as="button"
-                  w="100%"
-                  p="12px"
-                  borderRadius={radius.sm}
-                  bg="rgba(74,117,240,0.04)"
-                  border="1px solid rgba(74,117,240,0.12)"
-                  cursor={availableNotes.length > 1 ? "pointer" : "default"}
-                  transition={transitions.fast}
-                  textAlign="left"
-                  onClick={() =>
-                    availableNotes.length > 1 &&
-                    setShowNoteSelector(!showNoteSelector)
-                  }
-                  _hover={
-                    availableNotes.length > 1
-                      ? { borderColor: "rgba(74,117,240,0.25)" }
-                      : {}
-                  }
-                >
-                  <HStack justify="space-between" mb="6px">
-                    <HStack gap="6px" fontSize="11px" color={colors.text.muted}>
-                      {/* FileKey icon */}
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-                        <line x1="12" y1="18" x2="12" y2="12" /><line x1="9" y1="15" x2="15" y2="15" />
-                      </svg>
-                      <Text fontWeight={600}>Using Deposit Note</Text>
-                    </HStack>
-                    <HStack gap="8px">
-                      <Text fontSize="11px" color={colors.text.muted}>
-                        {availableNotes.length} note{availableNotes.length > 1 ? "s" : ""}
-                      </Text>
-                      {availableNotes.length > 1 && (
-                        <Box
-                          transition={transitions.fast}
-                          transform={showNoteSelector ? "rotate(180deg)" : "rotate(0deg)"}
-                        >
-                          {/* ChevronDown icon */}
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={colors.text.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
-                        </Box>
-                      )}
-                    </HStack>
-                  </HStack>
-                  {availableNotes[selectedNoteIndex] && (
-                    <HStack justify="space-between">
-                      <HStack gap="8px">
-                        <Text
-                          fontSize="13px"
-                          fontFamily={typography.fontFamily.mono}
-                          color={colors.accent.green}
-                          fontWeight={600}
-                        >
-                          {(
-                            Number(availableNotes[selectedNoteIndex].amount) /
-                            Math.pow(10, fromToken.decimals)
-                          ).toFixed(4)}{" "}
-                          {fromToken.symbol}
-                        </Text>
-                        {availableNotes[selectedNoteIndex].leafIndex !== undefined && (
-                          <Box
-                            px="6px"
-                            py="2px"
-                            borderRadius={radius.xs}
-                            bg={colors.bg.elevated}
-                            fontSize="10px"
-                            fontFamily={typography.fontFamily.mono}
-                            color={colors.text.muted}
-                          >
-                            Leaf #{availableNotes[selectedNoteIndex].leafIndex}
-                          </Box>
-                        )}
-                      </HStack>
-                      <Text fontSize="10px" color={colors.text.muted}>
-                        {new Date(availableNotes[selectedNoteIndex].createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </Text>
-                    </HStack>
-                  )}
-                  {availableNotes.length > 1 && !showNoteSelector && (
-                    <Text fontSize="10px" color={colors.text.muted} opacity={0.5} mt="4px" px="4px">
-                      One note per swap. Tap to choose a different note.
-                    </Text>
-                  )}
-                </Box>
-
-                {/* Expanded Note List */}
-                {showNoteSelector && availableNotes.length > 1 && (
-                  <Box
-                    mt="4px"
-                    borderRadius={radius.sm}
-                    border="1px solid rgba(74,117,240,0.12)"
-                    bg={colors.bg.cardSolid}
-                    overflow="hidden"
-                  >
-                    <Box
-                      px="12px"
-                      py="8px"
-                      borderBottom={`1px solid ${colors.border.light}`}
-                    >
-                      <Text fontSize="10px" color={colors.text.muted} textTransform="uppercase" letterSpacing="0.05em" fontWeight={600}>
-                        Select a deposit note to swap
-                      </Text>
-                    </Box>
-                    <Box maxH="192px" overflowY="auto">
-                      {availableNotes.map((note, index) => {
-                        const noteAmt =
-                          Number(note.amount) / Math.pow(10, fromToken.decimals);
-                        const isSelected = index === selectedNoteIndex;
-                        return (
-                          <Box
-                            key={note.id ?? index}
-                            as="button"
-                            w="100%"
-                            px="12px"
-                            py="10px"
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="space-between"
-                            bg={isSelected ? "rgba(74,117,240,0.08)" : "transparent"}
-                            transition={transitions.fast}
-                            textAlign="left"
-                            cursor="pointer"
-                            borderBottom={`1px solid ${colors.border.light}`}
-                            _last={{ borderBottom: "none" }}
-                            _hover={{ bg: isSelected ? "rgba(74,117,240,0.1)" : colors.bg.hover }}
-                            onClick={() => {
-                              setSelectedNoteIndex(index);
-                              setShowNoteSelector(false);
-                            }}
-                          >
-                            <HStack gap="10px">
-                              <Box
-                                w="20px"
-                                h="20px"
-                                borderRadius="50%"
-                                display="flex"
-                                alignItems="center"
-                                justifyContent="center"
-                                flexShrink={0}
-                                bg={
-                                  isSelected
-                                    ? "rgba(34,197,94,0.15)"
-                                    : colors.bg.elevated
-                                }
-                              >
-                                {isSelected ? (
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.accent.green} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="20 6 9 17 4 12" />
-                                  </svg>
-                                ) : (
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.text.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-                                  </svg>
-                                )}
-                              </Box>
-                              <VStack gap="0px" align="flex-start">
-                                <HStack gap="8px">
-                                  <Text
-                                    fontSize="13px"
-                                    fontFamily={typography.fontFamily.mono}
-                                    fontWeight={600}
-                                    color={isSelected ? colors.accent.green : colors.text.primary}
-                                  >
-                                    {noteAmt.toFixed(4)} {fromToken.symbol}
-                                  </Text>
-                                  {note.leafIndex !== undefined && (
-                                    <Text
-                                      fontSize="10px"
-                                      fontFamily={typography.fontFamily.mono}
-                                      color={colors.text.muted}
-                                    >
-                                      Leaf #{note.leafIndex}
-                                    </Text>
-                                  )}
-                                </HStack>
-                              </VStack>
-                            </HStack>
-                            <Text fontSize="10px" color={colors.text.muted} flexShrink={0}>
-                              {new Date(note.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                            </Text>
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                    {/* Total Balance Footer */}
-                    <Box
-                      px="12px"
-                      py="8px"
-                      borderTop={`1px solid ${colors.border.light}`}
-                      bg="rgba(255,255,255,0.02)"
-                    >
-                      <VStack gap="2px" align="flex-start">
-                        <Text fontSize="10px" color={colors.text.muted}>
-                          Total:{" "}
-                          <Text as="span" fontFamily={typography.fontFamily.mono} color={colors.accent.indigo}>
-                            {totalNotesBalance.toFixed(fromToken.decimals > 6 ? 4 : 2)} {fromToken.symbol}
-                          </Text>
-                          {" "}across {availableNotes.length} notes
-                        </Text>
-                        <Text fontSize="10px" color={colors.text.muted} opacity={0.6}>
-                          Only one note can be used per swap. Each note is spent in full.
-                        </Text>
-                      </VStack>
-                    </Box>
-                  </Box>
+              <div className="mb-4">
+                <NoteSelector
+                  label={`Select deposit note (${availableNotes.length} available)`}
+                  notes={availableNotes}
+                  selectedNote={selectedNote}
+                  onSelect={handleNoteSelect}
+                />
+                {availableNotes.length > 0 && (
+                  <div className="mt-1.5 flex items-center justify-between px-0.5">
+                    <span className="text-[10px] font-mono text-[rgba(255,255,255,0.25)]">
+                      One note per swap. Each note is spent in full.
+                    </span>
+                    <span className="text-[10px] font-mono text-[rgba(255,255,255,0.25)]">
+                      Total: {totalNotesBalance.toFixed(fromToken.decimals > 6 ? 4 : 2)} {fromToken.symbol}
+                    </span>
+                  </div>
                 )}
-              </Box>
+              </div>
             )}
 
             {/* Error Display */}
             {swapState === "error" && swapError && !showSwapModal && (
-              <Box
-                mb="16px"
-                p="12px"
-                borderRadius={radius.sm}
-                bg="rgba(239,68,68,0.06)"
-                border="1px solid rgba(239,68,68,0.15)"
-              >
-                <HStack gap="8px" align="flex-start">
-                  <Box mt="2px" flexShrink={0}>
-                    <AlertCircleIcon size={14} color={colors.accent.red} />
-                  </Box>
-                  <VStack gap="2px" align="flex-start">
-                    <Text fontSize="13px" color={colors.accent.red} fontWeight={600}>
-                      Swap Failed
-                    </Text>
-                    <Text fontSize="12px" color={colors.text.muted}>
-                      {swapError}
-                    </Text>
-                  </VStack>
-                </HStack>
-              </Box>
+              <div className="mb-4 p-3 rounded-sm bg-[rgba(239,68,68,0.06)] border border-[rgba(239,68,68,0.15)]">
+                <div className="flex items-start gap-2">
+                  <AlertCircleIcon size={14} color="rgb(239,68,68)" />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-[rgb(239,68,68)] font-mono">SWAP: FAILED</span>
+                    <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">{swapError}</span>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* From Token Input */}
@@ -843,37 +550,20 @@ export function SwapCard() {
             />
 
             {/* Swap Direction Button */}
-            <Box display="flex" justifyContent="center" my="-6px" position="relative" zIndex={1}>
-              <Box
-                as="button"
-                p="10px"
-                borderRadius={radius.sm}
-                bg={colors.bg.cardSolid}
-                border={`1px solid ${colors.border.default}`}
-                cursor={isSwapping ? "not-allowed" : "pointer"}
-                transition={transitions.base}
-                transform={`rotate(${arrowRotation}deg)`}
+            <div className="flex justify-center my-[-6px] relative z-10">
+              <button
                 onClick={!isSwapping ? handleFlipTokens : undefined}
-                _hover={
-                  isSwapping
-                    ? {}
-                    : {
-                      borderColor: colors.border.accent,
-                      transform: `rotate(${arrowRotation}deg) scale(1.1)`,
-                    }
-                }
-                _active={
-                  isSwapping
-                    ? {}
-                    : { transform: `rotate(${arrowRotation}deg) scale(0.95)` }
-                }
+                disabled={isSwapping}
+                style={{ transform: `rotate(${arrowRotation}deg)` }}
+                className="p-2.5 rounded-sm bg-[#06080F] border border-[rgba(255,255,255,0.08)] hover:border-[#00FF41] hover:shadow-[0_0_10px_rgba(0,255,65,0.1)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Flip tokens"
               >
                 <svg
-                  width="20"
-                  height="20"
+                  width="18"
+                  height="18"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke={colors.accent.indigo}
+                  stroke="#00FF41"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -881,8 +571,8 @@ export function SwapCard() {
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <polyline points="19 12 12 19 5 12" />
                 </svg>
-              </Box>
-            </Box>
+              </button>
+            </div>
 
             {/* To Token Input */}
             <TokenInput
@@ -896,128 +586,94 @@ export function SwapCard() {
 
             {/* Price Info */}
             {fromAmount && parseFloat(fromAmount) > 0 && !isSwapping && isInitialized && (
-              <Box
-                mt="16px"
-                p="12px"
-                borderRadius={radius.sm}
-                bg="rgba(255,255,255,0.02)"
-                border={`1px solid ${colors.border.light}`}
-              >
-                <VStack gap="8px" align="stretch">
-                  <HStack justify="space-between" fontSize="13px">
-                    <HStack gap="6px" color={colors.text.muted}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <div className="mt-4 p-3 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)]">
+                <div className="flex flex-col gap-2">
+                  {/* Rate */}
+                  <div className="flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-1.5 text-[rgba(255,255,255,0.35)] font-mono">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
                       </svg>
-                      <Text>Rate</Text>
-                    </HStack>
-                    <Text
-                      fontFamily={typography.fontFamily.mono}
-                      color={colors.text.primary}
-                      fontSize="12px"
-                    >
-                      1 {fromToken.symbol} {"\u2248"}{" "}
+                      <span>RATE</span>
+                    </div>
+                    <span className="font-mono text-[rgba(255,255,255,0.7)]">
+                      1 {fromToken.symbol} &asymp;{" "}
                       {exchangeRate > 0
                         ? exchangeRate >= 1
                           ? exchangeRate.toLocaleString(undefined, { maximumFractionDigits: 2 })
                           : exchangeRate.toFixed(6)
                         : "\u2014"}{" "}
                       {toToken.symbol}
-                    </Text>
-                  </HStack>
+                    </span>
+                  </div>
 
-                  <HStack justify="space-between" fontSize="13px">
-                    <HStack gap="6px" color={colors.text.muted}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {/* Price Impact */}
+                  <div className="flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-1.5 text-[rgba(255,255,255,0.35)] font-mono">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="19" y1="5" x2="5" y2="19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" />
                       </svg>
-                      <Text>Price Impact</Text>
-                    </HStack>
-                    <Text
-                      fontFamily={typography.fontFamily.mono}
-                      fontSize="12px"
-                      color={
-                        priceImpact < 1
-                          ? colors.accent.green
-                          : priceImpact < 3
-                            ? colors.accent.cyan
-                            : colors.accent.red
-                      }
+                      <span>IMPACT</span>
+                    </div>
+                    <span
+                      className="font-mono"
+                      style={{
+                        color:
+                          priceImpact < 1
+                            ? "#00FF41"
+                            : priceImpact < 3
+                            ? "#FFB000"
+                            : "rgb(239,68,68)",
+                      }}
                     >
                       {priceImpact.toFixed(2)}%
-                    </Text>
-                  </HStack>
+                    </span>
+                  </div>
 
-                  <HStack justify="space-between" fontSize="13px">
-                    <HStack gap="6px" color={colors.text.muted}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  {/* Min Received */}
+                  <div className="flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-1.5 text-[rgba(255,255,255,0.35)] font-mono">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
                       </svg>
-                      <Text>Min. Received</Text>
-                    </HStack>
-                    <Text
-                      fontFamily={typography.fontFamily.mono}
-                      color={colors.text.primary}
-                      fontSize="12px"
-                    >
+                      <span>MIN_RECEIVED</span>
+                    </div>
+                    <span className="font-mono text-[rgba(255,255,255,0.7)]">
                       {minReceived} {toToken.symbol}
-                    </Text>
-                  </HStack>
-                </VStack>
-              </Box>
+                    </span>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Swap Button */}
-            <Box
-              as="button"
-              w="100%"
-              mt="20px"
-              py="16px"
-              borderRadius={radius.full}
-              bg={
-                buttonDisabled
-                  ? colors.bg.elevated
-                  : buttonVariants.primary.bg
-              }
-              boxShadow={
-                buttonDisabled ? "none" : buttonVariants.primary.boxShadow
-              }
-              cursor={buttonDisabled ? "not-allowed" : "pointer"}
-              opacity={buttonDisabled ? 0.5 : 1}
-              transition={transitions.base}
+            <button
               onClick={
                 swapState === "error"
                   ? resetSwapState
                   : buttonDisabled
-                    ? undefined
-                    : handleSwap
+                  ? undefined
+                  : handleSwap
               }
-              _hover={
-                buttonDisabled
-                  ? {}
-                  : {
-                    boxShadow: buttonVariants.primary.hover.boxShadow,
-                    transform: buttonVariants.primary.hover.transform,
-                  }
-              }
-              _active={
-                buttonDisabled
-                  ? {}
-                  : { transform: buttonVariants.primary.active.transform }
-              }
+              disabled={swapState !== "error" && buttonDisabled}
+              className={`w-full mt-5 py-3 px-4 rounded-sm font-bold font-mono text-sm tracking-wider transition-all
+                ${
+                  swapState !== "error" && buttonDisabled
+                    ? "bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.25)] cursor-not-allowed opacity-50"
+                    : "bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] text-[#00FF41] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] cursor-pointer"
+                }
+              `}
             >
-              <HStack justify="center" gap="8px">
+              <div className="flex items-center justify-center gap-2">
                 {isSwapping && (
-                  <Spinner size="sm" color="#fff" />
+                  <div className="w-4 h-4 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
                 )}
-                <Text fontSize="15px" fontWeight={700} color="#fff">
-                  {getButtonContent()}
-                </Text>
-              </HStack>
-            </Box>
-          </Box>
-        </Box>
-      </Box>
+                <span>{getButtonContent()}</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Token Selector Modal */}
       <TokenSelector
@@ -1051,14 +707,6 @@ export function SwapCard() {
         onRetry={resetSwapState}
         chainId={activeChainId}
       />
-
-      {/* Pulse animation keyframes */}
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-      `}</style>
     </>
   );
 }
