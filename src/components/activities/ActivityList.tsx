@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
-import { colors, radius, glass, buttonVariants, transitions, getExplorerBase } from "@/lib/design/tokens";
+import React, { useState } from "react";
+import { getExplorerBase } from "@/lib/design/tokens";
 import { getChainConfig } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
 import type { StealthPayment, ClaimAddress, OutgoingPayment } from "@/lib/design/types";
@@ -78,54 +77,36 @@ export function ActivityList({
   });
 
   return (
-    <VStack gap="24px" align="stretch">
+    <div className="flex flex-col gap-6">
       {/* Page heading */}
-      <Text fontSize="24px" fontWeight={700} color={colors.text.primary} textAlign="center">
+      <h1 className="text-2xl font-bold text-center text-[rgba(255,255,255,0.92)] font-mono">
         Activities
-      </Text>
+      </h1>
 
       {/* Controls row */}
-      <HStack justify="space-between" align="center" flexWrap="wrap" gap="12px">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Pill tabs */}
-        <HStack gap="8px">
+        <div className="flex gap-2">
           {(["all", "incoming", "outgoing"] as Filter[]).map((f) => (
-            <Box
+            <button
               key={f}
-              as="button"
-              px="16px"
-              py="8px"
-              borderRadius={radius.full}
-              bg={filter === f ? buttonVariants.primary.bg : "transparent"}
-              boxShadow={filter === f ? buttonVariants.primary.boxShadow : "none"}
-              border={filter === f ? "none" : `1px solid ${colors.border.default}`}
-              cursor="pointer"
               onClick={() => setFilter(f)}
-              transition={transitions.fast}
-              _hover={filter !== f ? { bgColor: colors.bg.input } : {}}
+              className={[
+                "px-4 py-2 rounded-full text-[13px] font-mono capitalize transition-all duration-150",
+                filter === f
+                  ? "bg-gradient-to-br from-[#2B5AE2] via-[#4A75F0] to-[#5A6FFF] text-white font-semibold shadow-[0_2px_8px_rgba(43,90,226,0.3),0_0_20px_rgba(43,90,226,0.1)]"
+                  : "bg-transparent border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.30)] hover:bg-[rgba(255,255,255,0.04)]",
+              ].join(" ")}
             >
-              <Text
-                fontSize="13px"
-                fontWeight={filter === f ? 600 : 400}
-                color={filter === f ? "#fff" : colors.text.muted}
-                textTransform="capitalize"
-              >
-                {f}
-              </Text>
-            </Box>
+              {f}
+            </button>
           ))}
-        </HStack>
+        </div>
 
-        <HStack gap="8px">
+        <div className="flex gap-2">
           {/* Export CSV button */}
-          <Box
-            as="button"
-            px="14px"
-            py="8px"
-            borderRadius={radius.full}
-            border={`1px solid ${colors.border.default}`}
-            cursor="pointer"
-            _hover={{ bgColor: colors.bg.input }}
-            display="flex" alignItems="center" gap="6px"
+          <button
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full border border-[rgba(255,255,255,0.08)] text-[13px] font-mono text-[rgba(255,255,255,0.65)] hover:bg-[rgba(255,255,255,0.04)] transition-all duration-150"
             onClick={() => {
               if (filtered.length === 0) return;
               const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
@@ -152,117 +133,134 @@ export function ActivityList({
               URL.revokeObjectURL(url);
             }}
           >
-            <FileTextIcon size={14} color={colors.text.muted} />
-            <Text fontSize="13px" fontWeight={400} color={colors.text.secondary}>Export CSV</Text>
-          </Box>
+            <FileTextIcon size={14} color="rgba(255,255,255,0.30)" />
+            Export CSV
+          </button>
+
           {/* Scan button */}
-          <Box
-            as="button"
-            p="8px"
-            borderRadius={radius.full}
-            border={`1px solid ${colors.border.default}`}
-            cursor="pointer"
-            _hover={{ bgColor: colors.bg.input }}
+          <button
+            className="p-2 rounded-full border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.04)] transition-all duration-150"
             onClick={() => scan()}
           >
-            {isScanning ? <Spinner size="xs" /> : <RefreshIcon size={16} color={colors.text.muted} />}
-          </Box>
-        </HStack>
-      </HStack>
+            {isScanning ? (
+              <svg className="animate-spin w-4 h-4 text-[rgba(255,255,255,0.30)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+            ) : (
+              <RefreshIcon size={16} color="rgba(255,255,255,0.30)" />
+            )}
+          </button>
+        </div>
+      </div>
 
       {/* Sponsored gas banner */}
-      <HStack gap="10px" px="16px" py="10px" bgColor="rgba(43, 90, 226, 0.05)"
-        borderRadius={radius.md} border={`1.5px solid rgba(43, 90, 226, 0.12)`}>
-        <Box w="32px" h="32px" borderRadius={radius.full}
-          bgColor="rgba(43, 90, 226, 0.1)"
-          display="flex" alignItems="center" justifyContent="center" flexShrink={0}>
-          <ZapIcon size={16} color={colors.accent.indigo} />
-        </Box>
-        <VStack align="flex-start" gap="1px">
-          <Text fontSize="13px" fontWeight={600} color={colors.text.primary}>Auto-Claim Enabled</Text>
-          <Text fontSize="11px" color={colors.text.muted}>
+      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-[rgba(43,90,226,0.05)] rounded-md border border-[rgba(43,90,226,0.12)] border-[1.5px]">
+        <div className="w-8 h-8 rounded-full bg-[rgba(43,90,226,0.1)] flex items-center justify-center shrink-0">
+          <ZapIcon size={16} color="#4A75F0" />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[13px] font-semibold text-[rgba(255,255,255,0.92)]">Auto-Claim Enabled</span>
+          <span className="text-[11px] text-[rgba(255,255,255,0.30)]">
             Payments are automatically claimed to your wallet. Gas is sponsored by Dust.
-          </Text>
-        </VStack>
-      </HStack>
+          </span>
+        </div>
+      </div>
 
       {/* Claim address selector */}
       {claimAddressesInitialized && claimAddresses.length > 0 && (
-        <HStack gap="8px" flexWrap="wrap">
-          <Text fontSize="12px" color={colors.text.muted} fontWeight={500}>Claim to:</Text>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[12px] font-medium text-[rgba(255,255,255,0.30)] font-mono">Claim to:</span>
           {claimAddresses.slice(0, 3).map((addr, idx) => (
-            <Box
+            <button
               key={addr.address}
-              as="button"
-              px="12px" py="6px"
-              borderRadius={radius.full}
-              bgColor={selectedIndex === idx ? colors.accent.indigo : "transparent"}
-              border={`1px solid ${selectedIndex === idx ? colors.accent.indigo : colors.border.default}`}
-              cursor="pointer"
               onClick={() => selectAddress(idx)}
+              className={[
+                "px-3 py-1.5 rounded-full text-[11px] font-mono font-medium transition-all duration-150",
+                selectedIndex === idx
+                  ? "bg-[#4A75F0] border border-[#4A75F0] text-white"
+                  : "bg-transparent border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.30)]",
+              ].join(" ")}
             >
-              <Text fontSize="11px" fontWeight={500} color={selectedIndex === idx ? "#fff" : colors.text.muted}>
-                {addr.label || `Wallet ${idx + 1}`}
-              </Text>
-            </Box>
+              {addr.label || `Wallet ${idx + 1}`}
+            </button>
           ))}
-        </HStack>
+        </div>
       )}
 
       {/* Claimed tx success */}
       {claimedTx && (
-        <HStack p="16px 20px" bg={glass.card.bg} backdropFilter={glass.card.backdropFilter} borderRadius={radius.md} border={`2px solid ${colors.accent.indigo}`} gap="14px">
-          <Box w="40px" h="40px" borderRadius={radius.full} bgColor="rgba(43, 90, 226, 0.08)"
-            display="flex" alignItems="center" justifyContent="center" flexShrink={0}>
-            <CheckCircleIcon size={20} color={colors.accent.indigo} />
-          </Box>
-          <VStack align="flex-start" gap="2px" flex={1} minW={0}>
-            <Text fontSize="14px" fontWeight={600} color={colors.text.primary}>
+        <div className="flex items-center gap-3.5 p-4 px-5 bg-[rgba(255,255,255,0.03)] backdrop-blur-md rounded-2xl border-2 border-[#4A75F0]">
+          <div className="w-10 h-10 rounded-full bg-[rgba(43,90,226,0.08)] flex items-center justify-center shrink-0">
+            <CheckCircleIcon size={20} color="#4A75F0" />
+          </div>
+          <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+            <span className="text-[14px] font-semibold text-[rgba(255,255,255,0.92)]">
               Payment Received!
-            </Text>
-            <Text fontSize="11px" color={colors.text.muted} fontFamily="'JetBrains Mono', monospace" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" maxW="100%">
+            </span>
+            <span className="text-[11px] text-[rgba(255,255,255,0.30)] font-mono overflow-hidden text-ellipsis whitespace-nowrap max-w-full">
               {claimedTx}
-            </Text>
-          </VStack>
+            </span>
+          </div>
           <a href={`${explorerBase}/tx/${claimedTx}`} target="_blank" rel="noopener noreferrer">
-            <Box as="button" px="14px" py="7px" borderRadius={radius.full} border={`1px solid ${colors.border.default}`}
-              cursor="pointer" _hover={{ borderColor: colors.accent.indigo }} display="flex" alignItems="center" gap="6px">
-              <ArrowUpRightIcon size={12} color={colors.accent.indigo} />
-              <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>Explorer</Text>
-            </Box>
+            <button className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[rgba(255,255,255,0.08)] hover:border-[#4A75F0] transition-all duration-150 cursor-pointer">
+              <ArrowUpRightIcon size={12} color="#4A75F0" />
+              <span className="text-[12px] text-[#4A75F0] font-medium font-mono">Explorer</span>
+            </button>
           </a>
-        </HStack>
+        </div>
       )}
 
       {/* Activity list */}
       {filtered.length === 0 ? (
-        <Box p="48px" textAlign="center" bg={glass.card.bg} backdropFilter={glass.card.backdropFilter} borderRadius={radius.lg} border={glass.card.border}>
-          <VStack gap="12px">
-            <Text fontSize="15px" fontWeight={500} color={colors.text.primary}>No transactions yet</Text>
-            <Text fontSize="13px" color={colors.text.muted}>
-              {filter === "outgoing" ? "Sent payments will appear here" : filter === "incoming" ? "Received payments will appear here" : "Your payment history will appear here"}
-            </Text>
-          </VStack>
-        </Box>
+        <div className="p-12 text-center bg-[rgba(255,255,255,0.02)] backdrop-blur-sm rounded-xl border border-[rgba(255,255,255,0.06)]">
+          <div className="flex flex-col items-center gap-3">
+            <span className="text-[15px] font-medium text-[rgba(255,255,255,0.92)]">No transactions yet</span>
+            <span className="text-[13px] text-[rgba(255,255,255,0.30)] font-mono">
+              {filter === "outgoing"
+                ? "Sent payments will appear here"
+                : filter === "incoming"
+                ? "Received payments will appear here"
+                : "Your payment history will appear here"}
+            </span>
+          </div>
+        </div>
       ) : (
-        <VStack gap="8px" align="stretch">
+        <div className="flex flex-col gap-2">
           {filtered.map((item) => {
             if (item.type === "incoming") {
-              return <IncomingRow key={item.payment.announcement.txHash} item={item} payments={payments} expandedTx={expandedTx} setExpandedTx={setExpandedTx} handleClaim={handleClaim} claimingIndex={claimingIndex} />;
+              return (
+                <IncomingRow
+                  key={item.payment.announcement.txHash}
+                  item={item}
+                  payments={payments}
+                  expandedTx={expandedTx}
+                  setExpandedTx={setExpandedTx}
+                  handleClaim={handleClaim}
+                  claimingIndex={claimingIndex}
+                />
+              );
             } else {
-              return <OutgoingRow key={item.payment.txHash} item={item} expandedTx={expandedTx} setExpandedTx={setExpandedTx} />;
+              return (
+                <OutgoingRow
+                  key={item.payment.txHash}
+                  item={item}
+                  expandedTx={expandedTx}
+                  setExpandedTx={setExpandedTx}
+                />
+              );
             }
           })}
-        </VStack>
+        </div>
       )}
 
       {scanError && (
-        <HStack p="12px 16px" bgColor="rgba(229, 62, 62, 0.04)" borderRadius={radius.sm} gap="8px">
-          <AlertCircleIcon size={14} color={colors.accent.red} />
-          <Text fontSize="12px" color={colors.accent.red}>{scanError}</Text>
-        </HStack>
+        <div className="flex items-center gap-2 p-3 px-4 bg-[rgba(229,62,62,0.04)] rounded-sm">
+          <AlertCircleIcon size={14} color="#EF4444" />
+          <span className="text-[12px] text-[#EF4444] font-mono">{scanError}</span>
+        </div>
       )}
-    </VStack>
+    </div>
   );
 }
 
@@ -283,80 +281,68 @@ function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, c
   const isExpanded = expandedTx === payment.announcement.txHash;
 
   return (
-    <Box>
-      <HStack
-        p="16px 20px"
-        bg={glass.card.bg}
-        backdropFilter={glass.card.backdropFilter}
-        borderRadius={isExpanded ? `${radius.md} ${radius.md} 0 0` : radius.md}
-        border={glass.card.border}
-        borderBottom={isExpanded ? "none" : glass.card.border}
-        justify="space-between"
-        cursor="pointer"
-        _hover={{ bg: glass.cardHover.bg, border: glass.cardHover.border }}
-        transition={transitions.fast}
+    <div>
+      <div
+        className={[
+          "flex items-center justify-between px-5 py-4 bg-[rgba(255,255,255,0.03)] backdrop-blur-md border border-[rgba(255,255,255,0.06)] cursor-pointer transition-all duration-150",
+          "hover:bg-[rgba(255,255,255,0.05)] hover:border-[rgba(255,255,255,0.1)]",
+          isExpanded ? "rounded-tl-2xl rounded-tr-2xl border-b-0" : "rounded-2xl",
+        ].join(" ")}
         onClick={() => setExpandedTx(isExpanded ? null : payment.announcement.txHash)}
       >
-        <HStack gap="14px">
-          <Box
-            w="42px" h="42px"
-            borderRadius={radius.full}
-            bgColor="rgba(43, 90, 226, 0.08)"
-            display="flex" alignItems="center" justifyContent="center"
-            flexShrink={0}
-          >
-            <ArrowDownLeftIcon size={20} color={colors.accent.indigo} />
-          </Box>
-          <VStack align="flex-start" gap="2px">
-            <Text fontSize="14px" fontWeight={500} color={colors.text.primary}>
+        <div className="flex items-center gap-3.5">
+          <div className="w-[42px] h-[42px] rounded-full bg-[rgba(43,90,226,0.08)] flex items-center justify-center shrink-0">
+            <ArrowDownLeftIcon size={20} color="#4A75F0" />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[14px] font-medium text-[rgba(255,255,255,0.92)]">
               Received from {payment.announcement.caller?.slice(0, 6)}...{payment.announcement.caller?.slice(-4) || "unknown"}
-            </Text>
-            <Text fontSize="12px" color={colors.text.muted}>
+            </span>
+            <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">
               {symbol} &middot; Block #{payment.announcement.blockNumber.toLocaleString()}
-            </Text>
-          </VStack>
-        </HStack>
+            </span>
+          </div>
+        </div>
 
-        <HStack gap="12px">
-          <Text fontSize="15px" fontWeight={600} color={colors.accent.indigo}>
+        <div className="flex items-center gap-3">
+          <span className="text-[15px] font-semibold text-[#4A75F0] font-mono">
             +{displayAmount.toFixed(4)} {symbol}
-          </Text>
-        </HStack>
-      </HStack>
+          </span>
+        </div>
+      </div>
 
       {isExpanded && (
-        <Box p="16px 20px" bg={glass.card.bg} backdropFilter={glass.card.backdropFilter} borderRadius={`0 0 ${radius.md} ${radius.md}`}
-          border={glass.card.border} borderTop="none">
-          <VStack gap="10px" align="stretch">
-            <HStack justify="space-between">
-              <Text fontSize="12px" color={colors.text.muted}>Tx Hash</Text>
-              <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
+        <div className="px-5 py-4 bg-[rgba(255,255,255,0.03)] backdrop-blur-md rounded-bl-2xl rounded-br-2xl border border-[rgba(255,255,255,0.06)] border-t-0">
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">Tx Hash</span>
+              <span className="text-[12px] text-[rgba(255,255,255,0.45)] font-mono">
                 {payment.announcement.txHash.slice(0, 18)}...{payment.announcement.txHash.slice(-10)}
-              </Text>
-            </HStack>
-            <HStack justify="space-between">
-              <Text fontSize="12px" color={colors.text.muted}>Stealth Address</Text>
-              <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">Stealth Address</span>
+              <span className="text-[12px] text-[rgba(255,255,255,0.45)] font-mono">
                 {payment.announcement.stealthAddress.slice(0, 10)}...{payment.announcement.stealthAddress.slice(-8)}
-              </Text>
-            </HStack>
-            <HStack justify="space-between">
-              <Text fontSize="12px" color={colors.text.muted}>Gas</Text>
-              <HStack gap="4px">
-                <ZapIcon size={11} color={colors.accent.indigo} />
-                <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>Sponsored</Text>
-              </HStack>
-            </HStack>
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">Gas</span>
+              <div className="flex items-center gap-1">
+                <ZapIcon size={11} color="#4A75F0" />
+                <span className="text-[12px] text-[#4A75F0] font-medium font-mono">Sponsored</span>
+              </div>
+            </div>
             <a href={`${explorerBase}/tx/${payment.announcement.txHash}`} target="_blank" rel="noopener noreferrer">
-              <HStack gap="5px" mt="4px">
-                <ArrowUpRightIcon size={12} color={colors.accent.indigo} />
-                <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>View on Explorer</Text>
-              </HStack>
+              <div className="flex items-center gap-1.5 mt-1">
+                <ArrowUpRightIcon size={12} color="#4A75F0" />
+                <span className="text-[12px] text-[#4A75F0] font-medium font-mono">View on Explorer</span>
+              </div>
             </a>
-          </VStack>
-        </Box>
+          </div>
+        </div>
       )}
-    </Box>
+    </div>
   );
 }
 
@@ -374,79 +360,67 @@ function OutgoingRow({ item, expandedTx, setExpandedTx }: {
   const timeStr = new Date(payment.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <Box>
-      <HStack
-        p="16px 20px"
-        bg={glass.card.bg}
-        backdropFilter={glass.card.backdropFilter}
-        borderRadius={isExpanded ? `${radius.md} ${radius.md} 0 0` : radius.md}
-        border={glass.card.border}
-        borderBottom={isExpanded ? "none" : glass.card.border}
-        justify="space-between"
-        cursor="pointer"
-        _hover={{ bg: glass.cardHover.bg, border: glass.cardHover.border }}
-        transition={transitions.fast}
+    <div>
+      <div
+        className={[
+          "flex items-center justify-between px-5 py-4 bg-[rgba(255,255,255,0.03)] backdrop-blur-md border border-[rgba(255,255,255,0.06)] cursor-pointer transition-all duration-150",
+          "hover:bg-[rgba(255,255,255,0.05)] hover:border-[rgba(255,255,255,0.1)]",
+          isExpanded ? "rounded-tl-2xl rounded-tr-2xl border-b-0" : "rounded-2xl",
+        ].join(" ")}
         onClick={() => setExpandedTx(isExpanded ? null : payment.txHash)}
       >
-        <HStack gap="14px">
-          <Box
-            w="42px" h="42px"
-            borderRadius={radius.full}
-            bgColor="rgba(229, 62, 62, 0.08)"
-            display="flex" alignItems="center" justifyContent="center"
-            flexShrink={0}
-          >
-            <SendIcon size={20} color={colors.accent.red} />
-          </Box>
-          <VStack align="flex-start" gap="2px">
-            <Text fontSize="14px" fontWeight={500} color={colors.text.primary}>
+        <div className="flex items-center gap-3.5">
+          <div className="w-[42px] h-[42px] rounded-full bg-[rgba(229,62,62,0.08)] flex items-center justify-center shrink-0">
+            <SendIcon size={20} color="#EF4444" />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[14px] font-medium text-[rgba(255,255,255,0.92)]">
               Sent to {payment.to.includes(".tok") ? payment.to : `${payment.to.slice(0, 10)}...`}
-            </Text>
-            <Text fontSize="12px" color={colors.text.muted}>
+            </span>
+            <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">
               {symbol} &middot; {timeStr}
-            </Text>
-          </VStack>
-        </HStack>
+            </span>
+          </div>
+        </div>
 
-        <HStack gap="12px">
-          <Text fontSize="15px" fontWeight={600} color={colors.accent.red}>
+        <div className="flex items-center gap-3">
+          <span className="text-[15px] font-semibold text-[#EF4444] font-mono">
             -{displayAmount.toFixed(4)} {symbol}
-          </Text>
-        </HStack>
-      </HStack>
+          </span>
+        </div>
+      </div>
 
       {isExpanded && (
-        <Box p="16px 20px" bg={glass.card.bg} backdropFilter={glass.card.backdropFilter} borderRadius={`0 0 ${radius.md} ${radius.md}`}
-          border={glass.card.border} borderTop="none">
-          <VStack gap="10px" align="stretch">
-            <HStack justify="space-between">
-              <Text fontSize="12px" color={colors.text.muted}>Tx Hash</Text>
-              <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
+        <div className="px-5 py-4 bg-[rgba(255,255,255,0.03)] backdrop-blur-md rounded-bl-2xl rounded-br-2xl border border-[rgba(255,255,255,0.06)] border-t-0">
+          <div className="flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">Tx Hash</span>
+              <span className="text-[12px] text-[rgba(255,255,255,0.45)] font-mono">
                 {payment.txHash.slice(0, 18)}...{payment.txHash.slice(-10)}
-              </Text>
-            </HStack>
-            <HStack justify="space-between">
-              <Text fontSize="12px" color={colors.text.muted}>Stealth Address</Text>
-              <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">Stealth Address</span>
+              <span className="text-[12px] text-[rgba(255,255,255,0.45)] font-mono">
                 {payment.stealthAddress.slice(0, 10)}...{payment.stealthAddress.slice(-8)}
-              </Text>
-            </HStack>
-            <HStack justify="space-between">
-              <Text fontSize="12px" color={colors.text.muted}>Gas</Text>
-              <HStack gap="4px">
-                <ZapIcon size={11} color={colors.accent.indigo} />
-                <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>Sponsored announcement</Text>
-              </HStack>
-            </HStack>
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">Gas</span>
+              <div className="flex items-center gap-1">
+                <ZapIcon size={11} color="#4A75F0" />
+                <span className="text-[12px] text-[#4A75F0] font-medium font-mono">Sponsored announcement</span>
+              </div>
+            </div>
             <a href={`${explorerBase}/tx/${payment.txHash}`} target="_blank" rel="noopener noreferrer">
-              <HStack gap="5px" mt="4px">
-                <ArrowUpRightIcon size={12} color={colors.accent.indigo} />
-                <Text fontSize="12px" color={colors.accent.indigo} fontWeight={500}>View on Explorer</Text>
-              </HStack>
+              <div className="flex items-center gap-1.5 mt-1">
+                <ArrowUpRightIcon size={12} color="#4A75F0" />
+                <span className="text-[12px] text-[#4A75F0] font-medium font-mono">View on Explorer</span>
+              </div>
             </a>
-          </VStack>
-        </Box>
+          </div>
+        </div>
       )}
-    </Box>
+    </div>
   );
 }

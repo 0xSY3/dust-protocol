@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Box, Text, VStack, HStack } from "@chakra-ui/react";
-import { colors, radius, shadows } from "@/lib/design/tokens";
 import type { OwnedName, PaymentLink } from "@/lib/design/types";
 import {
   LinkIcon, CopyIcon, CheckIcon, QRIcon, EyeIcon, WalletIcon,
@@ -66,75 +64,98 @@ export function LinkCard(props: LinkCardProps) {
 
   return (
     <>
-      <Box
-        p="24px"
-        bgColor={colors.bg.card}
-        borderRadius={radius.lg}
-        border={`2.5px solid ${accentColor}`}
-        boxShadow={shadows.card}
-        cursor="pointer"
-        _hover={{ boxShadow: shadows.cardHover, transform: "translateY(-1px)" }}
-        transition="all 0.2s ease"
+      <div
+        className="p-6 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm cursor-pointer transition-all duration-200 hover:-translate-y-px"
+        style={{
+          borderColor: accentColor,
+          borderWidth: "2.5px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2)",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLDivElement).style.boxShadow =
+            "0 8px 24px rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.05)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLDivElement).style.boxShadow =
+            "0 2px 8px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.2)";
+        }}
         onClick={handleClick}
       >
-        <VStack gap="20px" align="stretch">
-          <HStack justify="space-between" align="flex-start">
+        <div className="flex flex-col gap-5">
+          {/* Header row */}
+          <div className="flex items-start justify-between">
             {emoji ? (
-              <Box w="44px" h="44px" borderRadius={radius.full} bgColor={emojiBg}
-                display="flex" alignItems="center" justifyContent="center" fontSize="22px"
-                boxShadow={`0 3px 10px ${accentColor}40`}>
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center text-[22px]"
+                style={{
+                  backgroundColor: emojiBg,
+                  boxShadow: `0 3px 10px ${accentColor}40`,
+                }}
+              >
                 {emoji}
-              </Box>
+              </div>
             ) : (
-              <Box w="44px" h="44px" borderRadius={radius.full}
-                bg={`linear-gradient(135deg, ${accentColor}1F 0%, ${accentColor}0F 100%)`}
-                display="flex" alignItems="center" justifyContent="center"
-                border={`1.5px solid ${accentColor}26`}>
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center border"
+                style={{
+                  background: `linear-gradient(135deg, ${accentColor}1F 0%, ${accentColor}0F 100%)`,
+                  borderColor: `${accentColor}26`,
+                }}
+              >
                 <LinkIcon size={20} color={accentColor} />
-              </Box>
+              </div>
             )}
-            <VStack align="flex-end" gap="4px">
-              <Box px="10px" py="4px" borderRadius={radius.xs} bgColor={colors.bg.input}>
-                <Text fontSize="11px" fontWeight={600} color={colors.text.tertiary} letterSpacing="0.02em">Simple Payment</Text>
-              </Box>
+
+            <div className="flex flex-col items-end gap-1">
+              <div className="px-2.5 py-1 rounded-sm bg-[rgba(255,255,255,0.04)]">
+                <span className="text-[9px] uppercase tracking-wider font-mono text-[rgba(255,255,255,0.5)]">
+                  Simple Payment
+                </span>
+              </div>
               {views !== undefined && (
-                <HStack gap="10px">
-                  <HStack gap="3px">
-                    <EyeIcon size={12} color={colors.text.muted} />
-                    <Text fontSize="11px" color={colors.text.muted}>{views}</Text>
-                  </HStack>
-                  <HStack gap="3px">
-                    <WalletIcon size={11} color={colors.text.muted} />
-                    <Text fontSize="11px" color={colors.text.muted}>{payments}</Text>
-                  </HStack>
-                </HStack>
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-0.5">
+                    <EyeIcon size={12} color="rgba(255,255,255,0.30)" />
+                    <span className="text-[11px] text-[rgba(255,255,255,0.30)] font-mono">{views}</span>
+                  </div>
+                  <div className="flex items-center gap-0.5">
+                    <WalletIcon size={11} color="rgba(255,255,255,0.30)" />
+                    <span className="text-[11px] text-[rgba(255,255,255,0.30)] font-mono">{payments}</span>
+                  </div>
+                </div>
               )}
-            </VStack>
-          </HStack>
+            </div>
+          </div>
 
-          <Text fontSize="16px" fontWeight={600} color={colors.text.primary}>{title}</Text>
+          {/* Title */}
+          <span className="text-[16px] font-semibold text-[rgba(255,255,255,0.92)] font-mono">{title}</span>
 
-          <HStack justify="space-between" align="center">
-            <HStack gap="8px" flex={1} overflow="hidden">
-              <LinkIcon size={14} color={colors.text.muted} />
-              <Text fontSize="13px" color={colors.text.muted} truncate>{tokName}</Text>
-            </HStack>
-            <HStack gap="2px">
-              <Box as="button" p="7px" borderRadius={radius.full}
-                _hover={{ bgColor: colors.bg.input }} onClick={handleCopy}>
+          {/* Link row */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 flex-1 overflow-hidden">
+              <LinkIcon size={14} color="rgba(255,255,255,0.30)" />
+              <span className="text-[13px] text-[rgba(255,255,255,0.30)] font-mono truncate">{tokName}</span>
+            </div>
+            <div className="flex items-center gap-0.5">
+              <button
+                className="p-1.5 rounded-full hover:bg-[rgba(255,255,255,0.04)] transition-all duration-150"
+                onClick={handleCopy}
+              >
                 {copied
                   ? <CheckIcon size={14} color={accentColor} />
-                  : <CopyIcon size={14} color={colors.text.muted} />
+                  : <CopyIcon size={14} color="rgba(255,255,255,0.30)" />
                 }
-              </Box>
-              <Box as="button" p="7px" borderRadius={radius.full}
-                _hover={{ bgColor: colors.bg.input }} onClick={handleQR}>
-                <QRIcon size={14} color={colors.text.muted} />
-              </Box>
-            </HStack>
-          </HStack>
-        </VStack>
-      </Box>
+              </button>
+              <button
+                className="p-1.5 rounded-full hover:bg-[rgba(255,255,255,0.04)] transition-all duration-150"
+                onClick={handleQR}
+              >
+                <QRIcon size={14} color="rgba(255,255,255,0.30)" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <QRModal
         isOpen={showQR}
