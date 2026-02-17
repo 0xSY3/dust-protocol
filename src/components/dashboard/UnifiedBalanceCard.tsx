@@ -1,10 +1,9 @@
 "use client";
 
-import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
-import { colors, radius, shadows, glass, transitions } from "@/lib/design/tokens";
+import { motion } from "framer-motion";
+import { RefreshCwIcon, EyeOffIcon, CheckIcon } from "lucide-react";
 import { getChainConfig } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
-import { RefreshIcon, ChainIcon } from "@/components/stealth/icons";
 
 interface UnifiedBalanceCardProps {
   total: number;
@@ -29,138 +28,80 @@ export function UnifiedBalanceCard({
   const chainConfig = getChainConfig(activeChainId);
   const symbol = chainConfig.nativeCurrency.symbol;
   const loading = isScanning || isLoading;
-  const hasBalance = total > 0;
-  const stealthPct = hasBalance ? (stealthTotal / total) * 100 : 0;
-  const claimPct = hasBalance ? (claimTotal / total) * 100 : 0;
 
   return (
-    <Box
-      p="3px"
-      borderRadius="20px"
-      bg="linear-gradient(135deg, #2B5AE2 0%, #4A75F0 50%, #2B5AE2 100%)"
-      boxShadow={shadows.card}
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="w-full p-6 rounded-sm border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] backdrop-blur-sm relative overflow-hidden group"
     >
-      <Box p="20px" bg={colors.bg.cardSolid} borderRadius="17px">
-        <VStack gap="16px" align="stretch">
-          {/* Header */}
-          <HStack justify="space-between" align="center">
-            <Text fontSize="14px" fontWeight={700} color={colors.text.primary}>
-              Total Balance
-            </Text>
-            <Box
-              as="button"
-              p="6px"
-              borderRadius={radius.full}
-              cursor="pointer"
-              _hover={{ bgColor: colors.bg.hover }}
-              onClick={onRefresh}
-              transition={transitions.fast}
-            >
-              {loading
-                ? <Spinner size="xs" color={colors.accent.indigo} />
-                : <RefreshIcon size={14} color={colors.text.muted} />
-              }
-            </Box>
-          </HStack>
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center gap-2">
+          <motion.div
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="w-1.5 h-1.5 rounded-full bg-[#00FF41] shadow-[0_0_4px_#00FF41]"
+          />
+          <span className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
+            BALANCE_OVERVIEW
+          </span>
+        </div>
+        <button
+          onClick={onRefresh}
+          className="text-[rgba(255,255,255,0.4)] hover:text-[#00FF41] transition-colors"
+        >
+          <RefreshCwIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+        </button>
+      </div>
 
-          {/* Big balance */}
-          <HStack align="baseline" gap="6px">
-            <Text
-              fontSize="32px"
-              fontWeight={800}
-              color={colors.text.primary}
-              lineHeight="1"
-              letterSpacing="-0.03em"
-            >
-              {total.toFixed(4)}
-            </Text>
-            <Text fontSize="14px" fontWeight={500} color={colors.text.muted}>{symbol}</Text>
-          </HStack>
+      <div className="mb-6">
+        <h2 className="text-3xl font-bold text-white font-mono tracking-tight mb-1">
+          {total.toFixed(4)} {symbol}
+        </h2>
+      </div>
 
-          {/* Breakdown bar + labels */}
-          {hasBalance && (
-            <VStack gap="6px" align="stretch">
-              {/* Segmented bar */}
-              <Box
-                h="6px"
-                borderRadius={radius.full}
-                bg={colors.bg.input}
-                overflow="hidden"
-                display="flex"
-              >
-                {stealthPct > 0 && (
-                  <Box
-                    h="100%"
-                    w={`${stealthPct}%`}
-                    bg={colors.accent.indigo}
-                    transition="width 0.3s ease"
-                  />
-                )}
-                {claimPct > 0 && (
-                  <Box
-                    h="100%"
-                    w={`${claimPct}%`}
-                    bg={colors.accent.indigoBright}
-                    transition="width 0.3s ease"
-                  />
-                )}
-              </Box>
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="p-3 rounded-sm border border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.01)]">
+          <div className="flex items-center gap-1.5 mb-1">
+            <EyeOffIcon className="w-3 h-3 text-[rgba(255,255,255,0.4)]" />
+            <span className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
+              Stealth
+            </span>
+          </div>
+          <span className="text-sm font-bold text-white font-mono">
+            {stealthTotal.toFixed(4)} {symbol}
+          </span>
+        </div>
+        <div className="p-3 rounded-sm border border-[rgba(255,255,255,0.04)] bg-[rgba(255,255,255,0.01)]">
+          <div className="flex items-center gap-1.5 mb-1">
+            <CheckIcon className="w-3 h-3 text-[rgba(255,255,255,0.4)]" />
+            <span className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
+              Claimed
+            </span>
+          </div>
+          <span className="text-sm font-bold text-white font-mono">
+            {claimTotal.toFixed(4)} {symbol}
+          </span>
+        </div>
+      </div>
 
-              {/* Legend */}
-              <HStack gap="12px">
-                {stealthTotal > 0 && (
-                  <HStack gap="5px">
-                    <Box w="6px" h="6px" borderRadius={radius.full} bg={colors.accent.indigo} />
-                    <Text fontSize="11px" color={colors.text.muted}>
-                      {stealthTotal.toFixed(4)} unclaimed
-                    </Text>
-                  </HStack>
-                )}
-                {claimTotal > 0 && (
-                  <HStack gap="5px">
-                    <Box w="6px" h="6px" borderRadius={radius.full} bg={colors.accent.indigoBright} />
-                    <Text fontSize="11px" color={colors.text.muted}>
-                      {claimTotal.toFixed(4)} in wallets
-                    </Text>
-                  </HStack>
-                )}
-              </HStack>
-            </VStack>
-          )}
+      {unclaimedCount > 0 && (
+        <div className="flex justify-center">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[rgba(255,176,0,0.1)] border border-[rgba(255,176,0,0.2)]">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#FFB000] animate-pulse" />
+            <span className="text-[9px] text-[#FFB000] font-mono tracking-wide">
+              {unclaimedCount} unclaimed payment{unclaimedCount !== 1 ? "s" : ""}
+            </span>
+          </div>
+        </div>
+      )}
 
-          {/* Token row */}
-          <Box borderTop={`1px solid ${colors.border.default}`} pt="12px">
-            <HStack justify="space-between" align="center">
-              <HStack gap="10px">
-                <Box
-                  w="36px" h="36px"
-                  borderRadius={radius.full}
-                  bg="linear-gradient(135deg, rgba(42, 114, 229, 0.08) 0%, rgba(42, 114, 229, 0.15) 100%)"
-                  border="1.5px solid rgba(42, 114, 229, 0.2)"
-                  display="flex" alignItems="center" justifyContent="center"
-                >
-                  <ChainIcon size={22} chainId={activeChainId} />
-                </Box>
-                <VStack align="flex-start" gap="1px">
-                  <Text fontSize="13px" fontWeight={700} color={colors.text.primary}>{symbol}</Text>
-                  <Text fontSize="11px" color={colors.text.muted}>{chainConfig.name}</Text>
-                </VStack>
-              </HStack>
-              <VStack align="flex-end" gap="1px">
-                <Text fontSize="14px" fontWeight={700} color={colors.text.primary}>
-                  {total.toFixed(4)}
-                </Text>
-                <Text fontSize="11px" color={colors.text.muted}>
-                  {unclaimedCount > 0
-                    ? `${unclaimedCount} unclaimed payment${unclaimedCount !== 1 ? "s" : ""}`
-                    : "All funds claimed"
-                  }
-                </Text>
-              </VStack>
-            </HStack>
-          </Box>
-        </VStack>
-      </Box>
-    </Box>
+      {/* Corner accents */}
+      <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)] rounded-tl-sm" />
+      <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)] rounded-tr-sm" />
+      <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)] rounded-bl-sm" />
+      <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)] rounded-br-sm" />
+    </motion.div>
   );
 }
