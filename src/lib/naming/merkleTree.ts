@@ -230,4 +230,11 @@ export class NameMerkleTree {
 }
 
 // Singleton instance for server-side use
-export const nameMerkleTree = new NameMerkleTree();
+let instance: NameMerkleTree | null = null;
+
+export function getNameMerkleTree(): NameMerkleTree {
+  if (!instance) {
+    instance = new NameMerkleTree();
+  }
+  return instance;
+}
