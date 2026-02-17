@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { usePublicClient, useChainId } from 'wagmi'
 import { MerkleTree, type MerkleProof } from '@/lib/swap/zk'
 import { DUST_SWAP_POOL_ABI } from '@/lib/swap/contracts'
-import { getSwapContracts, getSwapDeploymentBlock } from '@/lib/swap/constants'
+import { getSwapContracts, getSwapDeploymentBlock, RPC_LOG_BATCH_SIZE, MERKLE_SYNC_TIMEOUT } from '@/lib/swap/constants'
 import {
   saveMerkleTreeState,
   loadMerkleTreeState,
@@ -115,7 +115,7 @@ export function useSwapMerkleTree(chainIdParam?: number) {
     async (fromBlock: bigint, toBlock: bigint): Promise<Array<{ commitment: bigint, leafIndex: number }>> => {
       if (!publicClient || !poolAddress) return []
 
-      const BATCH_SIZE = 50000n
+      const BATCH_SIZE = RPC_LOG_BATCH_SIZE
       const allLogs: any[] = []
 
       try {
@@ -202,7 +202,7 @@ export function useSwapMerkleTree(chainIdParam?: number) {
       setTimeout(() => {
         abortController.abort()
         reject(new Error('Sync timeout - RPC not responding'))
-      }, 30000) // 30s timeout
+      }, MERKLE_SYNC_TIMEOUT)
     })
 
     try {
@@ -435,7 +435,7 @@ export function useSwapMerkleTree(chainIdParam?: number) {
       if (stateRef.current !== 'syncing') {
         syncTree()
       }
-    }, 30000) // 30 seconds - balance between speed and stability
+    }, MERKLE_SYNC_TIMEOUT) // balance between speed and stability
 
     return () => clearInterval(interval)
   }, [syncTree]) // ✅ Removed state from deps - prevents interval reset

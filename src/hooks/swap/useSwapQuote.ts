@@ -8,7 +8,7 @@ import {
   getDustSwapPoolKey,
   getSwapDirection,
 } from '@/lib/swap/contracts'
-import { getSwapContracts } from '@/lib/swap/constants'
+import { getSwapContracts, SUPPORTED_TOKENS } from '@/lib/swap/constants'
 
 interface UseSwapQuoteParams {
   fromToken: Address
@@ -70,9 +70,10 @@ export function useSwapQuote({
           return
         }
 
-        // Determine decimals from token position
-        // currency0 (ETH) = 18 decimals, currency1 (USDC) = 6 decimals
-        const fromDecimals = zeroForOne ? 18 : 6
+        // Determine decimals from token config
+        const fromDecimals = zeroForOne
+          ? SUPPORTED_TOKENS.ETH.decimals
+          : SUPPORTED_TOKENS.USDC.decimals
         const exactAmount = BigInt(
           Math.floor(parsedAmount * Math.pow(10, fromDecimals))
         )

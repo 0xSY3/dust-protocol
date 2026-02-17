@@ -23,7 +23,7 @@ import {
   getSwapDirection,
   type PoolKey,
 } from '@/lib/swap/contracts'
-import { getSwapContracts } from '@/lib/swap/constants'
+import { getSwapContracts, SWAP_GAS_LIMIT, TX_RECEIPT_TIMEOUT, SUPPORTED_TOKENS } from '@/lib/swap/constants'
 import { getChainConfig } from '@/config/chains'
 import { type SwapParams as ZKSwapParams } from '@/lib/swap/zk'
 import { useSwapZKProof } from './useSwapZKProof'
@@ -438,7 +438,7 @@ export function useDustSwap(options?: UseDustSwapOptions) {
           // we must send ETH value with the payable swap call
           ...(zeroForOne ? { value: BigInt(depositNote.amount) } : {}),
           // Cap gas to prevent MetaMask from using block gas limit on simulation failure
-          gas: BigInt(500_000),
+          gas: SWAP_GAS_LIMIT,
         }
 
         // Pre-flight simulation: use raw call to capture revert data
@@ -473,7 +473,7 @@ export function useDustSwap(options?: UseDustSwapOptions) {
         const walletPublic = walletClient.extend(publicActions)
         const receipt = await walletPublic.waitForTransactionReceipt({
           hash,
-          timeout: 120_000,
+          timeout: TX_RECEIPT_TIMEOUT,
         })
 
         if (receipt.status === 'reverted') {
@@ -541,7 +541,7 @@ export function useDustSwap(options?: UseDustSwapOptions) {
    * Estimate gas for a private swap (~500k gas with Groth16 verification)
    */
   const estimateGas = useCallback(async (): Promise<bigint> => {
-    return BigInt(500_000)
+    return SWAP_GAS_LIMIT
   }, [])
 
   return {

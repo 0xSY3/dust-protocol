@@ -10,6 +10,7 @@
 import { useState, useCallback } from 'react'
 import { useAccount, usePublicClient, useWalletClient, useChainId } from 'wagmi'
 import { type Address, type Hash, parseEventLogs, publicActions } from 'viem'
+import { TX_RECEIPT_TIMEOUT, MAX_DEPOSITS, SUPPORTED_TOKENS } from '@/lib/swap/constants'
 import {
   DUST_SWAP_POOL_ABI,
   getERC20Config,
@@ -159,7 +160,8 @@ export function useDustSwapPool(chainIdParam?: number) {
           console.log('[useDustSwapPool] USDC balance:', balance.toString(), 'Required:', amount.toString())
 
           if (balance < amount) {
-            throw new Error(`Insufficient ${tokenSymbol} balance. You have ${Number(balance) / Math.pow(10, tokenSymbol === 'USDC' ? 6 : 18)} ${tokenSymbol}`)
+            const decimals = SUPPORTED_TOKENS[tokenSymbol]?.decimals ?? 18
+            throw new Error(`Insufficient ${tokenSymbol} balance. You have ${Number(balance) / Math.pow(10, decimals)} ${tokenSymbol}`)
           }
         }
 
@@ -186,7 +188,7 @@ export function useDustSwapPool(chainIdParam?: number) {
             const walletPublicApproval = walletClient.extend(publicActions)
             const approvalReceipt = await walletPublicApproval.waitForTransactionReceipt({
               hash: approveTxHash,
-              timeout: 120_000,
+              timeout: TX_RECEIPT_TIMEOUT,
             })
 
             if (approvalReceipt.status === 'reverted') {
@@ -246,7 +248,7 @@ export function useDustSwapPool(chainIdParam?: number) {
         const walletPublicDeposit = walletClient.extend(publicActions)
         const receipt = await walletPublicDeposit.waitForTransactionReceipt({
           hash,
-          timeout: 120_000,
+          timeout: TX_RECEIPT_TIMEOUT,
         })
 
         if (receipt.status === 'reverted') {
@@ -274,7 +276,7 @@ export function useDustSwapPool(chainIdParam?: number) {
               const dataWithoutPrefix = log.data.slice(2)
               const leafIndexHex = dataWithoutPrefix.slice(0, 64)
               const parsedLeafIndex = parseInt(leafIndexHex, 16)
-              if (!isNaN(parsedLeafIndex) && parsedLeafIndex < 1000000) {
+              if (!isNaN(parsedLeafIndex) && parsedLeafIndex < MAX_DEPOSITS) {
                 leafIndex = parsedLeafIndex
                 break
               }
