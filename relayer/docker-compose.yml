@@ -10,6 +10,6 @@ services:
       - "3001:3001"
     environment:
       - RELAYER_PORT=3001
-      - RPC_URL=https://rpc.thanos-sepolia.tokamak.network
+      - RPC_URL=https://sepolia.drpc.org
       - RELAYER_PRIVATE_KEY=${RELAYER_PRIVATE_KEY}
     restart: unless-stopped
