@@ -24,7 +24,7 @@ const app = express();
 
 // Configuration
 const PORT = process.env.RELAYER_PORT || process.env.PORT || 3001;
-const RPC_URL = process.env.RPC_URL || 'https://rpc.thanos-sepolia.tokamak.network';
+const RPC_URL = process.env.RPC_URL || 'https://sepolia.drpc.org';
 const RELAYER_PRIVATE_KEY = process.env.RELAYER_PRIVATE_KEY;
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';

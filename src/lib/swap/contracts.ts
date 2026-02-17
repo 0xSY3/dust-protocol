@@ -7,7 +7,7 @@
 
 import { type Address, keccak256, encodeAbiParameters } from 'viem'
 import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains'
-import { POOL_FEE, POOL_TICK_SPACING, USDC_ADDRESS_SEPOLIA } from './constants'
+import { POOL_FEE, POOL_TICK_SPACING, getUSDCAddress, ETH_ADDRESS } from './constants'
 
 // Sqrt price limits for Uniswap V4 swaps
 const SQRT_PRICE_LIMITS = {
@@ -274,7 +274,8 @@ export interface PoolKey {
  * Build the DustSwap pool key for a given chain
  */
 export function getDustSwapPoolKey(chainId?: number): PoolKey {
-  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID)
+  const id = chainId ?? DEFAULT_CHAIN_ID
+  const config = getChainConfig(id)
   const hook = config.contracts.dustSwapHook
 
   if (!hook) {
@@ -282,8 +283,8 @@ export function getDustSwapPoolKey(chainId?: number): PoolKey {
   }
 
   return {
-    currency0: '0x0000000000000000000000000000000000000000' as Address, // ETH (native)
-    currency1: USDC_ADDRESS_SEPOLIA as Address,
+    currency0: ETH_ADDRESS as Address, // ETH (native)
+    currency1: getUSDCAddress(id) as Address,
     fee: POOL_FEE,
     tickSpacing: POOL_TICK_SPACING,
     hooks: hook as Address,
@@ -327,13 +328,16 @@ export function getDustSwapPoolConfig(
 }
 
 /**
- * Get contract config for PoolHelper
+ * Get contract config for PoolHelper (Uniswap V4 PoolSwapTest router)
  */
 export function getPoolHelperConfig(chainId?: number) {
   const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID)
-  // TODO: poolHelper address in chain config or constants
+  const routerAddress = config.contracts.uniswapV4SwapRouter
+  if (!routerAddress) {
+    throw new Error('PoolHelper (SwapRouter) not deployed on this chain')
+  }
   return {
-    address: '0x0000000000000000000000000000000000000000' as Address,
+    address: routerAddress as Address,
     abi: POOL_HELPER_ABI,
   }
 }

@@ -8,9 +8,10 @@
 
 import { type Address } from 'viem'
 import type { PoolKey } from './contracts'
+import { RELAYER_FEE_BPS, RELAYER_HEALTH_TIMEOUT } from './constants'
 
-// TODO: Configure relayer URL after deployment
-const DUST_SWAP_RELAYER_URL = ''
+// Relayer URL — configurable via environment variable
+const DUST_SWAP_RELAYER_URL = process.env.NEXT_PUBLIC_DUST_SWAP_RELAYER_URL ?? ''
 
 export interface RelayerInfo {
   address: string
@@ -57,7 +58,7 @@ export async function checkRelayerHealth(): Promise<boolean> {
   try {
     const response = await fetch(`${DUST_SWAP_RELAYER_URL}/health`, {
       method: 'GET',
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(RELAYER_HEALTH_TIMEOUT),
     })
     return response.ok
   } catch {
@@ -78,9 +79,9 @@ export async function getRelayerInfo(): Promise<RelayerInfo | null> {
     const data = await response.json()
     return {
       address: data.address,
-      chain: 'Ethereum Sepolia',
-      chainId: 11155111,
-      feeBps: data.fee || 200, // 2% default
+      chain: data.chain || 'Unknown',
+      chainId: data.chainId || 0,
+      feeBps: data.fee || RELAYER_FEE_BPS,
       balance: data.balance || '0',
     }
   } catch (error) {
