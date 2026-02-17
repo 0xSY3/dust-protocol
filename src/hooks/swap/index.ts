@@ -1,7 +1,7 @@
 export { useDustSwapPool, type DepositState } from './useDustSwapPool'
 export { useDustSwap, type SwapState } from './useDustSwap'
 export { useSwapZKProof, type ProofState } from './useSwapZKProof'
-export { useSwapMerkleTree, type SyncState } from './useSwapMerkleTree'
+export { useSwapMerkleTree, type SyncState, type PoolType } from './useSwapMerkleTree'
 export { useSwapNotes } from './useSwapNotes'
 export { useSwapQuote } from './useSwapQuote'
 export { usePoolStats, type PoolStatsData } from './usePoolStats'

@@ -62,8 +62,13 @@ contract DustSwapHook {
     uint128 public totalPrivateSwaps;          // slot 1: 16 bytes
     uint128 public totalPrivateVolume;         // slot 1: 16 bytes (packed)
 
+    /// @notice Minimum blocks a deposit root must age before it can be used in a swap.
+    ///         Prevents timing-correlation attacks by ensuring other deposits mix in.
+    ///         Default: 50 blocks (~10 minutes on Ethereum)
+    uint256 public minWaitBlocks = 50;         // slot 2
+
     // Relayer whitelist
-    mapping(address => bool) public authorizedRelayers; // slot 2
+    mapping(address => bool) public authorizedRelayers; // slot 3
 
     /// @notice Temporary storage for pending swap data between beforeSwap and afterSwap
     struct PendingSwap {
@@ -74,7 +79,7 @@ contract DustSwapHook {
         bool initialized;        // Whether a private swap is pending
     }
 
-    mapping(address => PendingSwap) private pendingSwaps; // slot 3
+    mapping(address => PendingSwap) private pendingSwaps; // slot 4
 
     // Max relayer fee: 5% (500 BPS)
     uint256 public constant MAX_RELAYER_FEE_BPS = 500;
@@ -110,6 +115,7 @@ contract DustSwapHook {
     error InvalidMinimumOutput();
     error SwapAmountTooLow();
     error TransferFailed();
+    error DepositTooRecent();
 
     modifier onlyPoolManager() {
         if (msg.sender != address(poolManager)) revert NotPoolManager();
@@ -207,6 +213,16 @@ contract DustSwapHook {
 
         // Verify Merkle root is known in the pool
         if (!pool.isKnownRoot(root)) revert InvalidMerkleRoot();
+
+        // Enforce mandatory wait time — the Merkle root must be old enough.
+        // This ensures deposits have time to mix with others in the pool,
+        // preventing timing-correlation attacks.
+        if (minWaitBlocks > 0) {
+            uint256 rootBlock = pool.rootCreatedAt(root);
+            if (rootBlock > 0 && block.number < rootBlock + minWaitBlocks) {
+                revert DepositTooRecent();
+            }
+        }
 
         // Check nullifier hasn't been used
         if (pool.isSpent(nullifierHash)) revert NullifierAlreadyUsed();
@@ -425,6 +441,12 @@ contract DustSwapHook {
     /// @notice Enable/disable relayer whitelist
     function setRelayerWhitelistEnabled(bool enabled) external onlyOwner {
         relayerWhitelistEnabled = enabled;
+    }
+
+    /// @notice Update the minimum wait time (blocks) between deposit and swap
+    /// @param _minWaitBlocks Number of blocks a root must age (0 = disabled)
+    function setMinWaitBlocks(uint256 _minWaitBlocks) external onlyOwner {
+        minWaitBlocks = _minWaitBlocks;
     }
 
     // ─── Receive ETH ─────────────────────────────────────────────────────────────

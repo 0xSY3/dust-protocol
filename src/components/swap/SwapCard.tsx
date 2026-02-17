@@ -52,6 +52,15 @@ export function SwapCard() {
   const swapSupported = isSwapSupported(activeChainId);
   const { switchChain } = useSwitchChain();
 
+  // ── Token state (must be before useSwapMerkleTree so poolType can be derived) ──
+  const [fromAmount, setFromAmount] = useState("");
+  const [toAmount, setToAmount] = useState("");
+  const [fromToken, setFromToken] = useState<SwapToken>(SUPPORTED_TOKENS.ETH);
+  const [toToken, setToToken] = useState<SwapToken>(SUPPORTED_TOKENS.USDC);
+
+  // Determine which pool's Merkle tree to sync based on the from-token
+  const poolType = fromToken.symbol === 'USDC' ? 'usdc' as const : 'eth' as const;
+
   // ── Real hooks ──────────────────────────────────────────────────────────────
   const { unspentNotes, loading: notesLoading } = useSwapNotes();
   const {
@@ -64,7 +73,7 @@ export function SwapCard() {
     forceRefresh,
     getProof,
     getRoot,
-  } = useSwapMerkleTree(activeChainId);
+  } = useSwapMerkleTree(activeChainId, poolType);
   const {
     state: dustSwapState,
     error: dustSwapError,
@@ -74,15 +83,10 @@ export function SwapCard() {
     isLoading: isDustSwapLoading,
   } = useDustSwap({
     chainId: activeChainId,
+    poolType,
     merkleTree: { getProof, syncTree, getRoot, isSyncing: treeSyncing },
   });
   const { deposit: depositToPool } = useDustSwapPool(activeChainId);
-
-  // Token state (declared before useSwapQuote so fromToken/toToken are available)
-  const [fromAmount, setFromAmount] = useState("");
-  const [toAmount, setToAmount] = useState("");
-  const [fromToken, setFromToken] = useState<SwapToken>(SUPPORTED_TOKENS.ETH);
-  const [toToken, setToToken] = useState<SwapToken>(SUPPORTED_TOKENS.USDC);
 
   // Price quote from Uniswap V4 quoter
   const {

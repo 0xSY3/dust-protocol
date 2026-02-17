@@ -13,4 +13,10 @@ interface IDustSwapPool {
     function commitments(bytes32 commitment) external view returns (bool);
     function nullifierHashes(bytes32 nullifierHash) external view returns (bool);
     function releaseForSwap(uint256 amount) external;
+
+    /// @notice Block number when a Merkle root was created (for wait-time enforcement)
+    function rootCreatedAt(bytes32 root) external view returns (uint256);
+
+    /// @notice Check if a deposit amount is an allowed fixed denomination
+    function allowedDenominations(uint256 amount) external view returns (bool);
 }

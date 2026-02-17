@@ -9,9 +9,10 @@ interface IDustSwapHook {
 }
 
 /// @title DustSwapPoolETH — Privacy deposit pool for ETH
-/// @notice Users deposit ETH with a Poseidon commitment. The DustSwapHook (Uniswap V4)
-///         later validates ZK proofs referencing this pool's Merkle tree to execute
-///         private swaps with full unlinkability.
+/// @notice Users deposit fixed ETH denominations with a Poseidon commitment.
+///         Fixed denominations ensure a well-defined anonymity set per amount tier.
+///         The DustSwapHook (Uniswap V4) later validates ZK proofs referencing
+///         this pool's Merkle tree to execute private swaps with full unlinkability.
 contract DustSwapPoolETH is MerkleTree {
     address public owner;        // slot 0: 20 bytes
     bool private _locked;        // slot 0: 1 byte (packed)
@@ -22,6 +23,13 @@ contract DustSwapPoolETH is MerkleTree {
 
     /// @notice Authorized routers that can release deposited ETH for swaps
     mapping(address => bool) public authorizedRouters; // slot 4
+
+    /// @notice Fixed deposit denominations — only these amounts are accepted.
+    ///         This creates well-defined anonymity sets per denomination tier.
+    mapping(uint256 => bool) public allowedDenominations; // slot 5
+
+    /// @notice List of all allowed denominations (for frontend enumeration)
+    uint256[] public denominationList;
 
     event Deposit(
         bytes32 indexed commitment,
@@ -37,6 +45,9 @@ contract DustSwapPoolETH is MerkleTree {
         uint256 fee
     );
 
+    event DenominationAdded(uint256 amount);
+    event DenominationRemoved(uint256 amount);
+
     error InvalidCommitment();
     error CommitmentAlreadyExists();
     error NullifierAlreadyUsed();
@@ -44,6 +55,7 @@ contract DustSwapPoolETH is MerkleTree {
     error InvalidRecipient();
     error Unauthorized();
     error ZeroDeposit();
+    error InvalidDenomination();
     error InsufficientPoolBalance();
     error TransferFailed();
     error ReentrancyGuardReentrantCall();
@@ -62,12 +74,32 @@ contract DustSwapPoolETH is MerkleTree {
 
     constructor() {
         owner = msg.sender;
+
+        // Initialize fixed ETH denominations for privacy anonymity sets
+        uint256[10] memory denoms = [
+            uint256(0.01 ether),   //  0.01 ETH
+            0.05 ether,   //  0.05 ETH
+            0.1 ether,    //  0.1  ETH
+            0.25 ether,   //  0.25 ETH
+            0.5 ether,    //  0.5  ETH
+            1 ether,      //  1    ETH
+            5 ether,      //  5    ETH
+            10 ether,     //  10   ETH
+            50 ether,     //  50   ETH
+            100 ether     //  100  ETH
+        ];
+
+        for (uint256 i = 0; i < 10; i++) {
+            allowedDenominations[denoms[i]] = true;
+            denominationList.push(denoms[i]);
+        }
     }
 
     /// @notice Deposit ETH into the privacy pool with a Poseidon commitment
     /// @param commitment Poseidon(secret, nullifier) — unique per deposit
     function deposit(bytes32 commitment) external payable nonReentrant {
         if (msg.value == 0) revert ZeroDeposit();
+        if (!allowedDenominations[msg.value]) revert InvalidDenomination();
         if (commitment == bytes32(0)) revert InvalidCommitment();
         if (commitments[commitment]) revert CommitmentAlreadyExists();
 
@@ -116,6 +148,35 @@ contract DustSwapPoolETH is MerkleTree {
     /// @param authorized Whether the router is authorized
     function setAuthorizedRouter(address router, bool authorized) external onlyOwner {
         authorizedRouters[router] = authorized;
+    }
+
+    /// @notice Add a new allowed deposit denomination (owner only)
+    function addDenomination(uint256 amount) external onlyOwner {
+        if (amount == 0) revert ZeroDeposit();
+        if (allowedDenominations[amount]) return;
+        allowedDenominations[amount] = true;
+        denominationList.push(amount);
+        emit DenominationAdded(amount);
+    }
+
+    /// @notice Remove an allowed deposit denomination (owner only)
+    /// @dev Existing deposits at this denomination remain valid
+    function removeDenomination(uint256 amount) external onlyOwner {
+        if (!allowedDenominations[amount]) return;
+        allowedDenominations[amount] = false;
+        for (uint256 i = 0; i < denominationList.length; i++) {
+            if (denominationList[i] == amount) {
+                denominationList[i] = denominationList[denominationList.length - 1];
+                denominationList.pop();
+                break;
+            }
+        }
+        emit DenominationRemoved(amount);
+    }
+
+    /// @notice Get all allowed denominations
+    function getDenominations() external view returns (uint256[] memory) {
+        return denominationList;
     }
 
     /// @notice Transfer ownership

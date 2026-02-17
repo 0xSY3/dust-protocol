@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Text, VStack, HStack, Input, Spinner } from "@chakra-ui/react";
+import { Box, Text, VStack, HStack, Spinner } from "@chakra-ui/react";
 import { colors, radius, shadows, glass, buttonVariants, transitions, typography } from "@/lib/design/tokens";
-import { SUPPORTED_TOKENS, DEPOSIT_DENOMINATIONS, type SwapToken } from "@/lib/swap/constants";
+import { DEPOSIT_DENOMINATIONS, MIN_WAIT_BLOCKS, MIN_WAIT_MINUTES, type SwapToken } from "@/lib/swap/constants";
 import { ShieldIcon, XIcon, CheckCircleIcon, AlertCircleIcon } from "@/components/stealth/icons";
 
 type DepositStep = "input" | "approving" | "depositing" | "confirming" | "success" | "error";
@@ -23,8 +23,6 @@ interface DepositModalProps {
   token: SwapToken;
   onDeposit?: (amount: string) => Promise<{ note: DepositNote; txHash: string; leafIndex: number } | null>;
 }
-
-const FIXED_DENOMINATIONS = DEPOSIT_DENOMINATIONS;
 
 function ProgressStep({
   step,
@@ -92,7 +90,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
 
   if (!isOpen) return null;
 
-  const denominations = FIXED_DENOMINATIONS[token.symbol] ?? ["0.1", "1", "5", "10"];
+  const denominations = DEPOSIT_DENOMINATIONS[token.symbol] ?? ["0.1", "1", "5", "10"];
 
   const handleDeposit = async () => {
     if (!amount || parseFloat(amount) <= 0) return;
@@ -151,7 +149,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
     >
       <Box
         w="100%"
-        maxW="440px"
+        maxW="480px"
         mx="16px"
         bg={glass.modal.bg}
         border={glass.modal.border}
@@ -202,7 +200,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
         <Box p="24px" pt="0">
           {step === "input" && (
             <VStack gap="20px" align="stretch">
-              {/* Info box */}
+              {/* Privacy info box */}
               <Box
                 p="12px"
                 borderRadius={radius.sm}
@@ -214,24 +212,29 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
                     <ShieldIcon size={14} color={colors.accent.indigo} />
                   </Box>
                   <Text fontSize="12px" color={colors.text.tertiary} lineHeight="1.5">
-                    Deposits are added to a privacy pool using Poseidon commitments.
-                    Your deposit note will be stored locally for later swap execution.
+                    Deposits use fixed amounts to protect your privacy. All deposits of the
+                    same amount are indistinguishable from each other, creating a strong
+                    anonymity set.
                   </Text>
                 </HStack>
               </Box>
 
-              {/* Fixed denominations */}
+              {/* Fixed denomination grid */}
               <VStack gap="8px" align="stretch">
                 <Text fontSize="11px" color={colors.text.muted} fontWeight={600} textTransform="uppercase" letterSpacing="0.04em">
-                  Quick Select
+                  Select Amount
                 </Text>
-                <HStack gap="8px">
+                <Box
+                  display="grid"
+                  gridTemplateColumns="repeat(5, 1fr)"
+                  gap="8px"
+                >
                   {denominations.map((denom) => (
                     <Box
                       key={denom}
                       as="button"
-                      flex="1"
-                      py="10px"
+                      py="12px"
+                      px="4px"
                       borderRadius={radius.sm}
                       bg={amount === denom ? "rgba(74,117,240,0.12)" : colors.bg.elevated}
                       border={`1px solid ${
@@ -243,6 +246,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
                       textAlign="center"
                       _hover={{
                         bg: amount === denom ? "rgba(74,117,240,0.15)" : colors.bg.hover,
+                        borderColor: amount === denom ? "rgba(74,117,240,0.4)" : colors.border.focus,
                       }}
                     >
                       <Text
@@ -251,43 +255,35 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
                         fontWeight={600}
                         color={amount === denom ? colors.accent.indigo : colors.text.primary}
                       >
-                        {denom} {token.symbol}
+                        {denom}
+                      </Text>
+                      <Text
+                        fontSize="9px"
+                        color={colors.text.muted}
+                        mt="2px"
+                      >
+                        {token.symbol}
                       </Text>
                     </Box>
                   ))}
-                </HStack>
+                </Box>
               </VStack>
 
-              {/* Custom amount */}
-              <VStack gap="8px" align="stretch">
-                <Text fontSize="11px" color={colors.text.muted} fontWeight={600} textTransform="uppercase" letterSpacing="0.04em">
-                  Or Enter Custom Amount
-                </Text>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/[^0-9.]/g, "");
-                    setAmount(value);
-                  }}
-                  placeholder={`0.0 ${token.symbol}`}
-                  h="48px"
-                  bg={glass.input.bg}
-                  border={`1px solid ${colors.border.default}`}
-                  borderRadius={radius.md}
-                  color={colors.text.primary}
-                  fontSize="16px"
-                  fontFamily={typography.fontFamily.mono}
-                  fontWeight={500}
-                  px="16px"
-                  _placeholder={{ color: colors.text.muted }}
-                  _focus={{
-                    borderColor: colors.border.focus,
-                    boxShadow: shadows.inputFocus,
-                  }}
-                />
-              </VStack>
+              {/* Wait time notice */}
+              <Box
+                p="10px 12px"
+                borderRadius={radius.sm}
+                bg="rgba(245,158,11,0.06)"
+                border={`1px solid rgba(245,158,11,0.12)`}
+              >
+                <HStack gap="8px" align="flex-start">
+                  <Text fontSize="12px" mt="1px">⏳</Text>
+                  <Text fontSize="11px" color={colors.text.tertiary} lineHeight="1.5">
+                    After depositing, you must wait <Text as="span" fontWeight={700} color={colors.accent.amber}>~{MIN_WAIT_MINUTES} minutes</Text> ({MIN_WAIT_BLOCKS} blocks)
+                    before swapping. This allows other deposits to mix in, strengthening your anonymity.
+                  </Text>
+                </HStack>
+              </Box>
 
               {/* Deposit button */}
               <Box
@@ -328,7 +324,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
                 <Text fontSize="15px" fontWeight={700} color="#fff" textAlign="center">
                   {amount && parseFloat(amount) > 0
                     ? `Deposit ${amount} ${token.symbol}`
-                    : "Enter Amount"}
+                    : "Select an Amount"}
                 </Text>
               </Box>
             </VStack>
@@ -371,6 +367,29 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
                 <Text fontSize="13px" color={colors.text.secondary}>
                   {amount} {token.symbol} deposited to privacy pool
                 </Text>
+              </Box>
+
+              {/* Wait time warning */}
+              <Box
+                p="14px"
+                borderRadius={radius.sm}
+                bg="rgba(245,158,11,0.08)"
+                border={`1px solid rgba(245,158,11,0.2)`}
+              >
+                <HStack gap="10px" align="flex-start">
+                  <Text fontSize="18px" mt="-1px">⏳</Text>
+                  <VStack gap="4px" align="flex-start">
+                    <Text fontSize="13px" fontWeight={700} color={colors.accent.amber}>
+                      Wait ~{MIN_WAIT_MINUTES} Minutes Before Swapping
+                    </Text>
+                    <Text fontSize="11px" color={colors.text.tertiary} lineHeight="1.6">
+                      Your deposit needs to age for at least {MIN_WAIT_BLOCKS} blocks (~{MIN_WAIT_MINUTES} minutes)
+                      before it can be used in a private swap. This mandatory waiting period lets other
+                      users&apos; deposits enter the pool, making your transaction indistinguishable from theirs.
+                      Without this wait, the timing of your deposit and swap could be correlated by an observer.
+                    </Text>
+                  </VStack>
+                </HStack>
               </Box>
 
               <Box

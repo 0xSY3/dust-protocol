@@ -91,6 +91,17 @@ export const MERKLE_SYNC_TIMEOUT = 30_000
 /** Relayer health check timeout (ms) */
 export const RELAYER_HEALTH_TIMEOUT = 5_000
 
+// ─── Privacy: Wait Time ──────────────────────────────────────────────────────
+
+/** Minimum blocks a deposit must wait before it can be used in a swap (matches contract) */
+export const MIN_WAIT_BLOCKS = 50
+
+/** Approximate block time in seconds (Ethereum mainnet & Sepolia) */
+export const BLOCK_TIME_SECONDS = 12
+
+/** Approximate wait time in minutes */
+export const MIN_WAIT_MINUTES = Math.ceil((MIN_WAIT_BLOCKS * BLOCK_TIME_SECONDS) / 60)
+
 // ─── Circuit Paths ───────────────────────────────────────────────────────────
 
 /** Circuit WASM path (served from /public) */
@@ -104,10 +115,15 @@ export const SWAP_VERIFICATION_KEY_PATH = '/circuits/verification_key.json'
 
 // ─── Deposit Denominations ───────────────────────────────────────────────────
 
-/** Quick-select deposit amounts per token */
+/**
+ * Fixed deposit denominations per token.
+ * Only these amounts are accepted by the on-chain pool contracts.
+ * Fixed denominations create well-defined anonymity sets — all deposits
+ * of the same amount are indistinguishable from each other.
+ */
 export const DEPOSIT_DENOMINATIONS: Record<string, string[]> = {
-  ETH: ['0.01', '0.1', '0.5', '1'],
-  USDC: ['10', '100', '500', '1000'],
+  ETH: ['0.01', '0.05', '0.1', '0.25', '0.5', '1', '5', '10', '50', '100'],
+  USDC: ['1', '5', '10', '50', '100', '500', '1000', '5000', '10000', '100000'],
 }
 
 // ─── Contract Address Helpers ────────────────────────────────────────────────

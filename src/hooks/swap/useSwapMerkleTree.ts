@@ -20,10 +20,11 @@ import {
 } from '@/lib/swap/storage/merkle-tree'
 
 export type SyncState = 'idle' | 'syncing' | 'synced' | 'error'
+export type PoolType = 'eth' | 'usdc'
 
 type MerkleTreeInstance = InstanceType<typeof MerkleTree>
 
-export function useSwapMerkleTree(chainIdParam?: number) {
+export function useSwapMerkleTree(chainIdParam?: number, poolType: PoolType = 'eth') {
   const publicClient = usePublicClient()
   const accountChainId = useChainId()
 
@@ -44,9 +45,9 @@ export function useSwapMerkleTree(chainIdParam?: number) {
   const retryCountRef = useRef(0)
   const nextRetryTimeRef = useRef(0)
 
-  // Pool address for the current chain
+  // Pool address for the current chain — selected by poolType
   const contracts = getSwapContracts(chainId)
-  const poolAddress = contracts.dustSwapPoolETH
+  const poolAddress = poolType === 'usdc' ? contracts.dustSwapPoolUSDC : contracts.dustSwapPoolETH
   const treeId = `${chainId}-${poolAddress}`
 
   /**
@@ -129,16 +130,28 @@ export function useSwapMerkleTree(chainIdParam?: number) {
 
           const logs = await publicClient.getLogs({
             address: poolAddress as `0x${string}`,
-            event: {
-              type: 'event',
-              name: 'Deposit',
-              inputs: [
-                { type: 'bytes32', name: 'commitment', indexed: true },
-                { type: 'uint32', name: 'leafIndex', indexed: false },
-                { type: 'uint256', name: 'amount', indexed: false },
-                { type: 'uint256', name: 'timestamp', indexed: false },
-              ],
-            },
+            event: poolType === 'usdc'
+              ? {
+                  type: 'event' as const,
+                  name: 'Deposit',
+                  inputs: [
+                    { type: 'bytes32', name: 'commitment', indexed: true },
+                    { type: 'uint32', name: 'leafIndex', indexed: false },
+                    { type: 'address', name: 'token', indexed: true },
+                    { type: 'uint256', name: 'amount', indexed: false },
+                    { type: 'uint256', name: 'timestamp', indexed: false },
+                  ],
+                }
+              : {
+                  type: 'event' as const,
+                  name: 'Deposit',
+                  inputs: [
+                    { type: 'bytes32', name: 'commitment', indexed: true },
+                    { type: 'uint32', name: 'leafIndex', indexed: false },
+                    { type: 'uint256', name: 'amount', indexed: false },
+                    { type: 'uint256', name: 'timestamp', indexed: false },
+                  ],
+                },
             fromBlock: currentFrom,
             toBlock: currentTo,
           })
@@ -162,7 +175,7 @@ export function useSwapMerkleTree(chainIdParam?: number) {
         throw err
       }
     },
-    [publicClient, poolAddress]
+    [publicClient, poolAddress, poolType]
   )
 
   /**

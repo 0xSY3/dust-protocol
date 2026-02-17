@@ -200,10 +200,15 @@ const corsOptions: cors.CorsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10kb' }));
 
-// Security headers
+// Security headers (privacy-hardened)
 app.use((_req: Request, res: Response, next: NextFunction) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-DNS-Prefetch-Control', 'off');
+  // Prevent caching of privacy-sensitive responses
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
   next();
 });
 
@@ -530,8 +535,9 @@ app.post('/withdraw', async (req: Request<{}, {}, WithdrawRequestBody>, res: Res
     });
 
     console.log(`\n[${jobId}] New withdrawal request`);
-    console.log(`  From: ${stealthAddress}`);
-    console.log(`  To: ${recipient}`);
+    // Privacy: Redact addresses in logs
+    console.log(`  From: ${stealthAddress.slice(0, 10)}...`);
+    console.log(`  To: ${recipient.slice(0, 10)}...`);
     console.log(`  Balance: ${ethers.utils.formatEther(balance)} ETH`);
     console.log(`  Fee: ${ethers.utils.formatEther(fee)} ETH`);
     console.log(`  Amount after fee: ${ethers.utils.formatEther(amountAfterFee)} ETH`);
@@ -624,7 +630,8 @@ app.post('/swap', async (req: Request<{}, {}, SwapRequestBody>, res: Response) =
     console.log(`\n[${requestId}] Private swap request`);
     console.log(`  Merkle root: ${merkleRoot.toHexString().slice(0, 20)}...`);
     console.log(`  Nullifier: ${nullifierHash.toHexString().slice(0, 20)}...`);
-    console.log(`  Recipient: ${recipientSignal.toHexString()}`);
+    // Privacy: Do not log recipient address — it's a stealth address
+    console.log(`  Recipient: [redacted-stealth]`);
     console.log(`  zeroForOne: ${swapParams.zeroForOne}`);
     console.log(`  amountSpecified: ${swapParams.amountSpecified}`);
 

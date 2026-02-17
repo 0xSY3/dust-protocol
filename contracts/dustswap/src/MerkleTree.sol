@@ -16,6 +16,11 @@ contract MerkleTree {
     // O(1) root lookup mapping
     mapping(bytes32 => bool) public isValidRoot;
 
+    /// @notice Block number at which each Merkle root was created.
+    ///         Used by DustSwapHook to enforce a mandatory wait period between
+    ///         deposit and swap, preventing timing-correlation attacks.
+    mapping(bytes32 => uint256) public rootCreatedAt;
+
     uint256 public nextIndex;
     bytes32[TREE_DEPTH] public filledSubtrees;
     bytes32[ROOT_HISTORY_SIZE] public roots;
@@ -30,6 +35,7 @@ contract MerkleTree {
         bytes32 initialRoot = bytes32(0x19df90ec844ebc4ffeebd866f33859b0c051d8c958ee3aa88f8f8df3db91a5b1);
         roots[0] = initialRoot;
         isValidRoot[initialRoot] = true;
+        rootCreatedAt[initialRoot] = block.number;
     }
 
     function _insert(bytes32 leaf) internal returns (uint256 index) {
@@ -53,10 +59,12 @@ contract MerkleTree {
         bytes32 evictedRoot = roots[newRootIndex];
         if (evictedRoot != bytes32(0)) {
             isValidRoot[evictedRoot] = false;
+            delete rootCreatedAt[evictedRoot];
         }
 
         roots[newRootIndex] = currentHash;
         isValidRoot[currentHash] = true;
+        rootCreatedAt[currentHash] = block.number;
         currentRootIndex = newRootIndex;
         nextIndex++;
         return nextIndex - 1;

@@ -39,12 +39,25 @@ export const DUST_SWAP_POOL_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
-  // Deposit event (matches DustSwapPoolETH.sol - no token field)
+  // Deposit event — ETH pool (no token field)
   {
     anonymous: false,
     inputs: [
       { indexed: true, name: 'commitment', type: 'bytes32' },
       { indexed: false, name: 'leafIndex', type: 'uint32' },
+      { indexed: false, name: 'amount', type: 'uint256' },
+      { indexed: false, name: 'timestamp', type: 'uint256' },
+    ],
+    name: 'Deposit',
+    type: 'event',
+  },
+  // Deposit event — USDC pool (includes token field)
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'commitment', type: 'bytes32' },
+      { indexed: false, name: 'leafIndex', type: 'uint32' },
+      { indexed: true, name: 'token', type: 'address' },
       { indexed: false, name: 'amount', type: 'uint256' },
       { indexed: false, name: 'timestamp', type: 'uint256' },
     ],

@@ -31,7 +31,7 @@ import { getSwapContracts, SWAP_GAS_LIMIT, TX_RECEIPT_TIMEOUT, SUPPORTED_TOKENS 
 import { getChainConfig } from '@/config/chains'
 import { type SwapParams as ZKSwapParams } from '@/lib/swap/zk'
 import { useSwapZKProof } from './useSwapZKProof'
-import { useSwapMerkleTree } from './useSwapMerkleTree'
+import { useSwapMerkleTree, type PoolType } from './useSwapMerkleTree'
 import { useSwapNotes } from './useSwapNotes'
 import {
   submitToRelayer,
@@ -229,6 +229,8 @@ function decodeSwapError(simErr: unknown): Error {
 
 interface UseDustSwapOptions {
   chainId?: number
+  /** Which pool's Merkle tree to use ('eth' or 'usdc') */
+  poolType?: PoolType
   /** Pass Merkle tree functions to avoid duplicate tree instances */
   merkleTree?: {
     getProof: (leafIndex: number) => Promise<any>
@@ -249,7 +251,7 @@ export function useDustSwap(options?: UseDustSwapOptions) {
   const { generateProof } = useSwapZKProof()
 
   // Use provided Merkle tree or create new instance (backwards compat)
-  const internalTree = useSwapMerkleTree(chainId)
+  const internalTree = useSwapMerkleTree(chainId, options?.poolType ?? 'eth')
   const merkleTree = options?.merkleTree ?? internalTree
   const { getProof: getMerkleProof, syncTree, getRoot, isSyncing } = merkleTree
 
