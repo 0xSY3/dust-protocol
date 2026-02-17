@@ -3,9 +3,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-RUN npm install --production express cors ethers@5
+# Copy package files and install dependencies
+COPY relayer/package*.json ./relayer/
+RUN cd relayer && npm install --production
 
 # Copy relayer code
 COPY relayer/ ./relayer/
@@ -22,5 +22,5 @@ ENV RPC_URL=https://rpc.thanos-sepolia.tokamak.network
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3001/health || exit 1
 
-# Run relayer
-CMD ["node", "relayer/index.js"]
+# Run relayer with tsx (TypeScript execution)
+CMD ["npx", "tsx", "relayer/index.ts"]
