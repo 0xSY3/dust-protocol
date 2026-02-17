@@ -38,5 +38,6 @@
     "node_modules",
     "contracts",
     "subgraph",
+    "relayer"
   ]
 }
