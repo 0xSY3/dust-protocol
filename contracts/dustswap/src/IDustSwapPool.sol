@@ -2,7 +2,8 @@
 pragma solidity ^0.8.20;
 
 /// @title IDustSwapPool — Common interface for DustSwapPoolETH and DustSwapPoolUSDC
-/// @notice Used by DustSwapHook to query pool state during proof validation
+/// @notice Used by DustSwapHook to query pool state during proof validation,
+///         and by DustSwapRouter to release deposited funds for swaps.
 interface IDustSwapPool {
     function isKnownRoot(bytes32 root) external view returns (bool);
     function isSpent(bytes32 nullifierHash) external view returns (bool);
@@ -11,4 +12,5 @@ interface IDustSwapPool {
     function getDepositCount() external view returns (uint32);
     function commitments(bytes32 commitment) external view returns (bool);
     function nullifierHashes(bytes32 nullifierHash) external view returns (bool);
+    function releaseForSwap(uint256 amount) external;
 }

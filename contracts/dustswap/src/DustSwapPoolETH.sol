@@ -20,6 +20,9 @@ contract DustSwapPoolETH is MerkleTree {
     mapping(bytes32 => bool) public commitments;      // slot 2
     mapping(bytes32 => bool) public nullifierHashes;  // slot 3
 
+    /// @notice Authorized routers that can release deposited ETH for swaps
+    mapping(address => bool) public authorizedRouters; // slot 4
+
     event Deposit(
         bytes32 indexed commitment,
         uint32 leafIndex,
@@ -41,6 +44,8 @@ contract DustSwapPoolETH is MerkleTree {
     error InvalidRecipient();
     error Unauthorized();
     error ZeroDeposit();
+    error InsufficientPoolBalance();
+    error TransferFailed();
     error ReentrancyGuardReentrantCall();
 
     modifier nonReentrant() {
@@ -72,6 +77,18 @@ contract DustSwapPoolETH is MerkleTree {
         emit Deposit(commitment, uint32(leafIndex), msg.value, block.timestamp);
     }
 
+    /// @notice Release deposited ETH for a private swap
+    /// @dev Only callable by authorized routers or DustSwapHook.
+    ///      The caller must be an atomic contract that immediately swaps.
+    ///      If the swap fails (invalid proof), the entire tx reverts.
+    /// @param amount Amount of ETH to release
+    function releaseForSwap(uint256 amount) external {
+        if (!authorizedRouters[msg.sender] && msg.sender != dustSwapHook) revert Unauthorized();
+        if (address(this).balance < amount) revert InsufficientPoolBalance();
+        (bool success, ) = msg.sender.call{value: amount}("");
+        if (!success) revert TransferFailed();
+    }
+
     /// @notice Check if a commitment has been deposited
     function isCommitmentExists(bytes32 commitment) external view returns (bool) {
         return commitments[commitment];
@@ -92,6 +109,13 @@ contract DustSwapPoolETH is MerkleTree {
     /// @notice Set the DustSwapHook address (owner only, set once after deployment)
     function setDustSwapHook(address _dustSwapHook) external onlyOwner {
         dustSwapHook = _dustSwapHook;
+    }
+
+    /// @notice Set authorized router for releasing deposited ETH
+    /// @param router Address of the router contract
+    /// @param authorized Whether the router is authorized
+    function setAuthorizedRouter(address router, bool authorized) external onlyOwner {
+        authorizedRouters[router] = authorized;
     }
 
     /// @notice Transfer ownership
