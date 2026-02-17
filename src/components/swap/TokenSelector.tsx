@@ -57,7 +57,7 @@ export function TokenSelector({
 
         {/* Info banner */}
         <div className="px-5 pt-4 pb-2">
-          <div className="p-3 rounded-[12px] bg-[rgba(74,117,240,0.06)] border border-[rgba(74,117,240,0.15)]">
+          <div className="p-3 rounded-[12px] bg-[rgba(0,255,65,0.06)] border border-[rgba(0,255,65,0.15)]">
             <p className="text-[12px] text-[rgba(255,255,255,0.45)] font-mono">
               Trading pair:{" "}
               <span className="text-[rgba(255,255,255,0.92)] font-semibold">ETH/USDC</span>{" "}
@@ -80,7 +80,7 @@ export function TokenSelector({
                 className={[
                   "w-full flex items-center gap-3 p-4 rounded-[16px] cursor-pointer transition-all text-left",
                   isSelected
-                    ? "bg-[rgba(74,117,240,0.08)] border border-[rgba(74,117,240,0.25)]"
+                    ? "bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.25)]"
                     : "bg-transparent border border-transparent hover:bg-[rgba(255,255,255,0.08)]",
                 ].join(" ")}
               >
@@ -98,7 +98,7 @@ export function TokenSelector({
                       {token.symbol}
                     </span>
                     {isSelected && (
-                      <span className="px-2 py-[2px] rounded-[8px] bg-[rgba(74,117,240,0.12)] text-[10px] font-semibold text-[#4A75F0] font-mono">
+                      <span className="px-2 py-[2px] rounded-[8px] bg-[rgba(0,255,65,0.12)] text-[10px] font-semibold text-[#00FF41] font-mono">
                         Selected
                       </span>
                     )}

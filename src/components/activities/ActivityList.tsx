@@ -94,7 +94,7 @@ export function ActivityList({
               className={[
                 "px-4 py-2 rounded-full text-[13px] font-mono capitalize transition-all duration-150",
                 filter === f
-                  ? "bg-gradient-to-br from-[#2B5AE2] via-[#4A75F0] to-[#5A6FFF] text-white font-semibold shadow-[0_2px_8px_rgba(43,90,226,0.3),0_0_20px_rgba(43,90,226,0.1)]"
+                  ? "bg-gradient-to-br from-[#00FF41] via-[#00FF41] to-[#00FF41] text-white font-semibold shadow-[0_2px_8px_rgba(0,255,65,0.3),0_0_20px_rgba(0,255,65,0.1)]"
                   : "bg-transparent border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.30)] hover:bg-[rgba(255,255,255,0.04)]",
               ].join(" ")}
             >
@@ -155,9 +155,9 @@ export function ActivityList({
       </div>
 
       {/* Sponsored gas banner */}
-      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-[rgba(43,90,226,0.05)] rounded-md border border-[rgba(43,90,226,0.12)] border-[1.5px]">
-        <div className="w-8 h-8 rounded-full bg-[rgba(43,90,226,0.1)] flex items-center justify-center shrink-0">
-          <ZapIcon size={16} color="#4A75F0" />
+      <div className="flex items-center gap-2.5 px-4 py-2.5 bg-[rgba(0,255,65,0.05)] rounded-md" style={{ border: "1.5px solid rgba(0,255,65,0.12)" }}>
+        <div className="w-8 h-8 rounded-full bg-[rgba(0,255,65,0.1)] flex items-center justify-center shrink-0">
+          <ZapIcon size={16} color="#00FF41" />
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[13px] font-semibold text-[rgba(255,255,255,0.92)]">Auto-Claim Enabled</span>
@@ -178,7 +178,7 @@ export function ActivityList({
               className={[
                 "px-3 py-1.5 rounded-full text-[11px] font-mono font-medium transition-all duration-150",
                 selectedIndex === idx
-                  ? "bg-[#4A75F0] border border-[#4A75F0] text-white"
+                  ? "bg-[#00FF41] border border-[#00FF41] text-white"
                   : "bg-transparent border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.30)]",
               ].join(" ")}
             >
@@ -190,9 +190,9 @@ export function ActivityList({
 
       {/* Claimed tx success */}
       {claimedTx && (
-        <div className="flex items-center gap-3.5 p-4 px-5 bg-[rgba(255,255,255,0.03)] backdrop-blur-md rounded-2xl border-2 border-[#4A75F0]">
-          <div className="w-10 h-10 rounded-full bg-[rgba(43,90,226,0.08)] flex items-center justify-center shrink-0">
-            <CheckCircleIcon size={20} color="#4A75F0" />
+        <div className="flex items-center gap-3.5 p-4 px-5 bg-[rgba(255,255,255,0.03)] backdrop-blur-md rounded-2xl border-2 border-[#00FF41]">
+          <div className="w-10 h-10 rounded-full bg-[rgba(0,255,65,0.08)] flex items-center justify-center shrink-0">
+            <CheckCircleIcon size={20} color="#00FF41" />
           </div>
           <div className="flex flex-col gap-0.5 flex-1 min-w-0">
             <span className="text-[14px] font-semibold text-[rgba(255,255,255,0.92)]">
@@ -203,9 +203,9 @@ export function ActivityList({
             </span>
           </div>
           <a href={`${explorerBase}/tx/${claimedTx}`} target="_blank" rel="noopener noreferrer">
-            <button className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[rgba(255,255,255,0.08)] hover:border-[#4A75F0] transition-all duration-150 cursor-pointer">
-              <ArrowUpRightIcon size={12} color="#4A75F0" />
-              <span className="text-[12px] text-[#4A75F0] font-medium font-mono">Explorer</span>
+            <button className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[rgba(255,255,255,0.08)] hover:border-[#00FF41] transition-all duration-150 cursor-pointer">
+              <ArrowUpRightIcon size={12} color="#00FF41" />
+              <span className="text-[12px] text-[#00FF41] font-medium font-mono">Explorer</span>
             </button>
           </a>
         </div>
@@ -291,8 +291,8 @@ function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, c
         onClick={() => setExpandedTx(isExpanded ? null : payment.announcement.txHash)}
       >
         <div className="flex items-center gap-3.5">
-          <div className="w-[42px] h-[42px] rounded-full bg-[rgba(43,90,226,0.08)] flex items-center justify-center shrink-0">
-            <ArrowDownLeftIcon size={20} color="#4A75F0" />
+          <div className="w-[42px] h-[42px] rounded-full bg-[rgba(0,255,65,0.08)] flex items-center justify-center shrink-0">
+            <ArrowDownLeftIcon size={20} color="#00FF41" />
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="text-[14px] font-medium text-[rgba(255,255,255,0.92)]">
@@ -305,7 +305,7 @@ function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, c
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-[15px] font-semibold text-[#4A75F0] font-mono">
+          <span className="text-[15px] font-semibold text-[#00FF41] font-mono">
             +{displayAmount.toFixed(4)} {symbol}
           </span>
         </div>
@@ -329,14 +329,14 @@ function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, c
             <div className="flex items-center justify-between">
               <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">Gas</span>
               <div className="flex items-center gap-1">
-                <ZapIcon size={11} color="#4A75F0" />
-                <span className="text-[12px] text-[#4A75F0] font-medium font-mono">Sponsored</span>
+                <ZapIcon size={11} color="#00FF41" />
+                <span className="text-[12px] text-[#00FF41] font-medium font-mono">Sponsored</span>
               </div>
             </div>
             <a href={`${explorerBase}/tx/${payment.announcement.txHash}`} target="_blank" rel="noopener noreferrer">
               <div className="flex items-center gap-1.5 mt-1">
-                <ArrowUpRightIcon size={12} color="#4A75F0" />
-                <span className="text-[12px] text-[#4A75F0] font-medium font-mono">View on Explorer</span>
+                <ArrowUpRightIcon size={12} color="#00FF41" />
+                <span className="text-[12px] text-[#00FF41] font-medium font-mono">View on Explorer</span>
               </div>
             </a>
           </div>
@@ -408,14 +408,14 @@ function OutgoingRow({ item, expandedTx, setExpandedTx }: {
             <div className="flex items-center justify-between">
               <span className="text-[12px] text-[rgba(255,255,255,0.30)] font-mono">Gas</span>
               <div className="flex items-center gap-1">
-                <ZapIcon size={11} color="#4A75F0" />
-                <span className="text-[12px] text-[#4A75F0] font-medium font-mono">Sponsored announcement</span>
+                <ZapIcon size={11} color="#00FF41" />
+                <span className="text-[12px] text-[#00FF41] font-medium font-mono">Sponsored announcement</span>
               </div>
             </div>
             <a href={`${explorerBase}/tx/${payment.txHash}`} target="_blank" rel="noopener noreferrer">
               <div className="flex items-center gap-1.5 mt-1">
-                <ArrowUpRightIcon size={12} color="#4A75F0" />
-                <span className="text-[12px] text-[#4A75F0] font-medium font-mono">View on Explorer</span>
+                <ArrowUpRightIcon size={12} color="#00FF41" />
+                <span className="text-[12px] text-[#00FF41] font-medium font-mono">View on Explorer</span>
               </div>
             </a>
           </div>

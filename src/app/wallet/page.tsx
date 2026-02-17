@@ -333,7 +333,7 @@ export default function WalletPage() {
         <div className="p-4 rounded-sm border border-[rgba(129,140,248,0.3)] bg-[rgba(255,255,255,0.02)] backdrop-blur-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="opacity-70 text-indigo-400">
+              <div className="opacity-70 text-[#00FF41]">
                 <ShieldIcon size={18} />
               </div>
               <div>
@@ -383,7 +383,7 @@ export default function WalletPage() {
               onClick={refreshNotes}
             >
               {notesLoading
-                ? <span className="inline-block w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                ? <span className="inline-block w-3.5 h-3.5 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
                 : <RefreshIcon size={15} color="rgba(255,255,255,0.4)" />}
             </button>
           </div>
@@ -392,7 +392,7 @@ export default function WalletPage() {
         {/* Notes list */}
         {notesLoading ? (
           <div className="text-center py-10">
-            <span className="inline-block w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            <span className="inline-block w-6 h-6 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
           </div>
         ) : notes.length === 0 ? (
           <div className="text-center py-10 flex flex-col items-center gap-3">
@@ -422,8 +422,8 @@ export default function WalletPage() {
                   {/* Left: token + amount */}
                   <div className="flex items-center gap-2.5 flex-1 min-w-0">
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0
-                      ${note.spent ? "bg-[rgba(255,255,255,0.06)]" : "bg-[rgba(74,117,240,0.1)]"}`}>
-                      <span className={`text-xs font-bold ${note.spent ? "text-[rgba(255,255,255,0.4)]" : "text-indigo-400"}`}>
+                      ${note.spent ? "bg-[rgba(255,255,255,0.06)]" : "bg-[rgba(0,255,65,0.1)]"}`}>
+                      <span className={`text-xs font-bold ${note.spent ? "text-[rgba(255,255,255,0.4)]" : "text-[#00FF41]"}`}>
                         {note.tokenSymbol?.slice(0, 3) || "??"}
                       </span>
                     </div>
@@ -677,7 +677,7 @@ export default function WalletPage() {
                       href={`${explorerBase}/tx/${note.depositTxHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-[11px] text-indigo-400 no-underline shrink-0"
+                      className="flex items-center gap-1 text-[11px] text-[#00FF41] no-underline shrink-0"
                     >
                       View
                       <ExternalLinkIcon size={10} color="#818cf8" />
@@ -726,14 +726,14 @@ export default function WalletPage() {
                   key={sym}
                   className={`flex-1 p-3 rounded-lg border cursor-pointer transition-all text-left
                     ${depositToken === sym
-                      ? "bg-[rgba(74,117,240,0.1)] border-[rgba(129,140,248,0.4)]"
+                      ? "bg-[rgba(0,255,65,0.1)] border-[rgba(129,140,248,0.4)]"
                       : "bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.06)]"}`}
                   onClick={() => {
                     setDepositToken(sym);
                     setDepositAmount("");
                   }}
                 >
-                  <p className={`text-sm font-bold ${depositToken === sym ? "text-indigo-400" : "text-white"}`}>{sym}</p>
+                  <p className={`text-sm font-bold ${depositToken === sym ? "text-[#00FF41]" : "text-white"}`}>{sym}</p>
                   <p className="text-[11px] text-[rgba(255,255,255,0.4)] mt-0.5">{SUPPORTED_TOKENS[sym]?.name}</p>
                 </button>
               ))}
@@ -757,7 +757,7 @@ export default function WalletPage() {
           </div>
 
           {/* Info */}
-          <div className="p-3 rounded-sm bg-[rgba(74,117,240,0.06)] border border-[rgba(74,117,240,0.15)]">
+          <div className="p-3 rounded-sm bg-[rgba(0,255,65,0.06)] border border-[rgba(0,255,65,0.15)]">
             <div className="flex items-start gap-2">
               <div className="mt-0.5 shrink-0"><ShieldIcon size={14} color="#818cf8" /></div>
               <p className="text-xs text-[rgba(255,255,255,0.4)] leading-relaxed">

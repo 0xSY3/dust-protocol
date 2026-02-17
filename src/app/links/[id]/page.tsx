@@ -61,7 +61,7 @@ export default function LinkDetailPage({ params }: { params: { id: string } }) {
 
   const tokName = `${link.slug}.${username}.tok`;
   const payPath = `/pay/${username}/${link.slug}`;
-  const accentColor = link.emojiBg || "#2B5AE2";
+  const accentColor = link.emojiBg || "#00FF41";
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(tokName);

@@ -320,7 +320,7 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
                         width: `${4 + Math.random() * 6}px`,
                         height: `${4 + Math.random() * 6}px`,
                         borderRadius: i % 3 === 0 ? "1px" : "9999px",
-                        backgroundColor: ["#00FF41", "#4A75F0", "#7C3AED", "#F59E0B", "#10B981", "#EC4899", "#06B6D4"][i % 7],
+                        backgroundColor: ["#00FF41", "#00FF41", "#7C3AED", "#F59E0B", "#10B981", "#EC4899", "#06B6D4"][i % 7],
                         left: `${5 + (i * 5.2) % 90}%`,
                         top: "-10px",
                         opacity: 0,

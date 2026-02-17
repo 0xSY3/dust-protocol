@@ -30,7 +30,7 @@ function Spinner() {
       height="12"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#4A75F0"
+      stroke="#00FF41"
       strokeWidth="3"
       strokeLinecap="round"
     >
@@ -58,7 +58,7 @@ function ProgressStep({
           isComplete
             ? "bg-[rgba(34,197,94,0.15)] border-[rgba(34,197,94,0.3)]"
             : isActive
-            ? "bg-[rgba(74,117,240,0.15)] border-[rgba(74,117,240,0.3)]"
+            ? "bg-[rgba(0,255,65,0.15)] border-[rgba(0,255,65,0.3)]"
             : "bg-[rgba(255,255,255,0.06)] border-[rgba(255,255,255,0.08)]",
         ].join(" ")}
       >
@@ -158,7 +158,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-[16px] bg-[linear-gradient(135deg,#4A75F0,#633CFF)] flex items-center justify-center">
+            <div className="w-9 h-9 rounded-[16px] bg-[linear-gradient(135deg,#00FF41,#633CFF)] flex items-center justify-center">
               <ShieldIcon size={18} color="#fff" />
             </div>
             <div className="flex flex-col gap-0">
@@ -185,10 +185,10 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
           {step === "input" && (
             <div className="flex flex-col gap-5">
               {/* Privacy info box */}
-              <div className="p-3 rounded-[12px] bg-[rgba(74,117,240,0.06)] border border-[rgba(74,117,240,0.15)]">
+              <div className="p-3 rounded-[12px] bg-[rgba(0,255,65,0.06)] border border-[rgba(0,255,65,0.15)]">
                 <div className="flex items-start gap-2">
                   <div className="mt-[2px] flex-shrink-0">
-                    <ShieldIcon size={14} color="#4A75F0" />
+                    <ShieldIcon size={14} color="#00FF41" />
                   </div>
                   <p className="text-[12px] text-[rgba(255,255,255,0.45)] leading-[1.5] font-mono">
                     Deposits use fixed amounts to protect your privacy. All deposits of the
@@ -212,14 +212,14 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
                       className={[
                         "py-3 px-1 rounded-[12px] cursor-pointer transition-all text-center",
                         amount === denom
-                          ? "bg-[rgba(74,117,240,0.12)] border border-[rgba(74,117,240,0.3)] hover:bg-[rgba(74,117,240,0.15)] hover:border-[rgba(74,117,240,0.4)]"
-                          : "bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.08)] hover:border-[rgba(74,117,240,0.5)]",
+                          ? "bg-[rgba(0,255,65,0.12)] border border-[rgba(0,255,65,0.3)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[rgba(0,255,65,0.4)]"
+                          : "bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.08)] hover:border-[rgba(0,255,65,0.5)]",
                       ].join(" ")}
                     >
                       <div
                         className={[
                           "text-[13px] font-mono font-semibold",
-                          amount === denom ? "text-[#4A75F0]" : "text-[rgba(255,255,255,0.92)]",
+                          amount === denom ? "text-[#00FF41]" : "text-[rgba(255,255,255,0.92)]",
                         ].join(" ")}
                       >
                         {denom}
@@ -253,7 +253,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
                 className={[
                   "w-full py-[14px] rounded-full text-[15px] font-bold text-white text-center transition-all",
                   canDeposit
-                    ? "bg-[linear-gradient(135deg,#2B5AE2_0%,#4A75F0_50%,#5A6FFF_100%)] shadow-[0_2px_8px_rgba(43,90,226,0.3),0_0_20px_rgba(43,90,226,0.1)] cursor-pointer hover:shadow-[0_4px_16px_rgba(43,90,226,0.4),0_0_40px_rgba(43,90,226,0.15)] hover:-translate-y-[1px] active:translate-y-0"
+                    ? "bg-[linear-gradient(135deg,#00FF41_0%,#00FF41_50%,#00FF41_100%)] shadow-[0_2px_8px_rgba(0,255,65,0.3),0_0_20px_rgba(0,255,65,0.1)] cursor-pointer hover:shadow-[0_4px_16px_rgba(0,255,65,0.4),0_0_40px_rgba(0,255,65,0.15)] hover:-translate-y-[1px] active:translate-y-0"
                     : "bg-[rgba(255,255,255,0.06)] cursor-not-allowed opacity-50",
                 ].join(" ")}
               >
@@ -370,7 +370,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
               <button
                 type="button"
                 onClick={handleClose}
-                className="w-full py-[14px] rounded-full bg-[linear-gradient(135deg,#2B5AE2_0%,#4A75F0_50%,#5A6FFF_100%)] shadow-[0_2px_8px_rgba(43,90,226,0.3),0_0_20px_rgba(43,90,226,0.1)] cursor-pointer transition-all text-[15px] font-bold text-white text-center hover:shadow-[0_4px_16px_rgba(43,90,226,0.4),0_0_40px_rgba(43,90,226,0.15)] hover:-translate-y-[1px] active:translate-y-0 font-mono"
+                className="w-full py-[14px] rounded-full bg-[linear-gradient(135deg,#00FF41_0%,#00FF41_50%,#00FF41_100%)] shadow-[0_2px_8px_rgba(0,255,65,0.3),0_0_20px_rgba(0,255,65,0.1)] cursor-pointer transition-all text-[15px] font-bold text-white text-center hover:shadow-[0_4px_16px_rgba(0,255,65,0.4),0_0_40px_rgba(0,255,65,0.15)] hover:-translate-y-[1px] active:translate-y-0 font-mono"
               >
                 Done
               </button>
@@ -406,7 +406,7 @@ export function DepositModal({ isOpen, onClose, token, onDeposit }: DepositModal
                     setStep("input");
                     setError(null);
                   }}
-                  className="flex-1 py-[14px] rounded-full bg-[linear-gradient(135deg,#2B5AE2_0%,#4A75F0_50%,#5A6FFF_100%)] shadow-[0_2px_8px_rgba(43,90,226,0.3),0_0_20px_rgba(43,90,226,0.1)] cursor-pointer transition-all text-[14px] font-bold text-white text-center hover:shadow-[0_4px_16px_rgba(43,90,226,0.4),0_0_40px_rgba(43,90,226,0.15)] hover:-translate-y-[1px] active:translate-y-0 font-mono"
+                  className="flex-1 py-[14px] rounded-full bg-[linear-gradient(135deg,#00FF41_0%,#00FF41_50%,#00FF41_100%)] shadow-[0_2px_8px_rgba(0,255,65,0.3),0_0_20px_rgba(0,255,65,0.1)] cursor-pointer transition-all text-[14px] font-bold text-white text-center hover:shadow-[0_4px_16px_rgba(0,255,65,0.4),0_0_40px_rgba(0,255,65,0.15)] hover:-translate-y-[1px] active:translate-y-0 font-mono"
                 >
                   Try Again
                 </button>

@@ -116,7 +116,7 @@ export default function PayPage({ params }: { params: { name: string } }) {
               </span>
             </div>
           </Link>
-          <div style={{ padding: "5px 12px", backgroundColor: "rgba(74,117,240,0.12)", border: "1px solid rgba(74,117,240,0.2)", borderRadius: radius.full }}>
+          <div style={{ padding: "5px 12px", backgroundColor: "rgba(0,255,65,0.12)", border: "1px solid rgba(0,255,65,0.2)", borderRadius: radius.full }}>
             <span style={{ fontSize: "11px", color: colors.accent.indigoBright, fontWeight: 600, letterSpacing: "0.02em", fontFamily: typography.fontFamily.heading }}>Payment</span>
           </div>
         </div>
@@ -131,7 +131,7 @@ export default function PayPage({ params }: { params: { name: string } }) {
               {/* Gradient border effect */}
               <div style={{
                 position: "absolute", inset: "-2px", borderRadius: "26px",
-                background: "linear-gradient(135deg, #2B5AE2, #7C3AED, #2B5AE2)",
+                background: "linear-gradient(135deg, #00FF41, #7C3AED, #00FF41)",
                 opacity: isSuccess ? 0.8 : 0.15,
                 transition: "opacity 0.6s ease",
               }} />
@@ -170,10 +170,10 @@ export default function PayPage({ params }: { params: { name: string } }) {
                     <button
                       style={{
                         flex: 1, padding: "14px", textAlign: "center", cursor: "pointer",
-                        borderBottom: activeTab === "wallet" ? "2px solid #2B5AE2" : "2px solid transparent",
+                        borderBottom: activeTab === "wallet" ? "2px solid #00FF41" : "2px solid transparent",
                         transition: "all 0.2s ease", background: "none", border: "none",
                         borderBottomWidth: "2px", borderBottomStyle: "solid",
-                        borderBottomColor: activeTab === "wallet" ? "#2B5AE2" : "transparent",
+                        borderBottomColor: activeTab === "wallet" ? "#00FF41" : "transparent",
                       }}
                       onClick={() => setActiveTab("wallet")}
                     >
@@ -189,7 +189,7 @@ export default function PayPage({ params }: { params: { name: string } }) {
                         flex: 1, padding: "14px", textAlign: "center", cursor: "pointer",
                         background: "none", border: "none",
                         borderBottomWidth: "2px", borderBottomStyle: "solid",
-                        borderBottomColor: activeTab === "qr" ? "#2B5AE2" : "transparent",
+                        borderBottomColor: activeTab === "qr" ? "#00FF41" : "transparent",
                         transition: "all 0.2s ease",
                       }}
                       onClick={() => setActiveTab("qr")}
@@ -212,7 +212,7 @@ export default function PayPage({ params }: { params: { name: string } }) {
                       {/* Confetti particles */}
                       <div style={{ position: "relative", width: "80px", height: "80px" }}>
                         {[
-                          { color: "#2B5AE2", x: -20, y: -10, delay: "0s", size: 6 },
+                          { color: "#00FF41", x: -20, y: -10, delay: "0s", size: 6 },
                           { color: "#7C3AED", x: 25, y: -15, delay: "0.1s", size: 5 },
                           { color: "#22C55E", x: -30, y: 5, delay: "0.2s", size: 7 },
                           { color: "#D97706", x: 30, y: 0, delay: "0.15s", size: 4 },

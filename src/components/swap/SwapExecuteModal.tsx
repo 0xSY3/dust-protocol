@@ -56,7 +56,7 @@ function Spinner() {
       height="10"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="#4A75F0"
+      stroke="#00FF41"
       strokeWidth="3"
       strokeLinecap="round"
     >
@@ -86,7 +86,7 @@ function StepIndicator({
           isComplete
             ? "bg-[rgba(34,197,94,0.15)] border-[rgba(34,197,94,0.3)]"
             : isActive
-            ? "bg-[rgba(74,117,240,0.15)] border-[rgba(74,117,240,0.3)]"
+            ? "bg-[rgba(0,255,65,0.15)] border-[rgba(0,255,65,0.3)]"
             : "bg-[rgba(255,255,255,0.06)] border-[rgba(255,255,255,0.08)]",
         ].join(" ")}
       >
@@ -160,7 +160,7 @@ export function SwapExecuteModal({
       ? "linear-gradient(135deg, #22C55E, #16A34A)"
       : step === "error"
       ? "linear-gradient(135deg, #EF4444, #DC2626)"
-      : "linear-gradient(135deg, #4A75F0, #633CFF)";
+      : "linear-gradient(135deg, #00FF41, #633CFF)";
 
   return (
     <div
@@ -300,7 +300,7 @@ export function SwapExecuteModal({
                       href={`${explorerBase}/tx/${txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-[11px] font-mono text-[#4A75F0] hover:underline"
+                      className="flex items-center gap-1 text-[11px] font-mono text-[#00FF41] hover:underline"
                     >
                       {txHash.slice(0, 10)}...{txHash.slice(-8)}
                       <ArrowUpRightIcon size={10} />
@@ -321,7 +321,7 @@ export function SwapExecuteModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full py-[14px] rounded-full bg-[linear-gradient(135deg,#2B5AE2_0%,#4A75F0_50%,#5A6FFF_100%)] shadow-[0_2px_8px_rgba(43,90,226,0.3),0_0_20px_rgba(43,90,226,0.1)] cursor-pointer transition-all text-[15px] font-bold text-white text-center hover:shadow-[0_4px_16px_rgba(43,90,226,0.4),0_0_40px_rgba(43,90,226,0.15)] hover:-translate-y-[1px] active:translate-y-0 font-mono"
+                className="w-full py-[14px] rounded-full bg-[linear-gradient(135deg,#00FF41_0%,#00FF41_50%,#00FF41_100%)] shadow-[0_2px_8px_rgba(0,255,65,0.3),0_0_20px_rgba(0,255,65,0.1)] cursor-pointer transition-all text-[15px] font-bold text-white text-center hover:shadow-[0_4px_16px_rgba(0,255,65,0.4),0_0_40px_rgba(0,255,65,0.15)] hover:-translate-y-[1px] active:translate-y-0 font-mono"
               >
                 Close
               </button>
@@ -390,7 +390,7 @@ export function SwapExecuteModal({
                   <button
                     type="button"
                     onClick={onRetry}
-                    className="flex-1 py-[14px] rounded-full bg-[linear-gradient(135deg,#2B5AE2_0%,#4A75F0_50%,#5A6FFF_100%)] shadow-[0_2px_8px_rgba(43,90,226,0.3),0_0_20px_rgba(43,90,226,0.1)] cursor-pointer transition-all text-[14px] font-bold text-white text-center hover:shadow-[0_4px_16px_rgba(43,90,226,0.4),0_0_40px_rgba(43,90,226,0.15)] hover:-translate-y-[1px] active:translate-y-0 font-mono"
+                    className="flex-1 py-[14px] rounded-full bg-[linear-gradient(135deg,#00FF41_0%,#00FF41_50%,#00FF41_100%)] shadow-[0_2px_8px_rgba(0,255,65,0.3),0_0_20px_rgba(0,255,65,0.1)] cursor-pointer transition-all text-[14px] font-bold text-white text-center hover:shadow-[0_4px_16px_rgba(0,255,65,0.4),0_0_40px_rgba(0,255,65,0.15)] hover:-translate-y-[1px] active:translate-y-0 font-mono"
                   >
                     Try Again
                   </button>

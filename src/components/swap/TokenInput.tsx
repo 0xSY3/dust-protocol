@@ -31,7 +31,7 @@ export function TokenInput({
 
   return (
     <div
-      className="rounded-sm p-4 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] transition-all focus-within:border-[rgba(74,117,240,0.5)]"
+      className="rounded-sm p-4 bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] transition-all focus-within:border-[rgba(0,255,65,0.5)]"
     >
       {/* Header row */}
       <div className="flex items-center justify-between mb-[10px]">
@@ -70,7 +70,7 @@ export function TokenInput({
             "bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.08)]",
             "transition-all",
             onTokenSelect
-              ? "cursor-pointer hover:border-[rgba(74,117,240,0.35)]"
+              ? "cursor-pointer hover:border-[rgba(0,255,65,0.35)]"
               : "cursor-default",
           ].join(" ")}
         >
@@ -115,7 +115,7 @@ export function TokenInput({
               key={percent}
               type="button"
               onClick={() => handlePercentage(percent)}
-              className="flex-1 px-2 py-[6px] rounded-sm text-[11px] font-semibold font-mono bg-[rgba(74,117,240,0.08)] text-[#4A75F0] border border-[rgba(74,117,240,0.15)] cursor-pointer transition-all text-center hover:bg-[rgba(74,117,240,0.15)] hover:border-[rgba(74,117,240,0.3)]"
+              className="flex-1 px-2 py-[6px] rounded-sm text-[11px] font-semibold font-mono bg-[rgba(0,255,65,0.08)] text-[#00FF41] border border-[rgba(0,255,65,0.15)] cursor-pointer transition-all text-center hover:bg-[rgba(0,255,65,0.15)] hover:border-[rgba(0,255,65,0.3)]"
             >
               {percent === 100 ? "MAX" : `${percent}%`}
             </button>
