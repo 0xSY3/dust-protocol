@@ -1,14 +1,13 @@
+"use client";
+
 import { useState, useMemo } from "react";
-import { Box, Text, VStack, HStack } from "@chakra-ui/react";
-import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 import Link from "next/link";
-import { colors, radius, shadows, glass, buttonVariants, transitions, getExplorerBase } from "@/lib/design/tokens";
+import { ArrowDownLeftIcon, ArrowUpRightIcon, ExternalLinkIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getChainConfig } from "@/config/chains";
+import { getExplorerBase } from "@/lib/design/tokens";
 import type { StealthPayment, OutgoingPayment } from "@/lib/design/types";
-import {
-  ArrowDownLeftIcon, ArrowUpRightIcon, ChevronRightIcon,
-} from "@/components/stealth/icons";
 
 interface RecentActivityCardProps {
   payments: StealthPayment[];
@@ -23,201 +22,180 @@ export function RecentActivityCard({ payments, outgoingPayments = [] }: RecentAc
   const symbol = getChainConfig(activeChainId).nativeCurrency.symbol;
   const [filter, setFilter] = useState<Filter>("all");
 
-  // Merge and sort
   const combined = useMemo(() => {
-    const incomingItems = payments.map(p => ({
-      type: 'incoming' as const,
+    const incomingItems = payments.map((p) => ({
+      type: "incoming" as const,
       data: p,
-      // Approximate timestamp for sorting (high block = recent)
-      // Since we don't have block timestamps, we use blockNumber * 1000 as a rough relative sort metric
-      // This is imperfect against wall-clock outgoing timestamps but ensures block order is preserved
-      sortKey: p.announcement.blockNumber * 1000000 // Weight blocks heavily to keep relative order
+    }));
+    const outgoingItems = outgoingPayments.map((p) => ({
+      type: "outgoing" as const,
+      data: p,
     }));
 
-    const outgoingItems = outgoingPayments.map(p => ({
-      type: 'outgoing' as const,
-      data: p,
-      sortKey: p.timestamp // Wall clock ms
-    }));
-
-    // If we have both, determining relative order is hard without block times. 
-    // We'll separate them if sorting is ambiguous, or just interleave assuming current block is "now".
-    // For simplicity, we just sort each list descending and if "all", we interleave?
-    // Actually, `outgoing` usually happens at the "tip" of the chain.
-    // If we assume incoming payments are "confirmed" blocks, they are slightly older than "just sent" outgoing?
-    // Let's just normalize to a big number sorting.
-
-    // Better strategy: Sort incoming by block desc, outgoing by time desc.
-    // Concatenate? No.
-    // Let's just map them to a common interface and sort.
-    // Since we can't perfectly compare block# vs timestamp without extra data,
-    // we will prioritize displaying the "latest" of each if mixed?
-    // Actually, `payments` array from scanner might be unsorted or sorted asc?
-    // Scanner usually appends, so likely ascending.
-
-    // Let's create a wrapper
-    const all = [...incomingItems, ...outgoingItems];
-
-    // We can't sort mixed types perfectly without Block <-> Time mapping.
-    // But within their own types, we can sort.
-    // And usually users care about "what happened recently".
-    // Let's just assume local outgoing are "newer" than older blocks, but maybe older than very recent blocks?
-    // We will just sort by `sortKey`? No, comparing `1020000 * 1000000` vs `1740000000000` is nonsense.
-
-    // Fallback: Show outgoing at top (since likely user just did it) if "all"?
-    // Or just separate?
-    // Let's rely on filter. If "all", we interleave simply or just stack Outgoing then Incoming?
-    // Stacking Outgoing then Incoming is safer for "I just sent it".
-
-    // Sort outgoing descending
+    // Sort incoming descending by block number
+    incomingItems.sort(
+      (a, b) => b.data.announcement.blockNumber - a.data.announcement.blockNumber
+    );
+    // Sort outgoing descending by timestamp
     outgoingItems.sort((a, b) => b.data.timestamp - a.data.timestamp);
-    // Sort incoming descending (block number)
-    incomingItems.sort((a, b) => b.data.announcement.blockNumber - a.data.announcement.blockNumber);
 
     return { incoming: incomingItems, outgoing: outgoingItems };
   }, [payments, outgoingPayments]);
 
   const displayed = useMemo(() => {
-    if (filter === 'outgoing') return combined.outgoing;
-    if (filter === 'incoming') return combined.incoming;
-    // Interleave: take latest of each?
-    // Since we can't compare, let's just show top 3 outgoing + top 3 incoming?
-    // Or just all outgoing then all incoming (limited)?
+    if (filter === "outgoing") return combined.outgoing;
+    if (filter === "incoming") return combined.incoming;
     return [...combined.outgoing, ...combined.incoming];
   }, [filter, combined]);
 
   const recent = displayed.slice(0, 5);
+  const totalCount = payments.length + outgoingPayments.length;
+
+  const filterLabels: Filter[] = ["all", "incoming", "outgoing"];
 
   return (
-    <VStack gap="20px" align="stretch">
-      {/* Header row with tabs and count */}
-      <HStack justify="space-between" align="center" flexWrap="wrap" gap="12px">
-        {/* Pill tabs */}
-        <HStack gap="8px">
-          {(["all", "incoming", "outgoing"] as Filter[]).map((f) => (
-            <Box
-              key={f}
-              as="button"
-              px="16px"
-              py="8px"
-              borderRadius={radius.full}
-              bg={filter === f ? buttonVariants.primary.bg : "transparent"}
-              border={filter === f ? "none" : `1px solid ${colors.border.default}`}
-              boxShadow={filter === f ? buttonVariants.primary.boxShadow : "none"}
-              cursor="pointer"
-              onClick={() => setFilter(f)}
-              transition={transitions.fast}
-              _hover={filter !== f ? { bgColor: colors.bg.hover } : {}}
-            >
-              <Text
-                fontSize="13px"
-                fontWeight={filter === f ? 600 : 400}
-                color={filter === f ? "#fff" : colors.text.muted}
-                textTransform="capitalize"
-              >
-                {f}
-              </Text>
-            </Box>
-          ))}
-        </HStack>
-        <Text fontSize="14px" fontWeight={500} color={colors.text.muted}>
-          {outgoingPayments.length + payments.length} transactions total
-        </Text>
-      </HStack>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.1 }}
+      className="w-full p-6 rounded-sm border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] backdrop-blur-sm relative overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex items-center gap-3">
+          <span className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
+            RECENT_ACTIVITY
+          </span>
+          <span className="text-[9px] text-[rgba(255,255,255,0.3)] font-mono">
+            {totalCount} total
+          </span>
+        </div>
+        <Link
+          href="/activities"
+          className="flex items-center gap-1 text-[9px] text-[rgba(255,255,255,0.4)] hover:text-[#00FF41] transition-colors font-mono"
+        >
+          View All <ExternalLinkIcon className="w-2.5 h-2.5" />
+        </Link>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex items-center gap-2 mb-4">
+        {filterLabels.map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-3 py-1 rounded-full text-[9px] font-mono uppercase tracking-wide border transition-colors ${
+              filter === f
+                ? "bg-[rgba(0,255,65,0.1)] border-[rgba(0,255,65,0.2)] text-[#00FF41]"
+                : "bg-transparent border-[rgba(255,255,255,0.06)] text-[rgba(255,255,255,0.4)] hover:text-[rgba(255,255,255,0.6)] hover:border-[rgba(255,255,255,0.1)]"
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
 
       {/* Activity list */}
       {recent.length === 0 ? (
-        <Box p="48px" textAlign="center" bg={glass.card.bg} borderRadius={radius.lg} border={glass.card.border} boxShadow={shadows.card} backdropFilter={glass.card.backdropFilter}>
-          <VStack gap="12px">
-            <Text fontSize="16px" fontWeight={700} color={colors.text.primary}>No activities yet</Text>
-            <Text fontSize="14px" color={colors.text.muted}>
-              {filter === "outgoing" ? "Sent payments will appear here" : "Received payments will appear here"}
-            </Text>
-          </VStack>
-        </Box>
+        <div className="py-10 flex flex-col items-center justify-center gap-2">
+          <span className="text-sm font-mono text-[rgba(255,255,255,0.3)]">No activity yet</span>
+          <span className="text-[9px] font-mono text-[rgba(255,255,255,0.2)] uppercase tracking-wide">
+            {filter === "outgoing"
+              ? "Sent payments will appear here"
+              : "Received payments will appear here"}
+          </span>
+        </div>
       ) : (
-        <VStack gap="8px" align="stretch">
+        <div className="flex flex-col">
           {recent.map((item, i) => {
-            const isIncoming = item.type === 'incoming';
-            // @ts-ignore - union type handling
-            const txHash = isIncoming ? item.data.announcement.txHash : item.data.txHash;
-            // @ts-ignore
-            const amount = isIncoming ? (item.data.originalAmount || item.data.balance || "0") : item.data.amount;
+            const isIncoming = item.type === "incoming";
+
+            const txHash = isIncoming
+              ? (item.data as StealthPayment).announcement.txHash
+              : (item.data as OutgoingPayment).txHash;
+
+            const amount = isIncoming
+              ? (item.data as StealthPayment).originalAmount ||
+                (item.data as StealthPayment).balance ||
+                "0"
+              : (item.data as OutgoingPayment).amount;
+
+            const addressLabel = isIncoming
+              ? `from ${(item.data as StealthPayment).announcement.caller?.slice(0, 6)}...${(item.data as StealthPayment).announcement.caller?.slice(-4)}`
+              : `to ${(item.data as OutgoingPayment).to.slice(0, 6)}...${(item.data as OutgoingPayment).to.slice(-4)}`;
+
+            const timeLabel = isIncoming
+              ? `Block #${(item.data as StealthPayment).announcement.blockNumber}`
+              : new Date((item.data as OutgoingPayment).timestamp).toLocaleDateString();
+
+            // Determine status
+            const isClaimed =
+              isIncoming && (item.data as StealthPayment).claimed === true;
+            const isUnclaimed =
+              isIncoming && (item.data as StealthPayment).claimed !== true;
+            // outgoing are always "completed"
+            const statusLabel = isIncoming
+              ? isClaimed
+                ? "claimed"
+                : "unclaimed"
+              : "completed";
+            const statusClass =
+              statusLabel === "claimed" || statusLabel === "completed"
+                ? "bg-[rgba(0,255,65,0.05)] border-[rgba(0,255,65,0.1)] text-[#00FF41]"
+                : statusLabel === "unclaimed"
+                ? "bg-[rgba(255,176,0,0.05)] border-[rgba(255,176,0,0.1)] text-[#FFB000]"
+                : "bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.4)]";
 
             return (
-              <HStack
+              <div
                 key={`${txHash}-${i}`}
-                p="16px 20px"
-                bg={glass.card.bg}
-                borderRadius={radius.md}
-                border={glass.card.border}
-                backdropFilter={glass.card.backdropFilter}
-                justify="space-between"
-                cursor="pointer"
-                _hover={{ bg: glass.cardHover.bg, border: glass.cardHover.border }}
-                transition={transitions.fast}
+                className="flex items-center justify-between py-3 border-b border-[rgba(255,255,255,0.03)] last:border-0 hover:bg-[rgba(255,255,255,0.02)] -mx-2 px-2 rounded-sm transition-colors cursor-pointer"
                 onClick={() => window.open(`${explorerBase}/tx/${txHash}`, "_blank")}
               >
-                <HStack gap="14px">
-                  <Box
-                    w="40px" h="40px"
-                    borderRadius={radius.full}
-                    bgColor={isIncoming ? "rgba(43, 90, 226, 0.08)" : "rgba(245, 158, 11, 0.08)"}
-                    display="flex" alignItems="center" justifyContent="center"
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`p-1.5 rounded-full ${
+                      isIncoming
+                        ? "bg-[rgba(0,255,65,0.1)] text-[#00FF41]"
+                        : "bg-[rgba(255,255,255,0.05)] text-[rgba(255,255,255,0.6)]"
+                    }`}
                   >
                     {isIncoming ? (
-                      <ArrowDownLeftIcon size={18} color={colors.accent.indigo} />
+                      <ArrowDownLeftIcon className="w-3 h-3" />
                     ) : (
-                      <ArrowUpRightIcon size={18} color={colors.accent.amber} />
+                      <ArrowUpRightIcon className="w-3 h-3" />
                     )}
-                  </Box>
-                  <VStack align="flex-start" gap="2px">
-                    <Text fontSize="15px" fontWeight={600} color={colors.text.primary}>
-                      {isIncoming
-                        // @ts-ignore
-                        ? `Received from ${item.data.announcement.caller?.slice(0, 6)}...`
-                        // @ts-ignore
-                        : `Sent to ${item.data.to}`}
-                    </Text>
-                    <Text fontSize="13px" color={colors.text.muted}>
-                      {isIncoming
-                        // @ts-ignore
-                        ? `${symbol} · Block #${item.data.announcement.blockNumber}`
-                        // @ts-ignore
-                        : `${symbol} · ${new Date(item.data.timestamp).toLocaleDateString()}`
-                      }
-                    </Text>
-                  </VStack>
-                </HStack>
-                <Text
-                  fontSize="16px"
-                  fontWeight={700}
-                  color={isIncoming ? colors.accent.indigo : colors.text.primary}
-                >
-                  {isIncoming ? '+' : '-'}{parseFloat(amount).toFixed(4)} {symbol}
-                </Text>
-              </HStack>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-white font-mono">
+                      {parseFloat(amount).toFixed(4)} {symbol}
+                    </span>
+                    <span className="text-[9px] text-[rgba(255,255,255,0.4)] font-mono">
+                      {addressLabel}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-[9px] text-[rgba(255,255,255,0.3)] font-mono">
+                    {timeLabel}
+                  </span>
+                  <div
+                    className={`px-1.5 py-0.5 rounded-full text-[8px] font-mono uppercase tracking-wide border ${statusClass}`}
+                  >
+                    {statusLabel}
+                  </div>
+                </div>
+              </div>
             );
           })}
-        </VStack>
+        </div>
       )}
 
-      {/* See all link */}
-      <Link href="/activities" style={{ textDecoration: "none" }}>
-        <Box
-          p="14px"
-          bg={glass.card.bg}
-          borderRadius={radius.md}
-          border={glass.card.border}
-          backdropFilter={glass.card.backdropFilter}
-          textAlign="center"
-          cursor="pointer"
-          _hover={{ bg: glass.cardHover.bg, border: glass.cardHover.border }}
-          transition={transitions.fast}
-        >
-          <Text fontSize="15px" fontWeight={600} color={colors.text.secondary}>See all activities</Text>
-        </Box>
-      </Link>
-    </VStack>
+      {/* Corner accents */}
+      <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)] rounded-tl-sm" />
+      <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)] rounded-tr-sm" />
+      <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)] rounded-bl-sm" />
+      <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)] rounded-br-sm" />
+    </motion.div>
   );
 }
