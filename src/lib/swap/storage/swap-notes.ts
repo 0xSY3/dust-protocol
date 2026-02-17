@@ -32,6 +32,8 @@ export interface StoredSwapNote extends DepositNote {
   tokenAddress: string
   tokenSymbol: string
   depositTxHash?: string
+  /** Wallet address that created this deposit (for per-account isolation) */
+  depositorAddress?: string
 }
 
 /**
@@ -41,7 +43,8 @@ export async function saveSwapNote(
   note: DepositNote,
   tokenAddress: string,
   tokenSymbol: string,
-  depositTxHash?: string
+  depositTxHash?: string,
+  depositorAddress?: string
 ): Promise<number> {
   const db = await openSwapDB()
 
@@ -52,6 +55,7 @@ export async function saveSwapNote(
     tokenAddress,
     tokenSymbol,
     depositTxHash,
+    depositorAddress: depositorAddress?.toLowerCase(),
   }
 
   return new Promise((resolve, reject) => {
@@ -65,25 +69,9 @@ export async function saveSwapNote(
 }
 
 /**
- * Get all swap notes
+ * Get all swap notes, optionally filtered by depositor address
  */
-export async function getAllSwapNotes(): Promise<StoredSwapNote[]> {
-  const db = await openSwapDB()
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly')
-    const store = transaction.objectStore(STORE_NAME)
-    const request = store.getAll()
-
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
-
-/**
- * Get unspent swap notes
- */
-export async function getUnspentSwapNotes(): Promise<StoredSwapNote[]> {
+export async function getAllSwapNotes(depositorAddress?: string): Promise<StoredSwapNote[]> {
   const db = await openSwapDB()
 
   return new Promise((resolve, reject) => {
@@ -92,11 +80,24 @@ export async function getUnspentSwapNotes(): Promise<StoredSwapNote[]> {
     const request = store.getAll()
 
     request.onsuccess = () => {
-      const allNotes = request.result as StoredSwapNote[]
-      resolve(allNotes.filter(note => !note.spent))
+      let notes = request.result as StoredSwapNote[]
+      if (depositorAddress) {
+        const addr = depositorAddress.toLowerCase()
+        // Show notes that belong to this address OR legacy notes without depositorAddress
+        notes = notes.filter(n => !n.depositorAddress || n.depositorAddress === addr)
+      }
+      resolve(notes)
     }
     request.onerror = () => reject(request.error)
   })
+}
+
+/**
+ * Get unspent swap notes, optionally filtered by depositor address
+ */
+export async function getUnspentSwapNotes(depositorAddress?: string): Promise<StoredSwapNote[]> {
+  const allNotes = await getAllSwapNotes(depositorAddress)
+  return allNotes.filter(note => !note.spent)
 }
 
 /**
@@ -205,7 +206,7 @@ export async function importSwapNotes(jsonString: string): Promise<number> {
         leafIndex: item.leafIndex,
       }
 
-      await saveSwapNote(note, item.tokenAddress, item.tokenSymbol, item.depositTxHash)
+      await saveSwapNote(note, item.tokenAddress, item.tokenSymbol, item.depositTxHash, item.depositorAddress)
       imported++
     } catch (error) {
       console.error('[DustSwap] Failed to import note:', error)
@@ -234,8 +235,8 @@ export async function clearAllSwapNotes(): Promise<void> {
 /**
  * Get swap notes count
  */
-export async function getSwapNotesCount(): Promise<{ total: number; unspent: number }> {
-  const all = await getAllSwapNotes()
+export async function getSwapNotesCount(depositorAddress?: string): Promise<{ total: number; unspent: number }> {
+  const all = await getAllSwapNotes(depositorAddress)
   const unspent = all.filter(n => !n.spent)
 
   return {

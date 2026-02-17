@@ -3,11 +3,13 @@
 /**
  * Hook for managing DustSwap deposit notes (IndexedDB)
  *
- * Provides CRUD operations, export/import, and reactive state
- * for deposit notes used in privacy swaps.
+ * Notes are isolated per wallet address — each account only sees
+ * the deposit notes it created. Legacy notes (without depositorAddress)
+ * are visible to all accounts for backwards compatibility.
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { useAccount } from 'wagmi'
 import {
   getAllSwapNotes,
   getUnspentSwapNotes,
@@ -23,6 +25,7 @@ import {
 } from '@/lib/swap/storage/swap-notes'
 
 export function useSwapNotes() {
+  const { address } = useAccount()
   const [notes, setNotes] = useState<StoredSwapNote[]>([])
   const [unspentNotes, setUnspentNotes] = useState<StoredSwapNote[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,9 +35,9 @@ export function useSwapNotes() {
     setLoading(true)
     try {
       const [allNotes, unspent, counts] = await Promise.all([
-        getAllSwapNotes(),
-        getUnspentSwapNotes(),
-        getSwapNotesCount(),
+        getAllSwapNotes(address),
+        getUnspentSwapNotes(address),
+        getSwapNotesCount(address),
       ])
 
       setNotes(allNotes)
@@ -45,7 +48,7 @@ export function useSwapNotes() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [address])
 
   const saveNote = useCallback(
     async (
@@ -54,11 +57,11 @@ export function useSwapNotes() {
       tokenSymbol: string,
       depositTxHash?: string
     ): Promise<number> => {
-      const id = await saveSwapNote(note, tokenAddress, tokenSymbol, depositTxHash)
+      const id = await saveSwapNote(note, tokenAddress, tokenSymbol, depositTxHash, address)
       await loadNotes()
       return id
     },
-    [loadNotes]
+    [loadNotes, address]
   )
 
   const spendNote = useCallback(
