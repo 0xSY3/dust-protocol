@@ -14,6 +14,8 @@ import { SendModal } from "@/components/send/SendModal";
 import { ReceiveModal } from "@/components/dashboard/ReceiveModal";
 import { ConsolidateModal } from "@/components/dashboard/ConsolidateModal";
 import { SendIcon, ArrowDownLeftIcon, ShieldIcon } from "@/components/stealth/icons";
+import { loadOutgoingPayments } from '@/hooks/stealth/useStealthSend';
+import type { OutgoingPayment } from '@/lib/design/types';
 
 function claimToPoolKey(address: string, chainId: number): string {
   return `dust_claim_to_pool_${chainId}_${address.toLowerCase()}`;
@@ -30,6 +32,14 @@ export default function DashboardPage() {
   const [showSendModal, setShowSendModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showConsolidateModal, setShowConsolidateModal] = useState(false);
+
+  // Load outgoing payments
+  const [outgoingPayments, setOutgoingPayments] = useState<OutgoingPayment[]>([]);
+  useEffect(() => {
+    if (address) {
+      setOutgoingPayments(loadOutgoingPayments(address, activeChainId));
+    }
+  }, [address, activeChainId, showSendModal]); // Reload when send modal closes
 
   const dustPool = useDustPool(activeChainId);
   const [depositingToPool, setDepositingToPool] = useState(false);
@@ -71,7 +81,7 @@ export default function DashboardPage() {
     if (claimToPool && stealthKeys) {
       scan();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claimToPool]);
 
   const hasPoolBalance = parseFloat(dustPool.poolBalance) > 0;
@@ -314,7 +324,7 @@ export default function DashboardPage() {
         <PersonalLinkCard ownedNames={ownedNames} metaAddress={metaAddress} />
 
         {/* Activity section heading */}
-        <RecentActivityCard payments={payments} />
+        <RecentActivityCard payments={payments} outgoingPayments={outgoingPayments} />
 
         {/* Modals */}
         <SendModal isOpen={showSendModal} onClose={() => { setShowSendModal(false); scan(); }} />
