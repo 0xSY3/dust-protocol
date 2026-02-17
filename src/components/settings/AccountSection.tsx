@@ -1,7 +1,6 @@
 "use client";
 
-import { Box, Text, VStack, HStack } from "@chakra-ui/react";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import React from "react";
 import type { OwnedName } from "@/lib/design/types";
 import { UserIcon, CheckCircleIcon } from "@/components/stealth/icons";
 import { getChainConfig, DEFAULT_CHAIN_ID } from "@/config/chains";
@@ -14,46 +13,45 @@ interface AccountSectionProps {
 
 export function AccountSection({ address, ownedNames, isRegistered }: AccountSectionProps) {
   return (
-    <Box p="24px" bgColor={colors.bg.card} borderRadius={radius.lg} border={`2px solid ${colors.border.default}`}>
-      <VStack gap="16px" align="stretch">
-        <HStack gap="10px">
-          <Box w="32px" h="32px" borderRadius={radius.full} bgColor={colors.bg.input}
-            display="flex" alignItems="center" justifyContent="center">
-            <UserIcon size={16} color={colors.text.muted} />
-          </Box>
-          <Text fontSize="15px" color={colors.text.primary} fontWeight={600}>Account</Text>
-        </HStack>
+    <div className="p-6 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-[rgba(255,255,255,0.03)] flex items-center justify-center flex-shrink-0">
+            <UserIcon size={16} color="rgba(255,255,255,0.5)" />
+          </div>
+          <span className="text-[15px] text-white font-semibold">Account</span>
+        </div>
 
-        <VStack gap="0" align="stretch">
+        <div className="flex flex-col">
           {ownedNames.length > 0 && (
-            <HStack justify="space-between" p="14px 0" borderBottom={`1px solid ${colors.border.default}`}>
-              <Text fontSize="13px" color={colors.text.muted}>Username</Text>
-              <Text fontSize="14px" fontWeight={600} color={colors.accent.indigo}>{ownedNames[0].fullName}</Text>
-            </HStack>
+            <div className="flex items-center justify-between py-3.5 border-b border-[rgba(255,255,255,0.06)]">
+              <span className="text-[13px] text-[rgba(255,255,255,0.5)]">Username</span>
+              <span className="text-[14px] font-semibold text-[#7C3AED]">{ownedNames[0].fullName}</span>
+            </div>
           )}
           {address && (
-            <HStack justify="space-between" p="14px 0" borderBottom={`1px solid ${colors.border.default}`}>
-              <Text fontSize="13px" color={colors.text.muted}>Wallet</Text>
-              <Text fontSize="12px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace">
+            <div className="flex items-center justify-between py-3.5 border-b border-[rgba(255,255,255,0.06)]">
+              <span className="text-[13px] text-[rgba(255,255,255,0.5)]">Wallet</span>
+              <span className="text-[12px] text-[rgba(255,255,255,0.35)] font-mono">
                 {address.slice(0, 10)}...{address.slice(-8)}
-              </Text>
-            </HStack>
+              </span>
+            </div>
           )}
-          <HStack justify="space-between" p="14px 0" borderBottom={`1px solid ${colors.border.default}`}>
-            <Text fontSize="13px" color={colors.text.muted}>Network</Text>
-            <Text fontSize="13px" color={colors.text.secondary}>{getChainConfig(DEFAULT_CHAIN_ID).name}</Text>
-          </HStack>
-          <HStack justify="space-between" p="14px 0">
-            <Text fontSize="13px" color={colors.text.muted}>On-chain</Text>
-            <HStack gap="6px">
-              {isRegistered && <CheckCircleIcon size={14} color={colors.accent.indigo} />}
-              <Text fontSize="13px" color={isRegistered ? colors.accent.indigo : colors.text.muted}>
+          <div className="flex items-center justify-between py-3.5 border-b border-[rgba(255,255,255,0.06)]">
+            <span className="text-[13px] text-[rgba(255,255,255,0.5)]">Network</span>
+            <span className="text-[13px] text-[rgba(255,255,255,0.7)]">{getChainConfig(DEFAULT_CHAIN_ID).name}</span>
+          </div>
+          <div className="flex items-center justify-between py-3.5">
+            <span className="text-[13px] text-[rgba(255,255,255,0.5)]">On-chain</span>
+            <div className="flex items-center gap-1.5">
+              {isRegistered && <CheckCircleIcon size={14} color="#7C3AED" />}
+              <span className={`text-[13px] ${isRegistered ? "text-[#7C3AED]" : "text-[rgba(255,255,255,0.5)]"}`}>
                 {isRegistered ? "Registered" : "Not registered"}
-              </Text>
-            </HStack>
-          </HStack>
-        </VStack>
-      </VStack>
-    </Box>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

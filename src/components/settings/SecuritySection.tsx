@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Box, Text, VStack, HStack } from "@chakra-ui/react";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import React, { useState } from "react";
 import { KeyIcon, CopyIcon, CheckIcon, InfoIcon } from "@/components/stealth/icons";
 
 interface SecuritySectionProps {
@@ -20,73 +18,70 @@ export function SecuritySection({ metaAddress, viewingPublicKey }: SecuritySecti
   };
 
   return (
-    <Box p="24px" bgColor={colors.bg.card} borderRadius={radius.lg} border={`2px solid ${colors.border.default}`}>
-      <VStack gap="16px" align="stretch">
-        <HStack gap="10px">
-          <Box w="32px" h="32px" borderRadius={radius.full} bgColor={colors.bg.input}
-            display="flex" alignItems="center" justifyContent="center">
-            <KeyIcon size={16} color={colors.text.muted} />
-          </Box>
-          <Text fontSize="15px" color={colors.text.primary} fontWeight={600}>Security</Text>
-        </HStack>
+    <div className="p-6 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-[rgba(255,255,255,0.03)] flex items-center justify-center flex-shrink-0">
+            <KeyIcon size={16} color="rgba(255,255,255,0.5)" />
+          </div>
+          <span className="text-[15px] text-white font-semibold">Security</span>
+        </div>
 
         {metaAddress && (
-          <VStack gap="12px" align="stretch">
-            <Text fontSize="13px" color={colors.text.muted} fontWeight={500}>Stealth Meta-Address</Text>
-            <Box p="14px 16px" bgColor={colors.bg.input} borderRadius={radius.sm}>
-              <Text fontSize="11px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace"
-                wordBreak="break-all" lineHeight="1.6">{metaAddress}</Text>
-            </Box>
-            <Box
-              as="button"
-              p="10px 16px"
-              bgColor={colors.bg.input}
-              borderRadius={radius.full}
-              cursor="pointer"
-              _hover={{ bgColor: colors.bg.elevated }}
+          <div className="flex flex-col gap-3">
+            <span className="text-[13px] text-[rgba(255,255,255,0.5)] font-medium">Stealth Meta-Address</span>
+            <div className="px-4 py-3.5 bg-[rgba(255,255,255,0.03)] rounded-sm">
+              <span className="text-[11px] text-[rgba(255,255,255,0.35)] font-mono break-all leading-relaxed">
+                {metaAddress}
+              </span>
+            </div>
+            <button
+              type="button"
               onClick={() => handleCopy(metaAddress, "meta")}
-              display="flex" alignItems="center" justifyContent="center" gap="8px"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[rgba(255,255,255,0.03)] rounded-full hover:bg-[rgba(255,255,255,0.06)] transition-colors cursor-pointer"
             >
-              {copied === "meta" ? <CheckIcon size={14} color={colors.accent.indigo} /> : <CopyIcon size={14} color={colors.text.muted} />}
-              <Text fontSize="13px" fontWeight={500} color={copied === "meta" ? colors.accent.indigo : colors.text.secondary}>
+              {copied === "meta"
+                ? <CheckIcon size={14} color="#7C3AED" />
+                : <CopyIcon size={14} color="rgba(255,255,255,0.5)" />}
+              <span className={`text-[13px] font-medium ${copied === "meta" ? "text-[#7C3AED]" : "text-[rgba(255,255,255,0.7)]"}`}>
                 {copied === "meta" ? "Copied" : "Copy Meta-Address"}
-              </Text>
-            </Box>
-          </VStack>
+              </span>
+            </button>
+          </div>
         )}
 
         {viewingPublicKey && (
-          <VStack gap="12px" align="stretch">
-            <Text fontSize="13px" color={colors.text.muted} fontWeight={500}>Viewing Public Key</Text>
-            <Box p="14px 16px" bgColor={colors.bg.input} borderRadius={radius.sm}>
-              <Text fontSize="11px" color={colors.text.tertiary} fontFamily="'JetBrains Mono', monospace"
-                wordBreak="break-all" lineHeight="1.6">{viewingPublicKey}</Text>
-            </Box>
-            <Box
-              as="button"
-              p="10px 16px"
-              bgColor={colors.bg.input}
-              borderRadius={radius.full}
-              cursor="pointer"
-              _hover={{ bgColor: colors.bg.elevated }}
+          <div className="flex flex-col gap-3">
+            <span className="text-[13px] text-[rgba(255,255,255,0.5)] font-medium">Viewing Public Key</span>
+            <div className="px-4 py-3.5 bg-[rgba(255,255,255,0.03)] rounded-sm">
+              <span className="text-[11px] text-[rgba(255,255,255,0.35)] font-mono break-all leading-relaxed">
+                {viewingPublicKey}
+              </span>
+            </div>
+            <button
+              type="button"
               onClick={() => handleCopy(viewingPublicKey, "viewing")}
-              display="flex" alignItems="center" justifyContent="center" gap="8px"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-[rgba(255,255,255,0.03)] rounded-full hover:bg-[rgba(255,255,255,0.06)] transition-colors cursor-pointer"
             >
-              {copied === "viewing" ? <CheckIcon size={14} color={colors.accent.indigo} /> : <CopyIcon size={14} color={colors.text.muted} />}
-              <Text fontSize="13px" fontWeight={500} color={copied === "viewing" ? colors.accent.indigo : colors.text.secondary}>
+              {copied === "viewing"
+                ? <CheckIcon size={14} color="#7C3AED" />
+                : <CopyIcon size={14} color="rgba(255,255,255,0.5)" />}
+              <span className={`text-[13px] font-medium ${copied === "viewing" ? "text-[#7C3AED]" : "text-[rgba(255,255,255,0.7)]"}`}>
                 {copied === "viewing" ? "Copied" : "Copy Viewing Key"}
-              </Text>
-            </Box>
-          </VStack>
+              </span>
+            </button>
+          </div>
         )}
 
-        <HStack gap="10px" p="14px" bgColor="rgba(217, 119, 6, 0.04)" borderRadius={radius.sm}>
-          <InfoIcon size={14} color={colors.accent.amber} />
-          <Text fontSize="12px" color={colors.accent.amber} lineHeight="1.5">
+        <div className="flex items-start gap-2.5 p-3.5 bg-[rgba(217,119,6,0.04)] rounded-sm">
+          <div className="flex-shrink-0 mt-px">
+            <InfoIcon size={14} color="#FFB000" />
+          </div>
+          <span className="text-[12px] text-[#FFB000] leading-relaxed">
             Changing your PIN will generate different stealth keys. You would lose access to payments sent to your current identity.
-          </Text>
-        </HStack>
-      </VStack>
-    </Box>
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

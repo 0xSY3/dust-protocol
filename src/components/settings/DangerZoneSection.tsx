@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Box, Text, VStack, HStack } from "@chakra-ui/react";
-import { colors, radius, shadows } from "@/lib/design/tokens";
+import React, { useState } from "react";
 import { TrashIcon, AlertCircleIcon } from "@/components/stealth/icons";
 
 interface DangerZoneSectionProps {
@@ -25,45 +23,40 @@ export function DangerZoneSection({ clearKeys, clearPin }: DangerZoneSectionProp
   };
 
   return (
-    <Box p="24px" bgColor={colors.bg.card} borderRadius={radius.lg}
-      border="2px solid rgba(239, 68, 68, 0.25)">
-      <VStack gap="16px" align="stretch">
-        <HStack gap="10px">
-          <Box w="32px" h="32px" borderRadius={radius.full} bgColor="rgba(239, 68, 68, 0.06)"
-            display="flex" alignItems="center" justifyContent="center">
-            <TrashIcon size={16} color={colors.accent.red} />
-          </Box>
-          <Text fontSize="15px" color={colors.accent.red} fontWeight={600}>Danger Zone</Text>
-        </HStack>
+    <div className="p-6 bg-[rgba(255,255,255,0.02)] border border-[rgba(239,68,68,0.25)] rounded-sm">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-[rgba(239,68,68,0.06)] flex items-center justify-center flex-shrink-0">
+            <TrashIcon size={16} color="#EF4444" />
+          </div>
+          <span className="text-[15px] text-red-500 font-semibold">Danger Zone</span>
+        </div>
 
         {confirmReset && (
-          <HStack gap="8px" p="12px 16px" bgColor="rgba(229, 62, 62, 0.04)" borderRadius={radius.sm}>
-            <AlertCircleIcon size={14} color={colors.accent.red} />
-            <Text fontSize="12px" color={colors.accent.red}>
+          <div className="flex items-center gap-2 px-4 py-3 bg-[rgba(229,62,62,0.04)] rounded-sm">
+            <div className="flex-shrink-0">
+              <AlertCircleIcon size={14} color="#EF4444" />
+            </div>
+            <span className="text-[12px] text-red-500">
               Are you sure? This will clear all keys and PIN. Click again to confirm.
-            </Text>
-          </HStack>
+            </span>
+          </div>
         )}
 
-        <Box
-          as="button"
-          p="12px"
-          bgColor="rgba(239, 68, 68, 0.06)"
-          borderRadius={radius.full}
-          cursor="pointer"
-          _hover={{ bgColor: "rgba(239, 68, 68, 0.1)" }}
+        <button
+          type="button"
           onClick={handleReset}
-          textAlign="center"
+          className="w-full py-3 bg-[rgba(239,68,68,0.06)] rounded-full hover:bg-[rgba(239,68,68,0.1)] transition-colors cursor-pointer text-center"
         >
-          <Text fontSize="14px" fontWeight={500} color={colors.accent.red}>
+          <span className="text-[14px] font-medium text-red-500">
             {confirmReset ? "Confirm Reset" : "Reset Private Wallet"}
-          </Text>
-        </Box>
+          </span>
+        </button>
 
-        <Text fontSize="12px" color={colors.text.muted} textAlign="center">
+        <p className="text-[12px] text-[rgba(255,255,255,0.5)] text-center">
           This will clear your keys and PIN. You can recover by signing with the same wallet and PIN.
-        </Text>
-      </VStack>
-    </Box>
+        </p>
+      </div>
+    </div>
   );
 }
