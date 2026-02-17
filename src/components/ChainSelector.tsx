@@ -1,15 +1,13 @@
 "use client";
 
-import { Box, Text, HStack, VStack } from "@chakra-ui/react";
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getSupportedChains, type ChainConfig } from "@/config/chains";
-import { colors, radius, shadows, glass, transitions } from "@/lib/design/tokens";
 import { ChainIcon as ChainTokenIcon } from "@/components/stealth/icons";
 
 const chains = getSupportedChains();
 
-function ChainIcon({ chain, size = 20 }: { chain: ChainConfig; size?: number }) {
+function ChainIcon({ chain, size = 16 }: { chain: ChainConfig; size?: number }) {
   return <ChainTokenIcon size={size} chainId={chain.id} />;
 }
 
@@ -31,82 +29,49 @@ export function ChainSelector() {
   }, []);
 
   return (
-    <Box ref={dropdownRef} position="relative" w="100%">
-      <HStack
-        as="button"
-        w="100%"
-        p="10px 14px"
-        gap="10px"
-        bgColor={colors.bg.input}
-        borderRadius={radius.xs}
-        border={`1px solid ${isOpen ? colors.accent.indigo : colors.border.default}`}
-        cursor="pointer"
-        _hover={{ borderColor: colors.accent.indigo }}
-        transition={transitions.fast}
+    <div ref={dropdownRef} className="relative">
+      <button
         onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.02)] text-[10px] font-mono text-[rgba(255,255,255,0.7)] hover:border-[rgba(0,255,65,0.2)] transition-all"
       >
         <ChainIcon chain={activeChain} />
-        <Text fontSize="13px" fontWeight={500} color={colors.text.primary} flex={1} textAlign="left">
-          {activeChain.name}
-        </Text>
-        <Text fontSize="10px" color={colors.text.muted} transform={isOpen ? "rotate(180deg)" : "none"} transition="transform 0.15s">
+        <span>{activeChain.name}</span>
+        <span
+          className="text-[8px] transition-transform duration-150"
+          style={{ transform: isOpen ? "rotate(180deg)" : "none" }}
+        >
           ▼
-        </Text>
-      </HStack>
+        </span>
+      </button>
 
       {isOpen && (
-        <VStack
-          position="absolute"
-          top="calc(100% + 4px)"
-          left={0}
-          right={0}
-          bg={glass.modal.bg}
-          backdropFilter={glass.modal.backdropFilter}
-          border={glass.modal.border}
-          borderRadius={radius.xs}
-          boxShadow={shadows.modal}
-          zIndex={100}
-          p="4px"
-          gap="2px"
-          align="stretch"
-        >
+        <div className="absolute top-full mt-1 right-0 bg-[#0a0d14] border border-[rgba(255,255,255,0.1)] rounded-sm min-w-[140px] z-50">
           {chains.map(chain => {
             const isActive = chain.id === activeChainId;
             return (
-              <HStack
+              <button
                 key={chain.id}
-                as="button"
-                p="10px 12px"
-                gap="10px"
-                borderRadius={radius.xs}
-                bgColor={isActive ? "rgba(43, 90, 226, 0.06)" : "transparent"}
-                _hover={{ bgColor: isActive ? "rgba(43, 90, 226, 0.06)" : colors.bg.input }}
-                cursor="pointer"
-                transition={transitions.fast}
                 onClick={() => {
                   setActiveChain(chain.id);
                   setIsOpen(false);
                 }}
+                className={`w-full text-left px-3 py-2 text-[10px] font-mono transition-all flex items-center gap-2 ${
+                  isActive
+                    ? 'text-[#00FF41] bg-[rgba(0,255,65,0.05)]'
+                    : 'text-[rgba(255,255,255,0.6)] hover:bg-[rgba(0,255,65,0.05)] hover:text-[#00FF41]'
+                }`}
               >
                 <ChainIcon chain={chain} />
-                <VStack gap="0px" align="start" flex={1}>
-                  <Text fontSize="13px" fontWeight={isActive ? 600 : 400} color={colors.text.primary}>
-                    {chain.name}
-                  </Text>
-                  <Text fontSize="11px" color={colors.text.muted}>
-                    {chain.nativeCurrency.symbol}
-                  </Text>
-                </VStack>
+                <span className="flex-1">{chain.name}</span>
+                <span className="text-[rgba(255,255,255,0.3)]">{chain.nativeCurrency.symbol}</span>
                 {isActive && (
-                  <Text fontSize="11px" color={colors.accent.indigo} fontWeight={600}>
-                    Active
-                  </Text>
+                  <span className="text-[#00FF41] font-bold">•</span>
                 )}
-              </HStack>
+              </button>
             );
           })}
-        </VStack>
+        </div>
       )}
-    </Box>
+    </div>
   );
 }
