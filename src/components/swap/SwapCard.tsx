@@ -1,20 +1,34 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { type Address } from "viem";
+import { type Address, formatUnits } from "viem";
 import { useSwitchChain } from "wagmi";
+import { ChevronDownIcon } from "lucide-react";
 import { SUPPORTED_TOKENS, RELAYER_FEE_BPS, DEFAULT_SLIPPAGE_MULTIPLIER, type SwapToken, isSwapSupported } from "@/lib/swap/constants";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSwapNotes, useDustSwap, useSwapMerkleTree, useDustSwapPool, useSwapQuote } from "@/hooks/swap";
 import { checkRelayerHealth, getRelayerInfo, type RelayerInfo } from "@/lib/swap/relayer";
-import { TokenInput } from "./TokenInput";
 import { TokenSelector } from "./TokenSelector";
 import { SwapExecuteModal, type SwapStep } from "./SwapExecuteModal";
 import { DepositModal } from "./DepositModal";
 import { AlertCircleIcon } from "@/components/stealth/icons";
-import { NoteSelector } from "./NoteSelector";
 import { type StoredSwapNote } from "@/lib/swap/storage/swap-notes";
+
+function formatNoteAmount(amount: bigint, tokenSymbol: string): string {
+  const decimals = tokenSymbol.toUpperCase() === 'USDC' ? 6 : 18;
+  const formatted = formatUnits(amount, decimals);
+  const num = parseFloat(formatted);
+  if (num >= 1000) return `${(num / 1000).toFixed(2)}K`;
+  if (num < 0.0001 && num > 0) return num.toExponential(2);
+  return num.toFixed(decimals === 6 ? 2 : 4);
+}
+
+function truncateId(note: StoredSwapNote): string {
+  if (note.id !== undefined) return `#${note.id}`;
+  const hex = note.commitment.toString(16).padStart(64, '0');
+  return `#${hex.slice(0, 4)}`;
+}
 
 type SwapState = "idle" | SwapStep;
 
@@ -113,6 +127,7 @@ export function SwapCard() {
   // Note selector state — switched from index to object for NoteSelector compatibility
   const [selectedNoteIndex, setSelectedNoteIndex] = useState(0);
   const [showNoteSelector, setShowNoteSelector] = useState(false);
+  const [showToTokenDropdown, setShowToTokenDropdown] = useState(false);
 
   // Relayer state
   const [relayerOnline, setRelayerOnline] = useState(false);
@@ -354,7 +369,7 @@ export function SwapCard() {
 
   return (
     <>
-      <div className="w-full max-w-[480px]">
+      <div className="w-full max-w-[620px]">
         {/* Terminal card */}
         <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm relative overflow-hidden">
           {/* Corner accents */}
@@ -363,33 +378,28 @@ export function SwapCard() {
           <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
           <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
 
-          <div className="p-5 sm:p-6">
+          <div className="p-6 sm:p-8">
             {/* Terminal header */}
             <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#00FF41] animate-pulse" />
-                <span className="text-xs font-mono text-[#00FF41] tracking-widest uppercase">
-                  [ PRIVACY_SWAP ]
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs font-bold font-mono text-white tracking-widest uppercase">
+                  PRIVACY_SWAP
                 </span>
+                <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-sm border text-[10px] font-mono font-bold ${
+                  relayerOnline
+                    ? 'bg-[rgba(0,255,65,0.08)] border-[rgba(0,255,65,0.25)] text-[#00FF41]'
+                    : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.3)]'
+                }`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${relayerOnline ? 'bg-[#00FF41] animate-pulse' : 'bg-[rgba(255,255,255,0.2)]'}`} />
+                  {relayerOnline ? 'ONLINE' : 'OFFLINE'}
+                </div>
               </div>
               <button
-                onClick={() => setShowSettings(!showSettings)}
-                className="p-2 rounded-sm hover:bg-[rgba(255,255,255,0.04)] transition-all group"
-                aria-label="Settings"
+                onClick={() => setShowDepositModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(0,255,65,0.06)] hover:border-[rgba(0,255,65,0.25)] transition-all text-[11px] font-mono text-[rgba(255,255,255,0.6)] hover:text-[#00FF41]"
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={showSettings ? "#00FF41" : "rgba(255,255,255,0.4)"}
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                </svg>
+                <span className="text-[13px] leading-none">+</span>
+                <span className="tracking-wider">Deposit</span>
               </button>
             </div>
 
@@ -504,27 +514,7 @@ export function SwapCard() {
               </div>
             )}
 
-            {/* Note Selector — using NoteSelector component */}
-            {isPrivacyPool && availableNotes.length > 0 && !poolLoading && (
-              <div className="mb-4">
-                <NoteSelector
-                  label={`Select deposit note (${availableNotes.length} available)`}
-                  notes={availableNotes}
-                  selectedNote={selectedNote}
-                  onSelect={handleNoteSelect}
-                />
-                {availableNotes.length > 0 && (
-                  <div className="mt-1.5 flex items-center justify-between px-0.5">
-                    <span className="text-[10px] font-mono text-[rgba(255,255,255,0.25)]">
-                      One note per swap. Each note is spent in full.
-                    </span>
-                    <span className="text-[10px] font-mono text-[rgba(255,255,255,0.25)]">
-                      Total: {totalNotesBalance.toFixed(fromToken.decimals > 6 ? 4 : 2)} {fromToken.symbol}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+
 
             {/* Error Display */}
             {swapState === "error" && swapError && !showSwapModal && (
@@ -539,50 +529,200 @@ export function SwapCard() {
               </div>
             )}
 
-            {/* From Token Input */}
-            <TokenInput
-              label={isPrivacyPool && availableNotes.length > 0 ? "You send (full note)" : "You send"}
-              amount={fromAmount}
-              onAmountChange={setFromAmount}
-              token={fromToken}
-              onTokenSelect={() => openTokenSelector("from")}
-              disabled={isSwapping || (isPrivacyPool && availableNotes.length > 0)}
-            />
+            {/* ── PAY WITH NOTE ─────────────────────────────────────────── */}
+            <div className="relative z-20 mb-0">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[9px] text-[rgba(255,255,255,0.4)] uppercase tracking-widest font-mono">PAY WITH NOTE</span>
+                {selectedNote && (
+                  <span className="text-[10px] text-[#00FF41] font-mono">
+                    ID: {truncateId(selectedNote)}
+                  </span>
+                )}
+              </div>
 
-            {/* Swap Direction Button */}
-            <div className="flex justify-center my-[-6px] relative z-10">
               <button
-                onClick={!isSwapping ? handleFlipTokens : undefined}
+                type="button"
+                onClick={() => setShowNoteSelector(!showNoteSelector)}
                 disabled={isSwapping}
-                style={{ transform: `rotate(${arrowRotation}deg)` }}
-                className="p-2.5 rounded-sm bg-[#06080F] border border-[rgba(255,255,255,0.08)] hover:border-[#00FF41] hover:shadow-[0_0_10px_rgba(0,255,65,0.1)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label="Flip tokens"
+                className={`w-full flex items-center justify-between p-3.5 rounded-sm border bg-[rgba(255,255,255,0.02)] transition-all ${
+                  showNoteSelector
+                    ? 'border-[#00FF41] shadow-[0_0_15px_rgba(0,255,65,0.08)]'
+                    : 'border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.14)]'
+                } ${isSwapping ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#00FF41"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <div className="flex items-center gap-3">
+                  {/* Token badge — click to switch token */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); openTokenSelector("from"); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openTokenSelector("from"); } }}
+                    className="w-9 h-9 rounded-sm bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] flex items-center justify-center hover:border-[#00FF41] hover:bg-[rgba(0,255,65,0.08)] transition-all shrink-0 cursor-pointer"
+                    title={`Switch token (currently ${fromToken.symbol})`}
+                  >
+                    <span className="text-[13px] font-bold text-white">{fromToken.symbol[0]}</span>
+                  </div>
+
+                  <div className="flex flex-col items-start">
+                    {selectedNote ? (
+                      <>
+                        <span className="text-[14px] font-bold text-white font-mono">
+                          {formatNoteAmount(selectedNote.amount, selectedNote.tokenSymbol)} {selectedNote.tokenSymbol}
+                        </span>
+                        <span className="text-[10px] text-[rgba(255,255,255,0.35)] font-mono">Private Note</span>
+                      </>
+                    ) : availableNotes.length === 0 ? (
+                      <>
+                        <span className="text-[13px] text-[rgba(255,255,255,0.25)] font-mono">No {fromToken.symbol} notes</span>
+                        <span className="text-[10px] text-[rgba(255,255,255,0.2)] font-mono">Deposit first →</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[13px] text-[rgba(255,255,255,0.4)] font-mono">Select a note</span>
+                        <span className="text-[10px] text-[rgba(255,255,255,0.2)] font-mono">{availableNotes.length} available</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {availableNotes.length > 0 && (
+                    <span className="text-[9px] text-[rgba(255,255,255,0.25)] font-mono">
+                      {availableNotes.length} notes
+                    </span>
+                  )}
+                  <ChevronDownIcon
+                    className={`w-4 h-4 text-[rgba(255,255,255,0.3)] transition-transform duration-200 ${
+                      showNoteSelector ? 'rotate-180 !text-[#00FF41]' : ''
+                    }`}
+                  />
+                </div>
+              </button>
+
+              {/* Note dropdown */}
+              {showNoteSelector && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-[#06080F] border border-[rgba(255,255,255,0.1)] rounded-sm shadow-2xl overflow-hidden z-30">
+                  {availableNotes.length === 0 ? (
+                    <div className="p-4 text-center">
+                      <p className="text-[11px] text-[rgba(255,255,255,0.3)] font-mono mb-2">No {fromToken.symbol} deposit notes</p>
+                      <button
+                        type="button"
+                        onClick={() => { setShowNoteSelector(false); setShowDepositModal(true); }}
+                        className="px-3 py-1.5 rounded-sm bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.2)] text-[#00FF41] text-[11px] font-mono hover:bg-[rgba(0,255,65,0.12)] transition-all"
+                      >
+                        + Deposit {fromToken.symbol}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="max-h-52 overflow-y-auto">
+                      {availableNotes.map((note, idx) => (
+                        <button
+                          key={note.id ?? idx}
+                          type="button"
+                          onClick={() => { handleNoteSelect(note); setShowNoteSelector(false); }}
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-[rgba(0,255,65,0.04)] transition-colors border-b border-[rgba(255,255,255,0.04)] last:border-0 group/item"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] flex items-center justify-center group-hover/item:border-[rgba(0,255,65,0.3)] transition-colors shrink-0">
+                              <span className="text-[11px] font-bold text-white group-hover/item:text-[#00FF41]">{note.tokenSymbol[0]}</span>
+                            </div>
+                            <div className="flex flex-col items-start">
+                              <span className="text-[13px] font-bold font-mono text-white group-hover/item:text-[#00FF41]">
+                                {formatNoteAmount(note.amount, note.tokenSymbol)} {note.tokenSymbol}
+                              </span>
+                              <span className="text-[9px] text-[rgba(255,255,255,0.3)] font-mono">
+                                ID: {truncateId(note)}
+                              </span>
+                            </div>
+                          </div>
+                          {selectedNote?.id === note.id && selectedNote?.id !== undefined && (
+                            <span className="text-[#00FF41] text-xs font-mono">✓</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── SWAP DIRECTION ARROW ──────────────────────────────────── */}
+            <div className="flex justify-center items-center pt-4 pb-2.5 relative z-10">
+              <div className="p-2 rounded-sm bg-[#06080F] border border-[rgba(0,255,65,0.2)] cursor-default">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00FF41" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <polyline points="19 12 12 19 5 12" />
                 </svg>
-              </button>
+              </div>
             </div>
 
-            {/* To Token Input */}
-            <TokenInput
-              label={isPrivacyPool ? "You receive (stealth)" : "You receive"}
-              amount={toAmount}
-              onAmountChange={setToAmount}
-              token={toToken}
-              onTokenSelect={() => openTokenSelector("to")}
-              disabled
-            />
+            {/* ── RECEIVE (STEALTH) ─────────────────────────────────────── */}
+            <div className="mb-0">
+              <span className="text-[9px] text-[rgba(255,255,255,0.4)] uppercase tracking-widest font-mono block mb-2">RECEIVE (STEALTH)</span>
+              <div className="flex items-center justify-between p-3.5 rounded-sm border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)]">
+                {/* Token dropdown */}
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowToTokenDropdown((v) => !v)}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-sm border transition-all ${
+                      showToTokenDropdown
+                        ? 'bg-[rgba(0,255,65,0.08)] border-[rgba(0,255,65,0.3)]'
+                        : 'bg-[rgba(255,255,255,0.04)] border-[rgba(255,255,255,0.08)] hover:border-[rgba(0,255,65,0.25)] hover:bg-[rgba(0,255,65,0.05)]'
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded-sm bg-[rgba(255,255,255,0.08)] flex items-center justify-center">
+                      <span className="text-[10px] font-bold text-white">{toToken.symbol[0]}</span>
+                    </div>
+                    <span className="text-[13px] font-bold font-mono text-white">{toToken.symbol}</span>
+                    <ChevronDownIcon className={`w-3 h-3 text-[rgba(255,255,255,0.35)] transition-transform duration-150 ${showToTokenDropdown ? 'rotate-180 !text-[#00FF41]' : ''}`} />
+                  </button>
+
+                  {showToTokenDropdown && (
+                    <div className="absolute top-full left-0 mt-1 w-36 bg-[#06080F] border border-[rgba(255,255,255,0.1)] rounded-sm shadow-xl overflow-hidden z-40">
+                      {Object.values(SUPPORTED_TOKENS)
+                        .filter((t) => t.address !== fromToken.address)
+                        .map((t) => (
+                          <button
+                            key={t.symbol}
+                            type="button"
+                            onClick={() => { handleTokenSelect(t); setShowToTokenDropdown(false); }}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[rgba(0,255,65,0.05)] border-b border-[rgba(255,255,255,0.04)] last:border-0 ${
+                              toToken.symbol === t.symbol ? 'bg-[rgba(0,255,65,0.04)]' : ''
+                            }`}
+                          >
+                            <div className="w-6 h-6 rounded-sm bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.08)] flex items-center justify-center shrink-0">
+                              <span className="text-[10px] font-bold text-white">{t.symbol[0]}</span>
+                            </div>
+                            <span className="text-[12px] font-bold font-mono text-white">{t.symbol}</span>
+                            {toToken.symbol === t.symbol && (
+                              <span className="ml-auto text-[#00FF41] text-xs">✓</span>
+                            )}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Amount display */}
+                <div className="flex flex-col items-end">
+                  {isQuoting ? (
+                    <div className="w-4 h-4 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span className={`text-2xl font-bold font-mono leading-none ${
+                        toAmount ? 'text-[#00FF41]' : 'text-[rgba(255,255,255,0.12)]'
+                      }`}>
+                        {toAmount || '—'}
+                      </span>
+                      <span className="text-[9px] text-[rgba(255,255,255,0.25)] font-mono mt-1">
+                        {toAmount ? 'Auto-calculated' : 'Select a note first'}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* Price Info */}
             {fromAmount && parseFloat(fromAmount) > 0 && !isSwapping && isInitialized && (
