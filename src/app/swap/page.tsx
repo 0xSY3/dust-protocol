@@ -15,77 +15,53 @@ export default function SwapPage() {
     tick,
   } = usePoolStats();
 
+  const poolStatsProps = {
+    currentPrice,
+    ethReserve,
+    usdcReserve,
+    totalValueLocked,
+    isLoading,
+    poolTick: tick !== undefined ? tick : undefined,
+  };
+
   return (
-    <div className="min-h-screen p-4 md:p-8 relative">
-      {/* Page header */}
-      <div className="max-w-[900px] mx-auto mb-8">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="w-2 h-2 rounded-full bg-[#00FF41] animate-pulse shrink-0" />
-          <h1 className="text-2xl font-bold font-mono text-white tracking-tight">
-            PRIVACY_SWAP
-          </h1>
-        </div>
-        <p className="text-sm font-mono text-[rgba(255,255,255,0.4)] pl-4">
-          Swap tokens privately using zero-knowledge proofs. Outputs are sent to stealth addresses.
+    <div className="w-full flex flex-col items-center gap-2 px-6 pb-12 pt-8">
+      {/* Header */}
+      <div className="text-center mb-6">
+        <h1 className="text-3xl md:text-4xl font-bold tracking-widest text-white font-mono mb-2">
+          STEALTH_SWAP
+        </h1>
+        <p className="text-sm text-[rgba(255,255,255,0.4)] font-mono tracking-wide">
+          Private, slippage-free swaps via ZK proofs
         </p>
       </div>
 
-      {/* Main content — mobile: stacked, desktop: three-column row */}
-      <div className="max-w-[900px] mx-auto">
-        {/* Desktop layout */}
-        <div className="hidden lg:flex items-start gap-4 justify-center">
-          {/* Left column: PoolStats (~240px container, component renders at 130px) */}
-          <div className="w-[240px] flex justify-end">
-            <PoolStats
-              currentPrice={currentPrice}
-              ethReserve={ethReserve}
-              usdcReserve={usdcReserve}
-              totalValueLocked={totalValueLocked}
-              isLoading={isLoading}
-              poolTick={tick !== undefined ? tick : undefined}
-            />
-          </div>
-
-          {/* Center column: SwapCard */}
-          <div className="flex-1 flex justify-center">
-            <SwapCard />
-          </div>
-
-          {/* Right column: PoolComposition (80px) */}
-          <div className="w-[80px]">
-            <PoolComposition
-              ethReserve={ethReserve.toString()}
-              usdcReserve={usdcReserve.toString()}
-            />
-          </div>
+      {/* Main Row: Stats | Card | Composition — desktop */}
+      <div className="flex items-stretch justify-center gap-5 w-full max-w-[1100px]">
+        {/* Left: Pool Stats */}
+        <div className="hidden md:flex">
+          <PoolStats {...poolStatsProps} />
         </div>
 
-        {/* Mobile layout: SwapCard first, stats below */}
-        <div className="flex flex-col items-center gap-6 lg:hidden">
-          <SwapCard />
+        {/* Center: Swap Card */}
+        <SwapCard />
 
-          <div className="flex gap-4 w-full max-w-[480px]">
-            {/* PoolStats — horizontal on mobile */}
-            <div className="flex-1">
-              <PoolStats
-                currentPrice={currentPrice}
-                ethReserve={ethReserve}
-                usdcReserve={usdcReserve}
-                totalValueLocked={totalValueLocked}
-                isLoading={isLoading}
-                poolTick={tick !== undefined ? tick : undefined}
-              />
-            </div>
-
-            {/* PoolComposition */}
-            <div className="w-[80px] self-stretch">
-              <PoolComposition
-                ethReserve={ethReserve.toString()}
-                usdcReserve={usdcReserve.toString()}
-              />
-            </div>
-          </div>
+        {/* Right: Pool Composition */}
+        <div className="hidden md:flex">
+          <PoolComposition
+            ethReserve={ethReserve.toString()}
+            usdcReserve={usdcReserve.toString()}
+          />
         </div>
+      </div>
+
+      {/* Mobile: Stats and Composition below card */}
+      <div className="flex flex-col items-center gap-3 md:hidden w-full">
+        <PoolStats {...poolStatsProps} />
+        <PoolComposition
+          ethReserve={ethReserve.toString()}
+          usdcReserve={usdcReserve.toString()}
+        />
       </div>
     </div>
   );

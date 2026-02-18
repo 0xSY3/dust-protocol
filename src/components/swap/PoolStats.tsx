@@ -20,13 +20,13 @@ function formatNumber(num: number, decimals: number = 2): string {
 }
 
 const cardClass =
-  'flex-1 p-3 rounded-sm border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] backdrop-blur-sm flex flex-col justify-center gap-1.5 group hover:border-[rgba(0,255,65,0.2)] transition-colors'
+  'flex-1 p-3 rounded-sm border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] backdrop-blur-sm flex flex-col items-center justify-center gap-1.5 group hover:border-[rgba(0,255,65,0.2)] transition-colors text-center'
 
 const labelClass =
-  'text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono'
+  'text-xs text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono'
 
 const iconClass =
-  'w-3 h-3 text-[rgba(255,255,255,0.4)] group-hover:text-[#00FF41] transition-colors'
+  'w-4 h-4 text-[rgba(255,255,255,0.4)] group-hover:text-[#00FF41] transition-colors'
 
 export function PoolStats({
   currentPrice,
@@ -44,7 +44,7 @@ export function PoolStats({
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-3 w-[130px] h-full">
+      <div className="flex flex-row md:flex-col gap-2 md:gap-3 w-full md:w-[180px] md:h-full">
         {[0, 1, 2].map((i) => (
           <div key={i} className={cardClass}>
             <div className="h-2 w-12 bg-[rgba(255,255,255,0.06)] rounded animate-pulse" />
@@ -56,14 +56,14 @@ export function PoolStats({
   }
 
   return (
-    <div className="flex flex-col gap-3 w-[130px] h-full">
+    <div className="flex flex-row md:flex-col gap-2 md:gap-3 w-full md:w-[180px] md:h-full" style={{ minHeight: 'inherit' }}>
       {/* TVL Card */}
       <div className={cardClass}>
         <div className="flex items-center gap-1.5">
           <DollarSignIcon className={iconClass} />
           <span className={labelClass}>TVL</span>
         </div>
-        <span className="text-xs font-bold text-white font-mono tracking-tight">
+        <span className="text-base font-bold text-white font-mono tracking-tight">
           ${formatNumber(totalValue)}
         </span>
       </div>
@@ -74,7 +74,7 @@ export function PoolStats({
           <ShieldIcon className={iconClass} />
           <span className={labelClass}>Notes</span>
         </div>
-        <div className="flex flex-col gap-1 mt-0.5">
+        <div className="flex flex-col gap-1 mt-0.5 w-full">
           <div className="flex gap-0.5 h-1.5 w-full rounded-full overflow-hidden bg-[rgba(255,255,255,0.1)]">
             <div
               className="bg-[#00FF41] opacity-80 transition-all duration-500"
@@ -85,7 +85,7 @@ export function PoolStats({
               style={{ width: `${usdcPercent.toFixed(1)}%` }}
             />
           </div>
-          <div className="flex justify-between text-[8px] font-mono text-[rgba(255,255,255,0.3)]">
+          <div className="flex justify-between text-[10px] font-mono text-[rgba(255,255,255,0.3)]">
             <span>{formatNumber(ethReserve, 2)} E</span>
             <span>{formatNumber(usdcReserve, 0)} U</span>
           </div>
@@ -98,14 +98,12 @@ export function PoolStats({
           <BarChart3Icon className={iconClass} />
           <span className={labelClass}>Oracle</span>
         </div>
-        <span className="text-[10px] font-bold text-white font-mono tracking-tight leading-relaxed">
-          1 ETH
-          <br />≈ {currentPrice != null ? formatNumber(currentPrice, 2) : '—'}
-          <br />
-          USDC
+        <span className="text-sm font-bold text-white font-mono tracking-tight">
+          <span className="hidden md:block">1 ETH<br />≈ {currentPrice != null ? formatNumber(currentPrice, 2) : '—'}<br />USDC</span>
+          <span className="md:hidden">1E ≈ {currentPrice != null ? formatNumber(currentPrice, 0) : '—'} U</span>
         </span>
         {poolTick !== undefined && (
-          <span className="text-[8px] text-[rgba(255,255,255,0.3)] font-mono">
+          <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
             tick {poolTick}
           </span>
         )}
