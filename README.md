@@ -1,6 +1,6 @@
 # Dust Protocol
 
-Dust is a private finance protocol on EVM chains. It has two main primitives: **stealth transfers** and **privacy swaps**. Both are live on Ethereum Sepolia and Thanos Sepolia.
+Dust is a private finance protocol on EVM chains. It has two main primitives: **stealth transfers** and **privacy swaps**.
 
 Stealth transfers let you send ETH or tokens to anyone without creating an on-chain link between sender and recipient. Every payment goes to a one-time address derived through ECDH — nobody watching the chain can associate it with the recipient's identity. `.tok` names sit on top so people can share a readable name instead of an address, and the whole mechanism works with any wallet without requiring the sender to run stealth-aware software.
 
