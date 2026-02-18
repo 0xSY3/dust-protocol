@@ -176,6 +176,20 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
         );
       }
 
+      // 4. Server-side API fallback — cross-references ERC-6538 events with name tree.
+      //    Most reliable for cleared-cache / new-browser, works regardless of subgraph.
+      if (!discovered) {
+        try {
+          const res = await fetch(`/api/lookup-wallet-name?address=${address}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.name) discovered = data.name;
+          }
+        } catch {
+          // Silent — fallback is best-effort
+        }
+      }
+
       if (discovered) {
         setLegacyOwnedNames([{ name: discovered, fullName: formatNameWithSuffix(discovered) }]);
         if (!recoveryAttempted.current) {
