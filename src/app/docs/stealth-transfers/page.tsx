@@ -3,6 +3,7 @@ import { DocsCallout } from "@/components/docs/DocsCallout";
 import { DocsStepList } from "@/components/docs/DocsStepList";
 import { DocsBadge } from "@/components/docs/DocsBadge";
 import Link from "next/link";
+import { ECDHKeyDerivation } from "@/components/docs/visuals/ECDHKeyDerivation";
 
 export default function StealthTransfersPage() {
   return (
@@ -30,6 +31,10 @@ export default function StealthTransfersPage() {
       {/* How it works */}
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-4 uppercase">How Stealth Transfers Work</h2>
+
+        <div className="mb-8">
+          <ECDHKeyDerivation />
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
           <div className="p-4 border border-[rgba(255,255,255,0.06)] rounded-sm">

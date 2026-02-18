@@ -1,6 +1,7 @@
 import { DocsPage } from "@/components/docs/DocsPage";
 import { DocsCallout } from "@/components/docs/DocsCallout";
 import { DocsBadge } from "@/components/docs/DocsBadge";
+import { AccountTypeSwitcher } from "@/components/docs/visuals/AccountTypeSwitcher";
 
 export default function Eip7702Page() {
   return (
@@ -17,6 +18,10 @@ export default function Eip7702Page() {
           Ethereum supports several account models. Dust abstracts over all of them — the claim mechanism
           adapts to whichever type your wallet is, or whichever type the stealth address is deployed as.
         </p>
+
+        <div className="mb-8">
+          <AccountTypeSwitcher />
+        </div>
 
         <div className="space-y-4">
           {/* EOA */}

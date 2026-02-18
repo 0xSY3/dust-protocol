@@ -1,6 +1,7 @@
 import { DocsPage } from "@/components/docs/DocsPage";
 import { DocsCallout } from "@/components/docs/DocsCallout";
 import { DocsBadge } from "@/components/docs/DocsBadge";
+import { KeyManagement } from "@/components/docs/visuals/KeyManagement";
 
 export default function KeyManagementPage() {
   return (
@@ -18,8 +19,12 @@ export default function KeyManagementPage() {
           <strong>view key</strong> — purely in the browser. They are never sent to any server.
         </p>
 
+        <div className="mb-8">
+          <KeyManagement />
+        </div>
+
         <div className="font-mono text-xs leading-relaxed text-[rgba(255,255,255,0.5)] bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm p-5 overflow-x-auto whitespace-pre mb-6">
-{`walletSignature  =  sign("Dust Protocol stealth keys", wallet)
+          {`walletSignature  =  sign("Dust Protocol stealth keys", wallet)
 salt             =  "dust-stealth-v1"
 ikm              =  PBKDF2-SHA512(
                       password = walletSignature + PIN,

@@ -2,6 +2,7 @@ import { DocsPage } from "@/components/docs/DocsPage";
 import { DocsCallout } from "@/components/docs/DocsCallout";
 import { DocsStepList } from "@/components/docs/DocsStepList";
 import { DocsBadge } from "@/components/docs/DocsBadge";
+import { AtomicSwapHook } from "@/components/docs/visuals/AtomicSwapHook";
 
 export default function PrivacySwapsPage() {
   return (
@@ -32,6 +33,11 @@ export default function PrivacySwapsPage() {
       {/* How it works */}
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-4 uppercase">How Privacy Swaps Work</h2>
+
+        <div className="mb-8">
+          <AtomicSwapHook />
+        </div>
+
         <DocsStepList steps={[
           {
             title: "Choose a fixed-denomination pool",
@@ -83,7 +89,7 @@ export default function PrivacySwapsPage() {
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-4 uppercase">Architecture</h2>
         <div className="font-mono text-xs leading-relaxed text-[rgba(255,255,255,0.5)] bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm p-5 overflow-x-auto whitespace-pre">
-{`User browser
+          {`User browser
   └─ generates commitment ──► DustSwapPoolETH.deposit()
                                   └─ inserts leaf into Merkle tree
 

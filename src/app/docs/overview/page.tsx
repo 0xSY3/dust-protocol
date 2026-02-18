@@ -2,6 +2,7 @@ import { DocsPage } from "@/components/docs/DocsPage";
 import { DocsBadge } from "@/components/docs/DocsBadge";
 import { DocsCallout } from "@/components/docs/DocsCallout";
 import Link from "next/link";
+import { PrivacyFlow } from "@/components/docs/visuals/PrivacyFlow";
 
 const features = [
   {
@@ -59,11 +60,16 @@ export default function OverviewPage() {
       {/* What it is */}
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-3 uppercase">What is Dust?</h2>
-        <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed mb-4">
+        <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed mb-6">
           Dust Protocol is an on-chain privacy layer built on top of standard EVM infrastructure. It lets users send,
           receive, and swap tokens without creating a public ledger trail — the fundamental privacy problem that
           affects every public blockchain today.
         </p>
+
+        <div className="mb-8">
+          <PrivacyFlow />
+        </div>
+
         <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed mb-4">
           When you receive ETH normally, the entire world can see your address balance, income history, and spending
           patterns. Dust eliminates this by routing all payments through{" "}

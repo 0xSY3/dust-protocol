@@ -2,6 +2,7 @@ import { DocsPage } from "@/components/docs/DocsPage";
 import { DocsCallout } from "@/components/docs/DocsCallout";
 import { DocsStepList } from "@/components/docs/DocsStepList";
 import { DocsBadge } from "@/components/docs/DocsBadge";
+import { MerkleTreeMixer } from "@/components/docs/visuals/MerkleTreeMixer";
 
 export default function PrivacyPoolPage() {
   return (
@@ -31,6 +32,11 @@ export default function PrivacyPoolPage() {
       {/* How it works */}
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-4 uppercase">How the Privacy Pool Works</h2>
+
+        <div className="mb-8">
+          <MerkleTreeMixer />
+        </div>
+
         <DocsStepList steps={[
           {
             title: "Generate a commitment",

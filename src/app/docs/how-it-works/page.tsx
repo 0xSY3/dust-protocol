@@ -2,6 +2,7 @@ import { DocsPage } from "@/components/docs/DocsPage";
 import { DocsCallout } from "@/components/docs/DocsCallout";
 import { DocsStepList } from "@/components/docs/DocsStepList";
 import { DocsBadge } from "@/components/docs/DocsBadge";
+import { EndToEndTimeline } from "@/components/docs/visuals/EndToEndTimeline";
 
 export default function HowItWorksPage() {
   return (
@@ -15,6 +16,10 @@ export default function HowItWorksPage() {
       <DocsCallout type="info" title="One-pager summary">
         This page covers the full system end-to-end. Individual feature pages go deeper on each step.
       </DocsCallout>
+
+      <div className="mb-12">
+        <EndToEndTimeline />
+      </div>
 
       {/* Phase 1 */}
       <section className="mb-10">
