@@ -8,7 +8,7 @@
  * are visible to all accounts for backwards compatibility.
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAccount } from 'wagmi'
 import {
   getAllSwapNotes,
@@ -28,11 +28,17 @@ export function useSwapNotes() {
   const { address } = useAccount()
   const [notes, setNotes] = useState<StoredSwapNote[]>([])
   const [unspentNotes, setUnspentNotes] = useState<StoredSwapNote[]>([])
+  // Start as true so the very first paint shows a loader, not a flash of empty
   const [loading, setLoading] = useState(true)
   const [count, setCount] = useState({ total: 0, unspent: 0 })
+  // Track whether we have completed at least one successful load so re-runs
+  // triggered by address changes don't re-show the spinner (avoids flicker)
+  const hasLoadedRef = useRef(false)
 
   const loadNotes = useCallback(async () => {
-    setLoading(true)
+    if (!hasLoadedRef.current) {
+      setLoading(true)
+    }
     try {
       const [allNotes, unspent, counts] = await Promise.all([
         getAllSwapNotes(address),
@@ -43,6 +49,7 @@ export function useSwapNotes() {
       setNotes(allNotes)
       setUnspentNotes(unspent)
       setCount(counts)
+      hasLoadedRef.current = true
     } catch (error) {
       console.error('[DustSwap] Failed to load notes:', error)
     } finally {

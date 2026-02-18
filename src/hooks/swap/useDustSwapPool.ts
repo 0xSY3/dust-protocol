@@ -7,7 +7,7 @@
  * commitment generation, and note persistence.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useAccount, usePublicClient, useWalletClient, useChainId } from 'wagmi'
 import { type Address, type Hash, parseEventLogs, publicActions } from 'viem'
 import { TX_RECEIPT_TIMEOUT, MAX_DEPOSITS, SUPPORTED_TOKENS } from '@/lib/swap/constants'
@@ -48,7 +48,9 @@ export function useDustSwapPool(chainIdParam?: number) {
   const [error, setError] = useState<string | null>(null)
   const [currentNote, setCurrentNote] = useState<DepositNote | null>(null)
 
-  const contracts = getSwapContracts(chainId)
+  // Memoize contracts so getPoolAddress / getDepositCount callbacks stay stable
+  // across renders (prevents infinite useEffect re-runs in consumers)
+  const contracts = useMemo(() => getSwapContracts(chainId), [chainId])
 
   /**
    * Get the pool address for a given token
