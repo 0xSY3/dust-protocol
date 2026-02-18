@@ -3,7 +3,8 @@
 import React from "react";
 import type { OwnedName } from "@/lib/design/types";
 import { UserIcon, CheckCircleIcon } from "@/components/stealth/icons";
-import { getChainConfig, DEFAULT_CHAIN_ID } from "@/config/chains";
+import { useAuth } from "@/contexts/AuthContext";
+import { getChainConfig } from "@/config/chains";
 
 interface AccountSectionProps {
   address: string | undefined;
@@ -12,6 +13,7 @@ interface AccountSectionProps {
 }
 
 export function AccountSection({ address, ownedNames, isRegistered }: AccountSectionProps) {
+  const { activeChainId } = useAuth();
   return (
     <div className="p-6 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm">
       <div className="flex flex-col gap-4">
@@ -39,7 +41,7 @@ export function AccountSection({ address, ownedNames, isRegistered }: AccountSec
           )}
           <div className="flex items-center justify-between py-3.5 border-b border-[rgba(255,255,255,0.06)]">
             <span className="text-[13px] text-[rgba(255,255,255,0.5)]">Network</span>
-            <span className="text-[13px] text-[rgba(255,255,255,0.7)]">{getChainConfig(DEFAULT_CHAIN_ID).name}</span>
+              <span className="text-[13px] text-[rgba(255,255,255,0.7)]">{getChainConfig(activeChainId).name}</span>
           </div>
           <div className="flex items-center justify-between py-3.5">
             <span className="text-[13px] text-[rgba(255,255,255,0.5)]">On-chain</span>
