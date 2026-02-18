@@ -213,7 +213,7 @@ relayer/                      # Standalone relayer service (TypeScript, Docker)
 - **ZK**: circom, snarkjs (Groth16 on BN254), circomlibjs (Poseidon)
 - **Contracts**: Foundry, Solidity 0.8.x, poseidon-solidity, Uniswap V4
 - **Account Abstraction**: ERC-4337, EIP-7702
-- **Auth**: NextAuth v4, SIWE (EIP-4361), Lit Protocol PKP
+- **Auth**: Privy (social logins + embedded wallets), wagmi connectors (MetaMask, WalletConnect) — *planned migration to Lit Protocol PKPs for fully decentralized, non-custodial MPC-based authentication*
 - **Indexing**: The Graph
 - **Standards**: ERC-5564, ERC-6538, ERC-4337
 
