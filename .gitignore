@@ -56,3 +56,4 @@ contracts/dustpool/node_modules/
 next-env.d.ts
 .codepilot.json
 .claude/hooks/codepilot-hook.py
+CLAUDE.md

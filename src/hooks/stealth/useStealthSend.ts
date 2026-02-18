@@ -277,20 +277,17 @@ export function useStealthSend(chainId?: number) {
       const receipt = await tx.wait();
       const sendTxHash = receipt.transactionHash;
 
-      // Announce via sponsored API (deployer pays gas, not sender)
-      try {
-        const ephPubKey = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
-        let metadata = '0x' + generated.viewTag;
-        if (linkSlug) {
-          const slugBytes = new TextEncoder().encode(linkSlug);
-          const slugHex = Array.from(slugBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-          metadata += slugHex;
-        }
-        await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata, activeChainId);
-      } catch (announceErr) {
-        console.warn('Sponsored announcement failed but ETH sent:', announceErr);
-        setError(`Sent successfully but announcement failed. Recipient may need to scan manually.`);
+      // Announce via sponsored API (deployer pays gas, not sender) — fire-and-forget
+      // The ETH is already on-chain; announce is background infrastructure for recipient scanning
+      const ephPubKey = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
+      let metadata = '0x' + generated.viewTag;
+      if (linkSlug) {
+        const slugBytes = new TextEncoder().encode(linkSlug);
+        const slugHex = Array.from(slugBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        metadata += slugHex;
       }
+      sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata, activeChainId)
+        .catch(err => console.warn('Sponsored announcement failed (non-fatal):', err));
 
       // Persist outgoing payment for Activities
       saveOutgoingPayment(signerAddress, activeChainId, {
@@ -358,20 +355,15 @@ export function useStealthSend(chainId?: number) {
       const receipt = await tx.wait();
       const sendTxHash = receipt.transactionHash;
 
-      // Announce via sponsored API (deployer pays gas)
+      // Announce via sponsored API (deployer pays gas) — fire-and-forget
       // H1: Encode token info in metadata: viewTag + 'T' marker + chainId (4 bytes big-endian) + token address (20 bytes) + amount (32 bytes)
-      try {
-        const ephPubKey = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
-        const tokenAddrHex = tokenAddress.replace(/^0x/, '').toLowerCase();
-        const amountHex = amountWei.toHexString().replace(/^0x/, '').padStart(64, '0');
-        // Encode chainId as 4-byte big-endian hex (e.g. chainId 11155111 -> 00aa36a7)
-        const chainIdHex = activeChainId.toString(16).padStart(8, '0');
-        const metadata = '0x' + generated.viewTag + '54' + chainIdHex + tokenAddrHex + amountHex; // 0x54 = 'T'
-        await sponsorAnnounce(generated.stealthAddress, ephPubKey, metadata, activeChainId);
-      } catch (announceErr) {
-        console.warn('Sponsored announcement failed but token sent:', announceErr);
-        setError(`Sent successfully but announcement failed. Recipient may need to scan manually.`);
-      }
+      const ephPubKey2 = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
+      const tokenAddrHex = tokenAddress.replace(/^0x/, '').toLowerCase();
+      const amountHex = amountWei.toHexString().replace(/^0x/, '').padStart(64, '0');
+      const chainIdHex = activeChainId.toString(16).padStart(8, '0');
+      const tokenMetadata = '0x' + generated.viewTag + '54' + chainIdHex + tokenAddrHex + amountHex; // 0x54 = 'T'
+      sponsorAnnounce(generated.stealthAddress, ephPubKey2, tokenMetadata, activeChainId)
+        .catch(err => console.warn('Sponsored announcement failed (non-fatal):', err));
 
       // Persist outgoing payment for Activities
       saveOutgoingPayment(signerAddress, activeChainId, {

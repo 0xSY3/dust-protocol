@@ -68,43 +68,31 @@ export async function POST(req: Request) {
       metadata,
     ]);
 
-    // Primary path: Gelato Relay (gasless via 1Balance)
+    // Primary path: Gelato Relay — submit and return immediately (polling is non-blocking)
     if (canUseGelato(chainId)) {
       try {
-        console.log('[SponsorAnnounce] Using Gelato relay');
+        console.log('[SponsorAnnounce] Submitting to Gelato relay');
         const relayResult = await sponsoredRelay(chainId, announcerAddress, calldata);
-        const { txHash } = await waitForRelay(relayResult.taskId);
-
-        console.log('[SponsorAnnounce] Success via Gelato:', txHash);
-
-        return NextResponse.json({
-          success: true,
-          txHash,
-        });
+        // Fire-and-forget the polling — client doesn't need to wait for confirmation
+        waitForRelay(relayResult.taskId)
+          .then(({ txHash }) => console.log('[SponsorAnnounce] Gelato confirmed:', txHash))
+          .catch(err => console.warn('[SponsorAnnounce] Gelato poll failed (non-fatal):', err));
+        return NextResponse.json({ success: true, taskId: relayResult.taskId });
       } catch (gelatoError) {
         console.warn('[SponsorAnnounce] Gelato relay failed, falling back to sponsor wallet:', gelatoError);
       }
     }
 
-    // Fallback path: sponsor wallet sends tx directly
+    // Fallback path: sponsor wallet sends tx — submit and return immediately
     console.log('[SponsorAnnounce] Using sponsor wallet');
-
     const sponsor = getServerSponsor(chainId);
-    const announcer = new ethers.Contract(
-      announcerAddress,
-      ANNOUNCER_ABI,
-      sponsor
-    );
-
+    const announcer = new ethers.Contract(announcerAddress, ANNOUNCER_ABI, sponsor);
     const tx = await announcer.announce(1, stealthAddress, ephemeralPubKey, metadata);
-    const receipt = await tx.wait();
-
-    console.log('[SponsorAnnounce] Success via sponsor wallet:', receipt.transactionHash);
-
-    return NextResponse.json({
-      success: true,
-      txHash: receipt.transactionHash,
-    });
+    // Fire-and-forget wait — respond as soon as tx is submitted
+    tx.wait()
+      .then((receipt: ethers.ContractReceipt) => console.log('[SponsorAnnounce] sponsor wallet confirmed:', receipt.transactionHash))
+      .catch((err: unknown) => console.warn('[SponsorAnnounce] sponsor wallet wait failed (non-fatal):', err));
+    return NextResponse.json({ success: true, txHash: tx.hash });
   } catch (e) {
     console.error('[SponsorAnnounce] Error:', e);
     return NextResponse.json({ error: 'Announcement failed' }, { status: 500 });
