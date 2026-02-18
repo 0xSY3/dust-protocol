@@ -169,6 +169,7 @@ export default function Home() {
             className="absolute inset-0 w-full h-full object-cover brightness-[0.5]"
           >
             <source src="/bg.webm" type="video/webm" />
+            <source src="/bg.mp4" type="video/mp4" />
           </video>
         </div>
 
@@ -182,6 +183,7 @@ export default function Home() {
             className="absolute inset-0 w-full h-full object-cover brightness-[0.65]"
           >
             <source src="/bg.webm" type="video/webm" />
+            <source src="/bg.mp4" type="video/mp4" />
           </video>
         </div>
 
