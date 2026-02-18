@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStealthScanner } from "@/hooks/stealth";
+import { loadOutgoingPayments } from "@/hooks/stealth/useStealthSend";
 import { ActivityList } from "@/components/activities/ActivityList";
-import type { StealthPayment } from "@/lib/design/types";
+import type { StealthPayment, OutgoingPayment } from "@/lib/design/types";
 
 export default function ActivitiesPage() {
   const {
@@ -33,6 +34,14 @@ export default function ActivitiesPage() {
   const [claimingIndex, setClaimingIndex] = useState<number | null>(null);
   const [claimedTx, setClaimedTx] = useState<string | null>(null);
 
+  // Load outgoing payments from localStorage
+  const [outgoingPayments, setOutgoingPayments] = useState<OutgoingPayment[]>([]);
+  useEffect(() => {
+    if (address) {
+      setOutgoingPayments(loadOutgoingPayments(address, activeChainId));
+    }
+  }, [address, activeChainId]);
+
   const handleClaim = async (index: number) => {
     setClaimingIndex(index);
     try {
@@ -55,6 +64,7 @@ export default function ActivitiesPage() {
     <div className="px-4 md:px-10 py-5 md:py-10 max-w-[780px] mx-auto">
       <ActivityList
         payments={payments}
+        outgoingPayments={outgoingPayments}
         isScanning={isScanning}
         scan={scan}
         claimAddressesInitialized={claimAddressesInitialized}

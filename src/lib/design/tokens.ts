@@ -71,9 +71,9 @@ export const colors: ColorTokens = {
   border: {
     default: "rgba(255,255,255,0.08)",
     light: "rgba(255,255,255,0.05)",
-    accent: "rgba(74,117,240,0.35)",
+    accent: "rgba(0,255,65,0.35)",
     accentGreen: "rgba(34,197,94,0.35)",
-    focus: "rgba(74,117,240,0.5)",
+    focus: "rgba(0,255,65,0.5)",
   },
   text: {
     primary: "rgba(255,255,255,0.92)",
@@ -83,9 +83,9 @@ export const colors: ColorTokens = {
     inverse: "#06080F",
   },
   accent: {
-    indigo: "#4A75F0",
+    indigo: "#00FF41",
     indigoBright: "#6B8EFF",
-    indigoDark: "#2B5AE2",
+    indigoDark: "#00FF41",
     violet: "#633CFF",
     violetBright: "#8B6FFF",
     green: "#22C55E",
@@ -97,7 +97,7 @@ export const colors: ColorTokens = {
     cyan: "#22D3EE",
   },
   glow: {
-    indigo: "0 0 20px rgba(74,117,240,0.15), 0 0 40px rgba(74,117,240,0.05)",
+    indigo: "0 0 20px rgba(0,255,65,0.15), 0 0 40px rgba(0,255,65,0.05)",
     green: "0 0 20px rgba(34,197,94,0.15), 0 0 40px rgba(34,197,94,0.05)",
     violet: "0 0 20px rgba(99,60,255,0.15), 0 0 40px rgba(99,60,255,0.05)",
     red: "0 0 20px rgba(239,68,68,0.15), 0 0 40px rgba(239,68,68,0.05)",
@@ -128,15 +128,15 @@ export const shadows = {
   // Buttons
   button: "0 1px 3px rgba(0,0,0,0.25)",
   buttonPrimary:
-    "0 2px 8px rgba(43,90,226,0.3), 0 0 20px rgba(43,90,226,0.1)",
+    "0 2px 8px rgba(0,255,65,0.3), 0 0 20px rgba(0,255,65,0.1)",
   buttonPrimaryHover:
-    "0 4px 16px rgba(43,90,226,0.4), 0 0 40px rgba(43,90,226,0.15)",
+    "0 4px 16px rgba(0,255,65,0.4), 0 0 40px rgba(0,255,65,0.15)",
   // Focus ring
   focusRing:
-    "0 0 0 3px rgba(74,117,240,0.15), 0 0 20px rgba(43,90,226,0.08)",
+    "0 0 0 3px rgba(0,255,65,0.15), 0 0 20px rgba(0,255,65,0.08)",
   // Inner glow for inputs
   inputFocus:
-    "inset 0 0 0 1px rgba(74,117,240,0.3), 0 0 0 3px rgba(74,117,240,0.1)",
+    "inset 0 0 0 1px rgba(0,255,65,0.3), 0 0 0 3px rgba(0,255,65,0.1)",
 };
 
 // ─── Glass Morphism Presets ──────────────────────────────────────────────────
@@ -167,7 +167,7 @@ export const glass = {
 
 export const buttonVariants = {
   primary: {
-    bg: "linear-gradient(135deg, #2B5AE2 0%, #4A75F0 50%, #5A6FFF 100%)",
+    bg: "linear-gradient(135deg, #00FF41 0%, #00FF41 50%, #00FF41 100%)",
     color: "#FFFFFF",
     border: "none",
     boxShadow: shadows.buttonPrimary,
@@ -295,14 +295,14 @@ export const transitions = {
 // ─── Card Accents (for link/payment cards) ───────────────────────────────────
 
 export const cardAccents = [
-  "#2B5AE2", // indigo
+  "#00FF41", // indigo
   "#7C3AED", // violet
   "#059669", // emerald
   "#E53E3E", // red
   "#D97706", // amber
   "#0891B2", // cyan
   "#DB2777", // pink
-  "#4F46E5", // deep indigo
+  "#00FF41", // deep indigo
 ];
 
 // ─── Chain-aware utilities (from config) ─────────────────────────────────────
