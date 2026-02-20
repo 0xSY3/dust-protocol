@@ -9,6 +9,7 @@ import { AddressBreakdownCard } from "@/components/dashboard/AddressBreakdownCar
 import { PersonalLinkCard } from "@/components/dashboard/PersonalLinkCard";
 import { RecentActivityCard } from "@/components/dashboard/RecentActivityCard";
 import { PrivacyPoolCard } from "@/components/dashboard/PrivacyPoolCard";
+import { V2PoolCard } from "@/components/dustpool/V2PoolCard";
 import { SendModal } from "@/components/send/SendModal";
 import { ReceiveModal } from "@/components/dashboard/ReceiveModal";
 import { ConsolidateModal } from "@/components/dashboard/ConsolidateModal";
@@ -174,7 +175,10 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* Privacy Pool card */}
+        {/* V2 Privacy Pool card */}
+        <V2PoolCard chainId={activeChainId} />
+
+        {/* V1 Privacy Pool card (Legacy) */}
         <PrivacyPoolCard
           claimToPool={claimToPool}
           onToggle={handlePoolToggle}

@@ -34,6 +34,7 @@ export function PrivacyPoolCard({
         <div className="flex items-center gap-2">
           <ShieldIcon className="w-3.5 h-3.5 text-[#00FF41]" />
           <span className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">PRIVACY_POOL</span>
+          <span className="px-1.5 py-0.5 rounded-sm bg-[rgba(255,255,255,0.08)] text-[9px] text-[rgba(255,255,255,0.4)] font-mono">Legacy</span>
         </div>
         <button
           onClick={onToggle}
