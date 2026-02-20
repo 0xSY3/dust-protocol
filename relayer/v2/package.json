@@ -1,0 +1,31 @@
+{
+  "name": "@dust/relayer-v2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DustPoolV2 off-chain relayer — Merkle tree maintenance and proof relay",
+  "scripts": {
+    "dev": "ts-node --transpile-only src/api/server.ts",
+    "build": "tsc",
+    "start": "node dist/api/server.js",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "circomlibjs": "^0.1.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "ethers": "^5.7.2",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  }
+}
