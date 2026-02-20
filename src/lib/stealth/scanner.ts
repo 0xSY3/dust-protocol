@@ -9,6 +9,27 @@ import { getChainConfig } from '@/config/chains';
 
 const secp256k1 = new EC('secp256k1');
 
+// drpc.org free tier limits eth_getLogs to 10K blocks per query
+const MAX_BLOCK_RANGE = 9_999;
+
+async function chunkedQueryFilter(
+  contract: ethers.Contract,
+  filter: ethers.EventFilter,
+  from: number,
+  to: number,
+): Promise<ethers.Event[]> {
+  if (to - from <= MAX_BLOCK_RANGE) {
+    return contract.queryFilter(filter, from, to);
+  }
+  const allEvents: ethers.Event[] = [];
+  for (let start = from; start <= to; start += MAX_BLOCK_RANGE + 1) {
+    const end = Math.min(start + MAX_BLOCK_RANGE, to);
+    const events = await contract.queryFilter(filter, start, end);
+    allEvents.push(...events);
+  }
+  return allEvents;
+}
+
 // Constant-time string comparison to prevent timing side-channels on view tags
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -76,7 +97,10 @@ export async function scanAnnouncements(
 
   const announcer = new ethers.Contract(announcerAddress, ANNOUNCER_ABI, provider);
   const filter = announcer.filters.Announcement(SCHEME_ID.SECP256K1, null, null);
-  const events = await announcer.queryFilter(filter, fromBlock, toBlock ?? 'latest');
+  const resolvedTo = toBlock === 'latest' || toBlock === undefined
+    ? await provider.getBlockNumber()
+    : toBlock;
+  const events = await chunkedQueryFilter(announcer, filter, fromBlock, resolvedTo);
 
   const results: ScanResult[] = [];
 
@@ -197,7 +221,10 @@ export async function scanAnnouncementsViewOnly(
 ): Promise<StealthAnnouncement[]> {
   const announcer = new ethers.Contract(announcerAddress, ANNOUNCER_ABI, provider);
   const filter = announcer.filters.Announcement(SCHEME_ID.SECP256K1, null, null);
-  const events = await announcer.queryFilter(filter, fromBlock, toBlock ?? 'latest');
+  const resolvedTo = toBlock === 'latest' || toBlock === undefined
+    ? await provider.getBlockNumber()
+    : toBlock;
+  const events = await chunkedQueryFilter(announcer, filter, fromBlock, resolvedTo);
 
   const matches: StealthAnnouncement[] = [];
 
@@ -275,6 +302,9 @@ export async function getAnnouncementCount(
 ): Promise<number> {
   const announcer = new ethers.Contract(announcerAddress, ANNOUNCER_ABI, provider);
   const filter = announcer.filters.Announcement(SCHEME_ID.SECP256K1, null, null);
-  const events = await announcer.queryFilter(filter, fromBlock, toBlock ?? 'latest');
+  const resolvedTo = toBlock === 'latest' || toBlock === undefined
+    ? await provider.getBlockNumber()
+    : toBlock;
+  const events = await chunkedQueryFilter(announcer, filter, fromBlock, resolvedTo);
   return events.length;
 }
