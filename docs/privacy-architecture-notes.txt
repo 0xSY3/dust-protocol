@@ -1,0 +1,193 @@
+DUST PROTOCOL — PRIVACY ARCHITECTURE NOTES
+==========================================
+Date: Feb 2026
+
+
+CURRENT STATE
+-------------
+Two separate systems:
+
+  DustPool (private transfers)
+  - Arbitrary amounts
+  - 4 public signals: root, nullifierHash, recipient, amount
+  - Amount is PUBLIC in the proof → privacy leak
+  - Groth16, BN254, Poseidon Merkle tree depth 20
+
+  DustSwap (privacy swaps)
+  - Fixed denominations only (ETH: 0.01–100, USDC: 1–100k)
+  - 8 public signals: root, nullifierHash, recipient, relayer, relayerFee, swapAmountOut, reserved1, reserved2
+  - Uniswap V4 hook (beforeSwap/afterSwap), proof passed as hookData
+  - Groth16, BN254, Poseidon Merkle tree depth 20
+  - Gas-optimized Merkle tree (hardcoded zero hashes, O(1) root lookup)
+
+Both use identical commitment scheme:
+  commitment   = Poseidon(Poseidon(nullifier, secret), amount)
+  nullifierHash = Poseidon(nullifier, nullifier)
+
+
+IDENTIFIED PRIVACY LEAKS
+-------------------------
+1. DustPool uses arbitrary amounts
+   - If user deposits 0.73 ETH and withdraws 0.73 ETH, it's trivially linkable
+   - Unique amounts = unique fingerprint on-chain
+   - Fixed denominations solve this but hurt UX
+
+2. Two separate pools split the anonymity set
+   - 200 ETH depositors split into transfer pool and swap pool
+   - Observer knows which operation type happened from which pool
+   - Halves effective anonymity set
+
+3. No batch deposit in DustPool
+   - Auto-splitting into fixed denominations = multiple transactions = relayer gas waste
+   - No batchDeposit() function exists currently
+
+
+SOLUTIONS DISCUSSED
+-------------------
+
+Short term:
+  - Add batchDeposit() to DustPool — one tx, multiple commitment insertions, fixes relayer gas
+  - Auto-split arbitrary amounts into denomination chunks in frontend (invisible to user)
+  - Note combining — prove ownership of N notes, collapse into single withdrawal tx
+    (like UTXO merge: N deposits → 1 proof → 1 transaction out)
+
+Long term (full privacy + gas optimized):
+
+  UNIFIED NOTE MODEL (Zcash Sapling-style adapted for EVM)
+  ---------------------------------------------------------
+  - Amount hidden via Pedersen value commitment stored at deposit
+    commitment = Poseidon(nullifier, secret, amount)  [amount baked in, private]
+    valueCommitment[leafIndex] = commit(amount, r)    [Pedersen, stored on-chain]
+
+  - On withdrawal: circuit proves note ownership, outputs amount as verified private value
+    contract checks value commitment, sends ETH — no amount visible in proof
+
+  - Note combining: multi-input circuit (N notes in, sum amounts, 1 output)
+
+  - Switch proof system: Groth16 → PLONK or FFLONK
+    No trusted setup ceremony
+    ~30-40% cheaper on-chain verification
+    Faster proof generation
+
+  - Recursive proofs (longer term): batch multiple withdrawals into one proof
+
+
+RECOMMENDED LONG-TERM ARCHITECTURE
+------------------------------------
+
+One pool per token, supports both transfer and swap operations:
+
+  ETH Pool  →  withdraw to stealth address  (private transfer)
+            →  route through Uniswap V4 hook (private swap)
+
+  USDC Pool →  same two paths
+  USDT Pool →  same two paths
+
+Benefits:
+  - Single deposit gives access to both transfer and swap
+  - Entire ETH depositor base (transfers + swaps) shares one anonymity set
+  - Observer cannot distinguish which operation happened, just that a note was spent
+  - One contract per token, one circuit per token, simpler audit surface
+  - Larger anonymity set than current two-pool design
+
+Production notes:
+  - USDT: non-standard ERC-20 (no return value, fee-on-transfer risk) → use safe transfer wrapper
+  - Decimal differences: ETH 18 decimals, USDC/USDT 6 → normalize in circuit amount handling
+  - One pool per token is the right production starting point
+  - Fully unified single multi-token pool (token type as private note field) = max privacy
+    but significantly more complex — v2 target
+
+Anonymity set tradeoff:
+  One-pool-per-token    →  ETH depositors cover ETH depositors only
+  Multi-token pool      →  everyone covers everyone regardless of token (max privacy, complex)
+
+
+COMPARISON: CURRENT vs TARGET
+-------------------------------
+
+                      NOW                         TARGET
+  Pools             2 separate (pool + swap)      1 per token (unified)
+  Amount            Public in proof               Hidden via Pedersen commitment
+  Denominations     Fixed (swap) + arbitrary      Arbitrary any amount
+  Notes/withdrawal  1 proof per deposit           N inputs → 1 proof (note combining)
+  Proof system      Groth16                       PLONK / FFLONK
+  Transfer+Swap     Two separate deposits         One deposit, choose path at withdrawal
+  Anonymity set     Split across pools            Full set per token
+
+
+CLOSEST EXISTING PROTOCOLS
+----------------------------
+  Railgun    — closest overall (private transfers + private swaps + ZK pool)
+               BUT: ecosystem lock-in, 0zk address namespace, requires unshielding,
+               0.25% fee both ways, relayer handles token routing (more trust surface)
+
+  Tornado Cash — closest for pool/ZK design (Poseidon, Groth16, Merkle, nullifiers)
+                 no stealth addresses, no swaps, withdrawal-only
+
+  Umbra       — closest for stealth address design (ERC-5564 ECDH)
+                no ZK pool, no swaps
+
+  Zcash       — closest for hidden amount model (Pedersen value commitments, UTXO notes)
+                L1 chain not EVM, no DEX integration
+
+  Dust is the only protocol combining:
+    stealth addresses (ERC-5564) + ZK pool + Uniswap V4 DEX hook integration
+
+
+DUST V2 CIRCUIT — REQUIRED FIXES BEFORE PRODUCTION
+----------------------------------------------------
+Date: Feb 2026 (Security Audit Phase 5)
+
+The following issues MUST be fixed in the circuit before mainnet deployment.
+They require recompilation of DustV2Transaction.circom and new trusted setup.
+
+C2. ASSET CONSISTENCY CONSTRAINTS (CRITICAL)
+  Problem: publicAsset is unconstrained relative to inAsset[i] and outAsset[j].
+  An attacker can prove ownership of USDC-denominated notes while claiming ETH
+  as publicAsset, causing the contract to transfer the wrong asset.
+
+  Fix: Add to the input note loop (Step 2):
+    inAmount[i] * (inAsset[i] - publicAsset) === 0;
+  Add to the output note loop (Step 3):
+    outAmount[j] * (outAsset[j] - publicAsset) === 0;
+  Dummy notes (amount=0) are excluded by the multiplication.
+
+C3. INPUT AMOUNT RANGE CHECKS (CRITICAL)
+  Problem: Output amounts have Num2Bits(64) range checks, but input amounts do not.
+  An attacker could craft a note with amount >= 2^64 that wraps in field arithmetic,
+  creating value from nothing via the balance conservation equation.
+
+  Fix: Add to the input note loop (Step 2):
+    inAmountRange[i] = Num2Bits(64);
+    inAmountRange[i].in <== inAmount[i];
+
+I1. RECIPIENT/PUBLICASSET ANTI-FRONTRUNNING (INFO)
+  Problem: The current constraints (recipient * recipient, publicAsset * publicAsset)
+  only force these values to appear in the proof witness but don't bind them to any
+  note data. A malicious relayer could substitute different values.
+
+  Fix: Consider binding recipient to an output note's owner field, or using
+  extDataHash = Poseidon(recipient, publicAsset, ...) as a public signal.
+
+CHAINID CONSISTENCY (MEDIUM)
+  Problem: Note chainId fields are not constrained against any public signal.
+  Cross-chain replay is theoretically possible if the same Merkle tree root
+  appears on multiple chains.
+
+  Fix: Add chainId as a public signal, or constrain input/output chainId fields.
+
+
+RELAYER / GAS NOTES
+--------------------
+  Current: ERC-4337 DustPaymaster sponsors all gas
+  - Stealth key signs UserOp locally in browser, never leaves device
+  - Server broadcasts already-signed tx — purely a gas payer, no key exposure
+  - Single centralized relayer currently (RELAYER_PRIVATE_KEY)
+
+  Circuit has relayerFee field built in (capped at 5%)
+  → anyone can run their own relayer and earn fees, not implemented yet
+
+  Better long-term: open relayer network
+  - Anyone stakes to become a relayer
+  - Gets relayerFee (up to 5%) per swap/withdrawal they broadcast
+  - Removes single point of failure and centralization
