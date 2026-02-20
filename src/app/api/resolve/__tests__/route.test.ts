@@ -88,7 +88,7 @@ function generateStealthAddress(spendingPublicKey: string, viewingPublicKey: str
   const spendingKey = secp256k1.keyFromPublic(spendingPublicKey, 'hex');
   const hashKey = secp256k1.keyFromPrivate(secretHash.slice(2), 'hex');
   const stealthPubPoint = spendingKey.getPublic().add(hashKey.getPublic());
-  const stealthAddress = pubKeyToAddress(stealthPubPoint as Parameters<typeof pubKeyToAddress>[0]);
+  const stealthAddress = pubKeyToAddress(stealthPubPoint as unknown as Parameters<typeof pubKeyToAddress>[0]);
 
   return { stealthAddress, ephemeralPublicKey, viewTag };
 }

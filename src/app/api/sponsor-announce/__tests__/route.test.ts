@@ -183,7 +183,7 @@ describe('fire-and-forget announce pattern', () => {
     // flush microtasks so .catch runs
     await Promise.resolve();
     await Promise.resolve();
-    expect(announceError?.message).toBe('Gelato down');
+    expect((announceError as Error | null)?.message).toBe('Gelato down');
   });
 
   it('Gelato path returns taskId immediately without waiting for poll', async () => {

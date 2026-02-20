@@ -235,7 +235,7 @@ describe('fire-and-forget announce in sendEthToStealth', () => {
     await new Promise(r => setTimeout(r, 0)); // flush microtasks
 
     expect(result).toBe('0xTX');             // send succeeded
-    expect(caughtError?.message).toBe('Announce failed'); // logged, not thrown
+    expect((caughtError as Error | null)?.message).toBe('Announce failed'); // logged, not thrown
   });
 
   it('double-send guard (sendingRef) prevents concurrent sends', () => {
