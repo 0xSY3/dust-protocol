@@ -14,8 +14,8 @@ import { toBytes32Hex } from '../poseidon'
 
 // Block to start scanning from per chain (safe lower bound — V2 deployed after V1)
 const V2_START_BLOCKS: Record<number, number> = {
-  11155111: 10259728,
-  111551119090: 6372598,
+  11155111: 10302141,
+  111551119090: 6463446,
 }
 
 // drpc.org enforces 10K block limit on eth_getLogs

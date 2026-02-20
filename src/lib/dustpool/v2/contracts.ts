@@ -116,8 +116,8 @@ export const DUST_POOL_V2_ABI = [
 /** V2 contract addresses per chain */
 export function getDustPoolV2Address(chainId: number): Address | null {
   const addresses: Record<number, Address> = {
-    111551119090: '0x6987FE79057D83BefD19B80822Decb52235A5a67',
-    11155111: '0x36ECE3c48558630372fa4d35B1C4293Fcc18F7B6',
+    111551119090: '0xEbd7F3B694a69Be51b80Cb2db90ffcD4dCC4D55a',
+    11155111: '0x09474EbBd123c53C571673057180E011731Bb52a',
   }
   return addresses[chainId] ?? null
 }
