@@ -5,6 +5,15 @@ import { AnimatePresence, motion } from "framer-motion";
 import QRCode from "qrcode";
 import { XIcon, CopyIcon, CheckIcon } from "@/components/stealth/icons";
 import { DustLogo } from "@/components/DustLogo";
+import { Share2, ExternalLink } from "lucide-react";
+
+const PRODUCTION_ORIGIN = "https://dustprotocol.app";
+
+function getShareableUrl(payPath: string): string {
+  if (typeof window === "undefined") return `${PRODUCTION_ORIGIN}${payPath}`;
+  const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  return isDev ? `${window.location.origin}${payPath}` : `${PRODUCTION_ORIGIN}${payPath}`;
+}
 
 interface ReceiveModalProps {
   isOpen: boolean;
@@ -17,14 +26,15 @@ export function ReceiveModal({ isOpen, onClose, dustName, payPath }: ReceiveModa
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
   const [fullUrl, setFullUrl] = useState("");
+  const [canShare, setCanShare] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !canvasRef.current || !payPath) return;
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const url = `${origin}${payPath}`;
+    const url = getShareableUrl(payPath);
     setFullUrl(url);
+    setCanShare(typeof navigator !== "undefined" && !!navigator.share);
     QRCode.toCanvas(canvasRef.current, url, {
-      width: 260,
+      width: 220,
       margin: 2,
       color: { dark: "#1A1D2B", light: "#FFFFFF" },
       errorCorrectionLevel: "M",
@@ -36,6 +46,20 @@ export function ReceiveModal({ isOpen, onClose, dustName, payPath }: ReceiveModa
     await navigator.clipboard.writeText(fullUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShare = async () => {
+    if (!fullUrl || !navigator.share) return;
+    try {
+      await navigator.share({
+        title: `Pay ${dustName ?? "me"} on Dust Protocol`,
+        text: `Send me a private payment on Dust Protocol`,
+        url: fullUrl,
+      });
+    } catch {
+      // User cancelled or share API failed — fall back to copy
+      handleCopy();
+    }
   };
 
   return (
@@ -51,94 +75,115 @@ export function ReceiveModal({ isOpen, onClose, dustName, payPath }: ReceiveModa
             className="absolute inset-0 bg-black/80 backdrop-blur-sm"
           />
 
-          {/* Modal container */}
+          {/* Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
-            className="relative w-full max-w-[440px] p-6 rounded-md border border-[rgba(255,255,255,0.1)] bg-[#06080F] shadow-2xl overflow-hidden"
+            className="relative w-full max-w-[400px] p-6 rounded-md border border-white/[0.08] bg-[#06080F] shadow-2xl overflow-hidden"
           >
             {/* Header */}
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-5">
               <div className="flex items-center gap-2">
-                <DustLogo size={16} color="#00FF41" />
-                <span className="text-sm font-bold text-white font-mono tracking-wider">
-                  [ RECEIVE ]
+                <DustLogo size={14} color="#00FF41" />
+                <span className="text-xs font-bold text-white/70 font-mono tracking-wider">
+                  RECEIVE
                 </span>
               </div>
               <button
                 onClick={onClose}
-                className="text-[rgba(255,255,255,0.4)] hover:text-white transition-colors"
+                className="text-white/30 hover:text-white transition-colors"
               >
-                <XIcon size={20} />
+                <XIcon size={18} />
               </button>
             </div>
 
             {dustName ? (
-              <div className="flex flex-col gap-6">
-                {/* Title */}
-                <div className="flex flex-col gap-1.5 text-center">
-                  <p className="text-[22px] font-bold text-white">Share Your Link</p>
-                  <p className="text-sm text-[rgba(255,255,255,0.4)] font-mono">
-                    Anyone can pay you with this link
+              <div className="flex flex-col gap-5">
+                {/* .dust name */}
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-[#00FF41] font-mono">{dustName}</p>
+                  <p className="text-[11px] text-white/30 font-mono mt-1">
+                    Share this link to receive private payments
                   </p>
                 </div>
 
                 {/* QR Code */}
                 <div className="flex justify-center">
-                  <div className="p-4 rounded-sm bg-white border-4 border-[#00FF41] shadow-[0_4px_20px_rgba(0,255,65,0.15)]">
-                    <canvas ref={canvasRef} style={{ display: "block", borderRadius: "8px" }} />
+                  <div className="p-3 rounded-sm bg-white">
+                    <canvas ref={canvasRef} style={{ display: "block" }} />
                   </div>
                 </div>
 
-                {/* .dust name pill */}
-                <div className="flex justify-center">
-                  <div className="px-5 py-2.5 bg-[rgba(0,255,65,0.06)] border border-[rgba(0,255,65,0.2)] rounded-full">
-                    <p className="text-[15px] font-bold text-[#00FF41] font-mono text-center">
-                      {dustName}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Full URL row */}
-                <div className="flex items-center gap-2.5 w-full p-3 bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.05)] rounded-sm">
-                  <p className="flex-1 text-[13px] text-[rgba(255,255,255,0.4)] font-mono truncate">
+                {/* Link row — clickable */}
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center gap-2 w-full px-3 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-sm hover:border-[#00FF41]/30 hover:bg-[#00FF41]/[0.03] transition-all group"
+                >
+                  <span className="flex-1 text-[12px] text-white/40 font-mono truncate text-left group-hover:text-white/60 transition-colors">
                     {fullUrl}
-                  </p>
+                  </span>
+                  <span className="flex-shrink-0 text-white/30 group-hover:text-[#00FF41] transition-colors">
+                    {copied
+                      ? <CheckIcon size={14} color="#00FF41" />
+                      : <CopyIcon size={14} color="currentColor" />
+                    }
+                  </span>
+                </button>
+
+                {/* Action buttons */}
+                <div className="flex gap-2">
                   <button
                     onClick={handleCopy}
-                    className="flex-shrink-0 p-1.5 rounded-sm hover:text-[#00FF41] text-[rgba(255,255,255,0.4)] transition-colors"
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-sm border border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] transition-all text-xs font-mono text-white/70 hover:text-white"
                   >
-                    {copied
-                      ? <CheckIcon size={16} color="#00FF41" />
-                      : <CopyIcon size={16} color="currentColor" />
-                    }
+                    {copied ? <CheckIcon size={13} color="#00FF41" /> : <CopyIcon size={13} color="currentColor" />}
+                    {copied ? "Copied!" : "Copy Link"}
                   </button>
+                  {canShare ? (
+                    <button
+                      onClick={handleShare}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-sm bg-[#00FF41] hover:bg-[#00FF41]/85 transition-all text-xs font-mono font-bold text-black"
+                    >
+                      <Share2 size={13} />
+                      Share
+                    </button>
+                  ) : (
+                    <a
+                      href={fullUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-sm bg-[#00FF41] hover:bg-[#00FF41]/85 transition-all text-xs font-mono font-bold text-black"
+                    >
+                      <ExternalLink size={13} />
+                      Open Link
+                    </a>
+                  )}
                 </div>
 
                 {/* Branding */}
-                <div className="flex items-center justify-center gap-1.5 opacity-50">
-                  <DustLogo size={18} color="rgba(255,255,255,0.6)" />
-                  <span className="text-sm font-bold text-[rgba(255,255,255,0.6)] font-mono tracking-tight">
-                    Dust
+                <div className="flex items-center justify-center gap-1.5 pt-1">
+                  <DustLogo size={12} color="rgba(255,255,255,0.2)" />
+                  <span className="text-[10px] text-white/20 font-mono tracking-wider">
+                    DUST PROTOCOL
                   </span>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col gap-4 py-5">
                 <p className="text-lg font-bold text-white text-center">No Username Yet</p>
-                <p className="text-sm text-[rgba(255,255,255,0.4)] font-mono text-center leading-relaxed">
+                <p className="text-sm text-white/40 font-mono text-center leading-relaxed">
                   Register a username to get a shareable payment link.
                 </p>
               </div>
             )}
 
             {/* Corner accents */}
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
+            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-white/[0.08]" />
+            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-white/[0.08]" />
+            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-white/[0.08]" />
+            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-white/[0.08]" />
           </motion.div>
         </div>
       )}
