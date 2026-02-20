@@ -2,7 +2,7 @@
 
 Dust is a private finance protocol on EVM chains. It has two main primitives: **stealth transfers** and **privacy swaps**.
 
-Stealth transfers let you send ETH or tokens to anyone without creating an on-chain link between sender and recipient. Every payment goes to a one-time address derived through ECDH — nobody watching the chain can associate it with the recipient's identity. `.tok` names sit on top so people can share a readable name instead of an address, and the whole mechanism works with any wallet without requiring the sender to run stealth-aware software.
+Stealth transfers let you send ETH or tokens to anyone without creating an on-chain link between sender and recipient. Every payment goes to a one-time address derived through ECDH — nobody watching the chain can associate it with the recipient's identity. `.dust` names sit on top so people can share a readable name instead of an address, and the whole mechanism works with any wallet without requiring the sender to run stealth-aware software.
 
 Privacy swaps let you trade ETH ↔ USDC without on-chain traceability. You deposit into a ZK pool, generate a Groth16 proof in-browser that proves you own a deposit without revealing which one, and the swap executes through a Uniswap V4 hook that verifies the proof on-chain. Output lands at a stealth address with no linkage to whoever deposited. This is not a wrapped privacy layer on top of a DEX — the ZK verification is built directly into the swap hook via `beforeSwap` / `afterSwap` callbacks, so the proof verification and the swap are atomic.
 
@@ -14,11 +14,11 @@ Both primitives share a common ZK backend: Poseidon hashing (BN254 curve), Groth
 
 ### Stealth Transfers
 
-When someone wants to receive privately, they register a `.tok` name on-chain pointing to their stealth meta-address — a pair of public keys (`spendKey`, `viewKey`) derived from their wallet signature and a PIN. When a sender visits the pay page for `alice.tok`, the page generates a fresh one-time stealth address by picking a random `r`, computing `sharedSecret = r * viewKey`, and deriving the stealth address from `spendKey + sharedSecret * G`. It announces this on-chain before the sender pays anything. The sender sends to a normal-looking address using any wallet. The recipient's scanner detects the announcement, recomputes the shared secret from their view key, derives the stealth private key, and claims the funds.
+When someone wants to receive privately, they register a `.dust` name on-chain pointing to their stealth meta-address — a pair of public keys (`spendKey`, `viewKey`) derived from their wallet signature and a PIN. When a sender visits the pay page for `alice.dust`, the page generates a fresh one-time stealth address by picking a random `r`, computing `sharedSecret = r * viewKey`, and deriving the stealth address from `spendKey + sharedSecret * G`. It announces this on-chain before the sender pays anything. The sender sends to a normal-looking address using any wallet. The recipient's scanner detects the announcement, recomputes the shared secret from their view key, derives the stealth private key, and claims the funds.
 
 The claim is gasless. Each stealth address is an ERC-4337 smart account (not yet deployed at creation time). The scanner builds a UserOperation, DustPaymaster signs it to sponsor gas, the client signs the `userOpHash` locally, and the server submits it to the EntryPoint which deploys the account and drains the funds atomically in one transaction. The stealth private key never touches the server.
 
-Sub-addresses (`sub.alice.tok`) are also supported, letting users segment their payment streams without exposing a link between them.
+Sub-addresses (`sub.alice.dust`) are also supported, letting users segment their payment streams without exposing a link between them.
 
 ### Privacy Swaps
 
@@ -130,9 +130,9 @@ NEXT_PUBLIC_USE_GRAPH=true
 | Network | Chain ID | Currency | Explorer |
 |---------|----------|----------|---------|
 | Ethereum Sepolia | `11155111` | ETH | [sepolia.etherscan.io](https://sepolia.etherscan.io) |
-| Thanos Sepolia | `111551119090` | TON | [explorer.thanos-sepolia.tokamak.network](https://explorer.thanos-sepolia.tokamak.network) |
+| Thanos Sepolia | `111551119090` | TON | [explorer.thanos-sepolia.dustamak.network](https://explorer.thanos-sepolia.dustamak.network) |
 
-`.tok` name registry is canonical on Ethereum Sepolia. DustSwap (privacy swaps) is currently on Ethereum Sepolia only.
+`.dust` name registry is canonical on Ethereum Sepolia. DustSwap (privacy swaps) is currently on Ethereum Sepolia only.
 
 Contract addresses: [`docs/CONTRACTS.md`](docs/CONTRACTS.md)
 
@@ -169,7 +169,7 @@ src/
 │   ├── pay/[name]/           # Public pay page (no-opt-in payments)
 │   └── api/
 │       ├── bundle/           # ERC-4337 UserOp build + submit
-│       ├── resolve/[name]    # Stealth address generation for .tok names
+│       ├── resolve/[name]    # Stealth address generation for .dust names
 │       ├── pool-deposit/     # Stealth wallet → DustPool deposit
 │       ├── pool-withdraw/    # ZK-verified pool withdrawal
 │       └── sponsor-*/        # Gas sponsorship for legacy claim types

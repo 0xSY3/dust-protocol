@@ -1,6 +1,6 @@
 type Name @entity(immutable: false) {
   id: ID!                          # keccak256(lowercase name)
-  name: String!                    # "alice" (without .tok suffix)
+  name: String!                    # "alice" (without .dust suffix)
   owner: User!                     # Current owner (relation to User entity)
   ownerAddress: Bytes!             # Current owner address (raw)
   metaAddress: Bytes!              # Stealth meta-address (66 bytes)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/// @title NameVerifier — Cross-chain .tok name verifier
+/// @title NameVerifier — Cross-chain .dust name verifier
 /// @notice Deployed on destination chains. Stores synced roots from the canonical chain.
 ///         Clients provide Merkle proofs for name resolution.
 ///         Uses positional (left/right) hashing to match the incremental tree

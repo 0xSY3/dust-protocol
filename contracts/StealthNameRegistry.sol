@@ -3,11 +3,11 @@ pragma solidity ^0.8.20;
 
 /**
  * @title StealthNameRegistry
- * @notice Registry for human-readable stealth names (.tok)
+ * @notice Registry for human-readable stealth names (.dust)
  * @dev Maps names like "sahil" to stealth meta-addresses
  */
 contract StealthNameRegistry {
-    /// @notice The name suffix (e.g., ".tok")
+    /// @notice The name suffix (e.g., ".dust")
     string public constant NAME_SUFFIX = ".dust";
 
     /**
@@ -58,7 +58,7 @@ contract StealthNameRegistry {
 
     /**
      * @notice Register a new stealth name
-     * @param name The name to register (without .tok suffix)
+     * @param name The name to register (without .dust suffix)
      * @param stealthMetaAddress The stealth meta-address (66 bytes)
      */
     function registerName(
@@ -83,7 +83,7 @@ contract StealthNameRegistry {
 
     /**
      * @notice Resolve a name to its stealth meta-address
-     * @param name The name to resolve (with or without .tok suffix)
+     * @param name The name to resolve (with or without .dust suffix)
      * @return The stealth meta-address bytes
      */
     function resolveName(string calldata name) external view returns (bytes memory) {
@@ -206,7 +206,7 @@ contract StealthNameRegistry {
     }
 
     /**
-     * @notice Strip .tok suffix if present
+     * @notice Strip .dust suffix if present
      */
     function _stripSuffix(string memory name) internal pure returns (string memory) {
         bytes memory b = bytes(name);
