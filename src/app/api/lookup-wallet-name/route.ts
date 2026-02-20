@@ -76,7 +76,7 @@ export async function GET(req: Request) {
             metaAddress: resolved || '',
             source: 'direct-ownership',
           }, {
-            headers: { 'Cache-Control': 'public, max-age=120' },
+            headers: { 'Cache-Control': 'private, max-age=60' },
           });
         }
       } catch { /* continue to next chain */ }
@@ -116,7 +116,7 @@ export async function GET(req: Request) {
             metaAddress: nameFromGraph.metaAddress,
             source: 'direct-read+graph',
           }, {
-            headers: { 'Cache-Control': 'public, max-age=120' },
+            headers: { 'Cache-Control': 'private, max-age=60' },
           });
         }
       }
@@ -157,7 +157,7 @@ export async function GET(req: Request) {
             metaAddress: nameFromGraph.metaAddress,
             source: 'events+graph',
           }, {
-            headers: { 'Cache-Control': 'public, max-age=120' },
+            headers: { 'Cache-Control': 'private, max-age=60' },
           });
         }
       }
@@ -173,7 +173,7 @@ export async function GET(req: Request) {
             metaAddress: entry.metaAddress,
             source: 'tree',
           }, {
-            headers: { 'Cache-Control': 'public, max-age=120' },
+            headers: { 'Cache-Control': 'private, max-age=60' },
           });
         }
       }
@@ -197,7 +197,7 @@ export async function GET(req: Request) {
                   metaAddress: resolved,
                   source: 'rpc',
                 }, {
-                  headers: { 'Cache-Control': 'public, max-age=120' },
+                  headers: { 'Cache-Control': 'private, max-age=60' },
                 });
               }
             } catch { continue; }
@@ -208,7 +208,7 @@ export async function GET(req: Request) {
 
     // No name found
     return NextResponse.json({ name: null }, {
-      headers: { 'Cache-Control': 'public, max-age=60' },
+      headers: { 'Cache-Control': 'private, no-store' },
     });
   } catch (e) {
     console.error('[lookup-wallet-name] Error:', e);

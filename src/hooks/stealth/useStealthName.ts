@@ -28,6 +28,8 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
   useEffect(() => { userMetaAddressRef.current = userMetaAddress; }, [userMetaAddress]);
   // Guard against concurrent invocations of the discovery pipeline.
   const loadingRef = useRef(false);
+  // Tracks the current address so stale async results from a previous address are discarded.
+  const addressRef = useRef(address);
 
   const activeChainId = chainId ?? DEFAULT_CHAIN_ID;
   const isConfigured = isNameRegistryConfigured();
@@ -86,9 +88,10 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
   // Reset legacy name state when the wallet address changes (switch wallet, disconnect/reconnect)
   // so stale names from the previous wallet are never used for routing decisions.
   useEffect(() => {
+    addressRef.current = address;
     setLegacyOwnedNames([]);
     recoveryAttempted.current = false;
-    loadingRef.current = false; // allow fresh scan for the new address
+    loadingRef.current = false;
     setLegacyNamesSettled(!address);
   }, [address]);
 
@@ -153,16 +156,20 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     // key derivation doesn't cause a spurious re-scan when we already have a name.
     const currentMetaAddress = userMetaAddressRef.current;
 
+    // Capture address at scan start — if it changes mid-flight, discard results.
+    const scanAddress = address;
+
     try {
-      // Run RPC discovery and server API in parallel — first result wins.
       let found = false;
       const setNameOnce = (name: string) => {
         if (found) return;
+        // Stale guard: address changed since this scan started — discard result
+        if (addressRef.current !== scanAddress) return;
         found = true;
         setLegacyOwnedNames([{ name, fullName: formatNameWithSuffix(name) }]);
         if (!recoveryAttempted.current) {
           recoveryAttempted.current = true;
-          tryRecoverName(name, address);
+          tryRecoverName(name, scanAddress);
         }
       };
 
@@ -208,11 +215,12 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load names');
     } finally {
-      setIsLoading(false);
-      loadingRef.current = false;
-      // Only mark settled AFTER the full discovery pipeline, so routing gates never
-      // fire while the ERC-6538 history scan is still in-flight.
-      setLegacyNamesSettled(true);
+      // Only update state if this scan is still for the current address
+      if (addressRef.current === scanAddress) {
+        setIsLoading(false);
+        loadingRef.current = false;
+        setLegacyNamesSettled(true);
+      }
     }
   // userMetaAddress intentionally excluded — read via ref to prevent re-run on key derivation.
   // eslint-disable-next-line react-hooks/exhaustive-deps
