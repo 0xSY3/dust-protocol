@@ -5,6 +5,7 @@ import { DEFAULT_CHAIN_ID } from '@/config/chains'
 import { getDustPoolV2Address, DUST_POOL_V2_ABI } from '@/lib/dustpool/v2/contracts'
 import { syncAndPostRoot } from '@/lib/dustpool/v2/relayer-tree'
 import { toBytes32Hex } from '@/lib/dustpool/poseidon'
+import { computeAssetId } from '@/lib/dustpool/v2/commitment'
 
 export const maxDuration = 60
 
@@ -55,6 +56,17 @@ export async function POST(req: Request) {
     }
     if (!tokenAddress || !/^0x[0-9a-fA-F]{40}$/.test(tokenAddress)) {
       return NextResponse.json({ error: 'Invalid tokenAddress' }, { status: 400, headers: NO_STORE })
+    }
+
+    // Verify tokenAddress matches the publicAsset in the ZK proof.
+    // Without this check, an attacker could deposit dust ETH and withdraw a different token.
+    const expectedAsset = await computeAssetId(chainId, tokenAddress)
+    const proofAsset = BigInt(publicSignals[6])
+    if (expectedAsset !== proofAsset) {
+      return NextResponse.json(
+        { error: 'tokenAddress does not match proof asset' },
+        { status: 400, headers: NO_STORE },
+      )
     }
 
     // Public signals: [merkleRoot, nullifier0, nullifier1, outCommitment0, outCommitment1, publicAmount, publicAsset, recipient]

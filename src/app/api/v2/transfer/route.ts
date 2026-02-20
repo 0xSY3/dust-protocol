@@ -56,6 +56,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid proof format' }, { status: 400, headers: NO_STORE })
     }
 
+    // Transfers must have publicAmount=0 — reject any attempt to use transfer endpoint for withdrawals
+    const publicAmount = BigInt(publicSignals[5])
+    if (publicAmount !== 0n) {
+      return NextResponse.json(
+        { error: 'Transfer requires publicAmount=0' },
+        { status: 400, headers: NO_STORE },
+      )
+    }
+
     const nullifier0Hex = toBytes32Hex(BigInt(publicSignals[1]))
     if (!checkCooldown(nullifier0Hex)) {
       return NextResponse.json({ error: 'Please wait before retrying' }, { status: 429, headers: NO_STORE })
@@ -75,7 +84,6 @@ export async function POST(req: Request) {
     const nullifier1 = toBytes32Hex(BigInt(publicSignals[2]))
     const outCommitment0 = toBytes32Hex(BigInt(publicSignals[3]))
     const outCommitment1 = toBytes32Hex(BigInt(publicSignals[4]))
-    const publicAmount = BigInt(publicSignals[5])
     const publicAsset = BigInt(publicSignals[6])
     const recipientBigInt = BigInt(publicSignals[7])
     const recipient = ethers.utils.getAddress(
