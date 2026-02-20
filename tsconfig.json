@@ -39,6 +39,7 @@
     "contracts",
     "subgraph",
     "relayer",
-    "V2UI"
+    "V2UI",
+    "e2e"
   ]
 }
