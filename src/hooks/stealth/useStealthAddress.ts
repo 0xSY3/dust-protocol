@@ -13,7 +13,7 @@ import {
 import { getChainProvider, signMessage as signWithWallet } from '@/lib/providers';
 import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
 
-import { storageKey, migrateKey } from '@/lib/storageKey';
+import { storageKey } from '@/lib/storageKey';
 
 const LEGACY_STORAGE_KEY = 'tokamak_stealth_keys_';
 function stealthKeysKey(addr: string): string { return storageKey('stealthkeys', addr); }
@@ -41,7 +41,8 @@ export function useStealthAddress() {
   const { data: walletClient } = useWalletClient();
   const [isSigningMessage, setIsSigningMessage] = useState(false);
 
-  const [stealthKeys, setStealthKeys] = useState<StealthKeyPair | null>(null);
+  const stealthKeysRef = useRef<StealthKeyPair | null>(null);
+  const [hasStealthKeys, setHasStealthKeys] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +54,7 @@ export function useStealthAddress() {
   const signatureRef = useRef<string | null>(null);
 
   // Derived values — safe because stealthKeys are fully validated before being set
-  const metaAddress = stealthKeys ? formatStealthMetaAddress(stealthKeys, 'thanos') : null;
+  const metaAddress = hasStealthKeys && stealthKeysRef.current ? formatStealthMetaAddress(stealthKeysRef.current, 'thanos') : null;
   const parsedMetaAddress: StealthMetaAddress | null = (() => {
     try { return metaAddress ? parseStealthMetaAddress(metaAddress) : null; }
     catch { return null; }
@@ -61,47 +62,30 @@ export function useStealthAddress() {
   const selectedClaimAddress = claimAddresses[selectedClaimIndex] || null;
   const claimAddressesInitialized = claimAddresses.length > 0;
 
-  // Load saved keys — full round-trip validation before setting state
-  // Also handles reset when switching wallets (merged to avoid race condition)
+  // Reset state when switching wallets — keys must be re-derived each session (never persisted)
   useEffect(() => {
     if (!address || typeof window === 'undefined') { setIsHydrated(true); return; }
     setIsHydrated(false);
 
-    // Clear stale state from previous address before loading new data
-    setStealthKeys(null);
+    // Clear stale state from previous address
+    stealthKeysRef.current = null;
+    setHasStealthKeys(false);
     setIsRegistered(false);
     setClaimAddresses([]);
     setSelectedClaimIndex(0);
     signatureRef.current = null;
 
-    migrateKey(LEGACY_STORAGE_KEY + address.toLowerCase(), stealthKeysKey(address));
-    const stored = localStorage.getItem(stealthKeysKey(address));
-    if (stored) {
-      try {
-        const keys = JSON.parse(stored) as StealthKeyPair;
-        if (areKeysValid(keys)) {
-          setStealthKeys(keys);
-        } else {
-          localStorage.removeItem(stealthKeysKey(address));
-        }
-      } catch {
-        localStorage.removeItem(stealthKeysKey(address));
-      }
-    }
-    // Load claim addresses metadata
+    // Purge any legacy persisted private keys from localStorage
+    localStorage.removeItem(stealthKeysKey(address));
+    localStorage.removeItem(LEGACY_STORAGE_KEY + address.toLowerCase());
+
+    // Load claim addresses metadata (public addresses + labels only)
     const savedClaims = loadClaimAddressesFromStorage(address);
     if (savedClaims.length > 0) {
       setClaimAddresses(savedClaims.map(a => ({ ...a, privateKey: '' })) as ClaimAddressWithBalance[]);
     }
     setIsHydrated(true);
   }, [address]);
-
-  // Save keys when changed
-  useEffect(() => {
-    if (address && stealthKeys && typeof window !== 'undefined') {
-      localStorage.setItem(stealthKeysKey(address), JSON.stringify(stealthKeys));
-    }
-  }, [address, stealthKeys]);
 
   const fetchBalance = useCallback(async (addr: string, chainId?: number): Promise<string> => {
     try {
@@ -115,7 +99,9 @@ export function useStealthAddress() {
 
   const generateKeys = useCallback(() => {
     setError(null);
-    setStealthKeys(generateStealthKeyPair());
+    const keys = generateStealthKeyPair();
+    stealthKeysRef.current = keys;
+    setHasStealthKeys(true);
     setIsRegistered(false);
   }, []);
 
@@ -145,7 +131,8 @@ export function useStealthAddress() {
         throw new Error('Derived keys failed validation — please try again');
       }
 
-      setStealthKeys(newKeys);
+      stealthKeysRef.current = newKeys;
+      setHasStealthKeys(true);
       setIsRegistered(false);
 
       // Compute metaAddress synchronously (cheap string concat) so callers
@@ -162,8 +149,10 @@ export function useStealthAddress() {
         label: stored.find(s => s.address.toLowerCase() === a.address.toLowerCase())?.label || getLabel(a.index),
       }));
 
-      setClaimAddresses(withLabels);
-      saveClaimAddressesToStorage(address, withLabels);
+      // Strip private keys before state/storage — keys are re-derived from wallet signature each session
+      const withLabelsStripped = withLabels.map(a => ({ ...a, privateKey: '' })) as ClaimAddressWithBalance[];
+      setClaimAddresses(withLabelsStripped);
+      saveClaimAddressesToStorage(address, withLabelsStripped);
 
       // Fetch balances in background (don't block)
       Promise.all(withLabels.map(a => fetchBalance(a.address))).then(balances => {
@@ -194,7 +183,8 @@ export function useStealthAddress() {
   }, [isConnected, address, walletClient, fetchBalance]);
 
   const clearKeys = useCallback(() => {
-    setStealthKeys(null);
+    stealthKeysRef.current = null;
+    setHasStealthKeys(false);
     setIsRegistered(false);
     setError(null);
     setClaimAddresses([]);
@@ -209,12 +199,13 @@ export function useStealthAddress() {
       setError('Imported keys are invalid');
       return;
     }
-    setStealthKeys(keys);
+    stealthKeysRef.current = keys;
+    setHasStealthKeys(true);
     setIsRegistered(false);
     setError(null);
   }, []);
 
-  const exportKeys = useCallback(() => stealthKeys, [stealthKeys]);
+  const exportKeys = useCallback(() => stealthKeysRef.current, []);
 
   const registeringRef = useRef(false);
   const registerMetaAddress = useCallback(async (chainId?: number): Promise<string | null> => {
@@ -320,7 +311,7 @@ export function useStealthAddress() {
 
 
   return {
-    stealthKeys, metaAddress, parsedMetaAddress,
+    stealthKeys: stealthKeysRef.current, metaAddress, parsedMetaAddress,
     generateKeys, deriveKeysFromWallet, clearKeys, importKeys, exportKeys,
     registerMetaAddress, isRegistered, checkRegistration, lookupAddress,
     isLoading, isSigningMessage, isHydrated, error,

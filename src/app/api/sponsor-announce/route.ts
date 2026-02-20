@@ -77,7 +77,7 @@ export async function POST(req: Request) {
         waitForRelay(relayResult.taskId)
           .then(({ txHash }) => console.log('[SponsorAnnounce] Gelato confirmed:', txHash))
           .catch(err => console.warn('[SponsorAnnounce] Gelato poll failed (non-fatal):', err));
-        return NextResponse.json({ success: true, taskId: relayResult.taskId });
+        return NextResponse.json({ success: true, taskId: relayResult.taskId }, { headers: { 'Cache-Control': 'no-store' } });
       } catch (gelatoError) {
         console.warn('[SponsorAnnounce] Gelato relay failed, falling back to sponsor wallet:', gelatoError);
       }
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     tx.wait()
       .then((receipt: ethers.ContractReceipt) => console.log('[SponsorAnnounce] sponsor wallet confirmed:', receipt.transactionHash))
       .catch((err: unknown) => console.warn('[SponsorAnnounce] sponsor wallet wait failed (non-fatal):', err));
-    return NextResponse.json({ success: true, txHash: tx.hash });
+    return NextResponse.json({ success: true, txHash: tx.hash }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     console.error('[SponsorAnnounce] Error:', e);
     return NextResponse.json({ error: 'Announcement failed' }, { status: 500 });

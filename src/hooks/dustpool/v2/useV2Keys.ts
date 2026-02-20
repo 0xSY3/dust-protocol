@@ -69,11 +69,9 @@ export function useV2Keys() {
     setError(null)
   }, [])
 
-  // Clear keys when wallet disconnects or address changes
+  // Clear keys on wallet switch or disconnect (cross-account leakage prevention)
   useEffect(() => {
-    if (!address) {
-      clearKeys()
-    }
+    clearKeys()
   }, [address, clearKeys])
 
   return { keysRef, hasKeys, hasPin, isDeriving, error, deriveKeys, clearKeys }

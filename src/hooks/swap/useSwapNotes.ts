@@ -3,9 +3,9 @@
 /**
  * Hook for managing DustSwap deposit notes (IndexedDB)
  *
- * Notes are isolated per wallet address — each account only sees
- * the deposit notes it created. Legacy notes (without depositorAddress)
- * are visible to all accounts for backwards compatibility.
+ * Notes are strictly isolated per wallet address — each account only sees
+ * the deposit notes it created. Legacy notes without depositorAddress
+ * are NOT visible (prevents cross-account secret exposure).
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -88,16 +88,16 @@ export function useSwapNotes() {
   )
 
   const exportNotes = useCallback(async (): Promise<string> => {
-    return exportSwapNotes()
-  }, [])
+    return exportSwapNotes(address)
+  }, [address])
 
   const importNotes = useCallback(
     async (jsonString: string): Promise<number> => {
-      const imported = await importSwapNotes(jsonString)
+      const imported = await importSwapNotes(jsonString, address)
       await loadNotes()
       return imported
     },
-    [loadNotes]
+    [loadNotes, address]
   )
 
   const clearNotes = useCallback(async (): Promise<void> => {

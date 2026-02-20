@@ -35,7 +35,7 @@ export async function GET(req: Request) {
     leafIndex: result.leafIndex,
   }, {
     headers: {
-      'Cache-Control': 'public, max-age=60',
+      'Cache-Control': 'private, no-store',
       'Access-Control-Allow-Origin': '*',
     },
   });

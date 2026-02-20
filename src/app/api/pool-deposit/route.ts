@@ -21,6 +21,7 @@ const STEALTH_WALLET_ABI = [
 const claimCooldowns = new Map<string, number>();
 const CLAIM_COOLDOWN_MS = 10_000;
 const MAX_GAS_PRICE = ethers.utils.parseUnits('100', 'gwei');
+const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
 function isValidAddress(addr: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(addr);
@@ -52,7 +53,10 @@ export async function POST(req: Request) {
     const { stealthAddress, owner, signature, commitment, walletType } = body;
 
     if (!stealthAddress || !commitment) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: NO_STORE });
+    }
+    if (!/^0x[0-9a-fA-F]{64}$/.test(commitment)) {
+      return NextResponse.json({ error: 'Invalid commitment format' }, { status: 400, headers: NO_STORE });
     }
     if (!isValidAddress(stealthAddress)) {
       return NextResponse.json({ error: 'Invalid stealth address' }, { status: 400 });
@@ -154,7 +158,7 @@ export async function POST(req: Request) {
         txHash: receipt.transactionHash,
         leafIndex,
         amount: ethers.utils.formatEther(balance),
-      });
+      }, { headers: NO_STORE });
     } else if (walletType === 'eoa') {
       return NextResponse.json({ error: 'EOA wallets not supported for pool deposit' }, { status: 400 });
     } else if (walletType === 'eip7702') {

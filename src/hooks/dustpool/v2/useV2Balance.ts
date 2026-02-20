@@ -56,6 +56,14 @@ export function useV2Balance(chainIdOverride?: number) {
     }
   }, [address, chainId])
 
+  // Clear stale balances immediately on address/chain change before async refresh
+  useEffect(() => {
+    setBalances(new Map())
+    setTotalEthBalance(0n)
+    setNotes([])
+    setPendingDeposits(0)
+  }, [address, chainId])
+
   useEffect(() => {
     refreshBalances()
   }, [refreshBalances])

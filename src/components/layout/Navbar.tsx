@@ -11,7 +11,7 @@ import { getSupportedChains } from "@/config/chains";
 import { ChainIcon as ChainTokenIcon } from "@/components/stealth/icons";
 import { MenuIcon, XIcon, ChevronDownIcon, CopyIcon, LogOutIcon, CheckIcon } from "lucide-react";
 import { isPrivyEnabled } from "@/config/privy";
-import { useLogin } from "@privy-io/react-auth";
+import { useLogin, usePrivy, useLogout } from "@privy-io/react-auth";
 
 const chains = getSupportedChains();
 
@@ -37,6 +37,8 @@ export function Navbar() {
   const { disconnect } = useDisconnect();
   const { connect } = useConnect();
   const { login: privyLogin } = useLogin();
+  const { authenticated: privyAuthenticated, ready: privyReady } = usePrivy();
+  const { logout: privyLogout } = useLogout();
   const { activeChainId, setActiveChain } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
@@ -47,8 +49,13 @@ export function Navbar() {
 
   const displayName = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : null;
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     if (isPrivyEnabled) {
+      // Stale session: Privy thinks user is authenticated but wagmi has no connection.
+      // Clear the stale Privy session first, then re-login on next click.
+      if (privyReady && privyAuthenticated && !isConnected) {
+        await privyLogout();
+      }
       privyLogin();
     } else {
       connect({ connector: injected() });
@@ -163,7 +170,7 @@ export function Navbar() {
                         <span className="tracking-wide">{copied ? "COPIED TO CLIPBOARD" : "COPY ADDRESS"}</span>
                       </button>
                       <button
-                        onClick={() => { disconnect(); setWalletOpen(false); }}
+                        onClick={() => { disconnect(); if (isPrivyEnabled) privyLogout(); setWalletOpen(false); }}
                         className="w-full text-left px-4 py-2.5 text-xs font-mono text-[#ff4b4b]/70 hover:bg-[#ff4b4b]/[0.05] hover:text-[#ff4b4b] transition-all flex items-center gap-3"
                       >
                         <LogOutIcon className="w-4 h-4" />

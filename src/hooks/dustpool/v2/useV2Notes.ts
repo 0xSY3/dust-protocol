@@ -56,6 +56,11 @@ export function useV2Notes(chainIdOverride?: number) {
     }
   }, [address, chainId])
 
+  // Clear stale notes immediately on address/chain change before async refresh
+  useEffect(() => {
+    setNotes([])
+  }, [address, chainId])
+
   useEffect(() => {
     refreshNotes()
   }, [refreshNotes])

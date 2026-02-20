@@ -198,7 +198,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
         txHash,
         amount: ethers.utils.formatEther(balance),
         gasFunded: '0',
-      });
+      }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (gelatoError) {
       console.warn('[Claim] Gelato relay failed, falling back to sponsor wallet:', gelatoError);
     }
@@ -234,7 +234,7 @@ async function handleCreate2Claim(body: { stealthAddress: string; owner: string;
     txHash: receipt.transactionHash,
     amount: ethers.utils.formatEther(balance),
     gasFunded: '0',
-  });
+  }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 // Sweep ERC-20 tokens from a deployed CREATE2 stealth wallet via execute()
@@ -386,6 +386,6 @@ async function handleTokenSweep(
   return NextResponse.json({
     success: true,
     swept: results,
-  });
+  }, { headers: { 'Cache-Control': 'no-store' } });
 }
 

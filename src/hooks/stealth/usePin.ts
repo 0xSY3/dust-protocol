@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAccount, useWalletClient } from 'wagmi';
 import {
   validatePin, encryptPin, decryptPin,
@@ -11,11 +11,18 @@ export function usePin() {
   const { address, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
   const [isPinVerified, setIsPinVerified] = useState(false);
-  const [verifiedPin, setVerifiedPin] = useState<string | null>(null);
+  const verifiedPinRef = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const hasPin = address ? hasPinStored(address) : false;
+
+  // Clear verified PIN state when wallet address changes (cross-account leakage prevention)
+  useEffect(() => {
+    setIsPinVerified(false);
+    verifiedPinRef.current = null;
+    setError(null);
+  }, [address]);
 
   const setPin = useCallback(async (pin: string, signature: string): Promise<boolean> => {
     if (!address) { setError('Wallet not connected'); return false; }
@@ -29,7 +36,7 @@ export function usePin() {
       const encrypted = await encryptPin(pin, signature);
       storeEncryptedPin(address, encrypted);
       setIsPinVerified(true);
-      setVerifiedPin(pin);
+      verifiedPinRef.current = pin;
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to set PIN');
@@ -55,7 +62,7 @@ export function usePin() {
       const decrypted = await decryptPin(stored, sig);
       if (decrypted === pin) {
         setIsPinVerified(true);
-        setVerifiedPin(pin);
+        verifiedPinRef.current = pin;
         return true;
       } else {
         setError('Incorrect PIN');
@@ -80,13 +87,13 @@ export function usePin() {
   const clearPin = useCallback(() => {
     if (address) clearStoredPin(address);
     setIsPinVerified(false);
-    setVerifiedPin(null);
+    verifiedPinRef.current = null;
   }, [address]);
 
   return {
     hasPin,
     isPinVerified,
-    verifiedPin,
+    verifiedPin: verifiedPinRef.current,
     setPin,
     verifyPin,
     clearPin,

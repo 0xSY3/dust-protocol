@@ -9,6 +9,7 @@ export const maxDuration = 60;
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const MAX_GAS_PRICE = ethers.utils.parseUnits('100', 'gwei');
+const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
 // Rate limiting
 const withdrawCooldowns = new Map<string, number>();
@@ -35,10 +36,20 @@ export async function POST(req: Request) {
     const { proof, root, nullifierHash, recipient, amount } = body;
 
     if (!proof || !root || !nullifierHash || !recipient || !amount) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: NO_STORE });
     }
     if (!isValidAddress(recipient)) {
-      return NextResponse.json({ error: 'Invalid recipient address' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid recipient address' }, { status: 400, headers: NO_STORE });
+    }
+    // Validate hex formats to prevent wasting sponsor gas on guaranteed reverts
+    if (!/^0x[0-9a-fA-F]{64}$/.test(root)) {
+      return NextResponse.json({ error: 'Invalid root format' }, { status: 400, headers: NO_STORE });
+    }
+    if (!/^0x[0-9a-fA-F]{64}$/.test(nullifierHash)) {
+      return NextResponse.json({ error: 'Invalid nullifierHash format' }, { status: 400, headers: NO_STORE });
+    }
+    if (!/^0x[0-9a-fA-F]+$/.test(proof)) {
+      return NextResponse.json({ error: 'Invalid proof format' }, { status: 400, headers: NO_STORE });
     }
 
     // Rate limiting per nullifierHash
@@ -66,7 +77,7 @@ export async function POST(req: Request) {
 
     const poolContract = new ethers.Contract(config.contracts.dustPool, DUST_POOL_ABI, sponsor);
 
-    console.log('[PoolWithdraw] Processing withdrawal to', recipient, 'amount:', amount);
+    console.log('[PoolWithdraw] Processing withdrawal, amount:', amount);
 
     const tx = await poolContract.withdraw(
       proof,
@@ -88,10 +99,15 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       txHash: receipt.transactionHash,
-    });
+    }, { headers: NO_STORE });
   } catch (e) {
     console.error('[PoolWithdraw] Error:', e);
-    const msg = e instanceof Error ? e.message : 'Withdrawal failed';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    // Sanitize — don't leak RPC URLs, contract addresses, or revert data
+    const raw = e instanceof Error ? e.message : '';
+    let message = 'Withdrawal failed';
+    if (raw.includes('invalid proof') || raw.includes('InvalidProof')) message = 'Invalid proof';
+    else if (raw.includes('nullifier') || raw.includes('already spent') || raw.includes('AlreadySpent')) message = 'Note already spent';
+    else if (raw.includes('root') || raw.includes('InvalidRoot')) message = 'Invalid or expired Merkle root';
+    return NextResponse.json({ error: message }, { status: 500, headers: NO_STORE });
   }
 }

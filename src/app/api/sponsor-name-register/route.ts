@@ -159,7 +159,7 @@ export async function POST(req: Request) {
           const normalizeHex = (h: string) => h.toLowerCase().replace(/^0x/, '');
           if (normalizeHex(storedMeta) === normalizeHex(metaBytes)) {
             console.log(`[SponsorNameRegister] Name "${stripped}" already registered to same meta-address — idempotent success`);
-            return NextResponse.json({ success: true, txHash: null, name: stripped, alreadyRegistered: true });
+            return NextResponse.json({ success: true, txHash: null, name: stripped, alreadyRegistered: true }, { headers: { 'Cache-Control': 'no-store' } });
           }
         } catch (e) {
           console.warn('[SponsorNameRegister] Could not resolve existing name meta-address:', e);
@@ -207,7 +207,7 @@ export async function POST(req: Request) {
       success: true,
       txHash: primaryTxHash,
       name: stripped,
-    });
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     console.error('[SponsorNameRegister] Error:', e);
     return NextResponse.json({ error: 'Name registration failed' }, { status: 500 });

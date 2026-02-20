@@ -6,7 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import { getServerProvider, getServerSponsor } from '@/lib/server-provider';
+import { getServerProvider } from '@/lib/server-provider';
 import { getSupportedChains } from '@/config/chains';
 
 export const maxDuration = 15;
@@ -14,7 +14,6 @@ export const maxDuration = 15;
 const NAME_REGISTRY_ABI = [
   'function getNamesOwnedBy(address owner) external view returns (string[] memory)',
   'function resolveName(string calldata name) external view returns (bytes)',
-  'function transferName(string calldata name, address newOwner) external',
 ];
 
 const DEPLOYER = process.env.SPONSOR_ADDRESS ?? '0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496';
@@ -26,7 +25,7 @@ const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const metaAddress = searchParams.get('metaAddress');
-  const registrant = searchParams.get('registrant'); // Optional: user's wallet to auto-transfer
+  // registrant param intentionally removed — name transfers use sponsor-name-transfer with auth
 
   if (!metaAddress || !/^0x[0-9a-fA-F]+$/.test(metaAddress)) {
     return NextResponse.json({ error: 'Invalid metaAddress' }, { status: 400 });
@@ -42,7 +41,8 @@ export async function GET(req: Request) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          query: `{ names(where: { metaAddress: "${normalizedMeta}" }, first: 1) { name metaAddress ownerAddress } }`,
+          query: `query($meta: String!) { names(where: { metaAddress: $meta }, first: 1) { name metaAddress ownerAddress } }`,
+          variables: { meta: normalizedMeta },
         }),
       });
       if (res.ok) {
@@ -79,40 +79,15 @@ export async function GET(req: Request) {
 
     if (!foundName) {
       return NextResponse.json({ name: null }, {
-        headers: { 'Cache-Control': 'public, max-age=30' },
+        headers: { 'Cache-Control': 'private, no-store' },
       });
-    }
-
-    // Auto-transfer to the user's wallet if registrant is provided
-    if (registrant && /^0x[0-9a-fA-F]{40}$/.test(registrant)) {
-      const chains = getSupportedChains();
-      for (const chain of chains) {
-        if (!chain.contracts.nameRegistry) continue;
-        try {
-          const provider = getServerProvider(chain.id);
-          const registry = new ethers.Contract(chain.contracts.nameRegistry, NAME_REGISTRY_ABI, provider);
-          // Check if name is owned by deployer (not yet transferred)
-          const deployerNames: string[] = await registry.getNamesOwnedBy(DEPLOYER);
-          if (deployerNames.map(n => n.toLowerCase()).includes(foundName!.toLowerCase())) {
-            try {
-              const sponsor = getServerSponsor(chain.id);
-              const registryWithSponsor = new ethers.Contract(chain.contracts.nameRegistry, NAME_REGISTRY_ABI, sponsor);
-              const tx = await registryWithSponsor.transferName(foundName!, registrant);
-              await tx.wait();
-              console.log(`[ReclaimName] Transferred "${foundName}" to ${registrant} on ${chain.name}`);
-            } catch (e) {
-              console.warn(`[ReclaimName] Transfer failed on ${chain.name}:`, e);
-            }
-          }
-        } catch { continue; }
-      }
     }
 
     return NextResponse.json({
       name: foundName,
       metaAddress: normalizedMeta,
     }, {
-      headers: { 'Cache-Control': 'public, max-age=60' },
+      headers: { 'Cache-Control': 'private, max-age=60' },
     });
   } catch (e) {
     console.error('[reclaim-name] Error:', e);

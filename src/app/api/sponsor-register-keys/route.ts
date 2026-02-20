@@ -19,6 +19,12 @@ function isValidHex(hex: string): boolean {
   return /^0x[0-9a-fA-F]+$/.test(hex);
 }
 
+const NO_STORE = { 'Cache-Control': 'no-store' } as const;
+
+const registerKeyCooldowns = new Map<string, number>();
+const KEY_REGISTER_COOLDOWN_MS = 30_000;
+const MAX_KEY_REGISTER_ENTRIES = 500;
+
 export async function POST(req: Request) {
   try {
     if (!SPONSOR_KEY) {
@@ -39,8 +45,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid registrant address' }, { status: 400 });
     }
     if (!isValidHex(signature)) {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 400, headers: NO_STORE });
     }
+
+    // Rate limiting per registrant
+    const now = Date.now();
+    if (registerKeyCooldowns.size > MAX_KEY_REGISTER_ENTRIES) {
+      for (const [k, t] of registerKeyCooldowns) {
+        if (now - t > KEY_REGISTER_COOLDOWN_MS) registerKeyCooldowns.delete(k);
+      }
+    }
+    const addrKey = registrant.toLowerCase();
+    const lastRegister = registerKeyCooldowns.get(addrKey);
+    if (lastRegister && now - lastRegister < KEY_REGISTER_COOLDOWN_MS) {
+      return NextResponse.json({ error: 'Please wait before registering again' }, { status: 429, headers: NO_STORE });
+    }
+    registerKeyCooldowns.set(addrKey, now);
 
     const metaBytes = metaAddress.startsWith('st:')
       ? '0x' + (metaAddress.match(/st:[a-z]+:0x([0-9a-fA-F]+)/)?.[1] || '')
@@ -61,9 +81,9 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       txHash: receipt.transactionHash,
-    });
+    }, { headers: NO_STORE });
   } catch (e) {
     console.error('[SponsorRegisterKeys] Error:', e);
-    return NextResponse.json({ error: 'Registration failed' }, { status: 500 });
+    return NextResponse.json({ error: 'Registration failed' }, { status: 500, headers: NO_STORE });
   }
 }

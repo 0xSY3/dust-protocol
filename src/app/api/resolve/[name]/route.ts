@@ -176,7 +176,7 @@ export async function GET(req: Request, { params }: { params: { name: string } }
         console.error('[Resolve] announce failed (non-fatal):', e instanceof Error ? e.message : e);
       });
 
-    console.log('[Resolve]', normalized, linkSlug || '', '→', stealthAddress, '(announce submitted async)');
+    console.log('[Resolve]', normalized, '(announce submitted async)');
 
     return NextResponse.json(
       {

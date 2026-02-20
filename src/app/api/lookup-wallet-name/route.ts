@@ -38,7 +38,8 @@ async function querySubgraphNamesByMeta(metaAddress: string): Promise<{ name: st
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        query: `{ names(where: { metaAddress: "${metaAddress.toLowerCase()}" }, first: 1) { name metaAddress } }`,
+        query: `query($meta: String!) { names(where: { metaAddress: $meta }, first: 1) { name metaAddress } }`,
+        variables: { meta: metaAddress.toLowerCase() },
       }),
     });
     if (!res.ok) return null;

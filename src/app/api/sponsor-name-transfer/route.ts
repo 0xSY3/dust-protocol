@@ -9,8 +9,13 @@ const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
 
 const NAME_REGISTRY_ABI = [
   'function getOwner(string calldata name) external view returns (address)',
+  'function resolveName(string calldata name) external view returns (bytes)',
   'function transferName(string calldata name, address newOwner) external',
   'function updateMetaAddress(string calldata name, bytes calldata newMetaAddress) external',
+];
+
+const ERC6538_ABI = [
+  'function stealthMetaAddressOf(address registrant, uint256 schemeId) external view returns (bytes)',
 ];
 
 function isValidAddress(addr: string): boolean {
@@ -50,6 +55,22 @@ export async function POST(req: Request) {
     const currentOwner = await registry.getOwner(name);
     if (currentOwner.toLowerCase() !== sponsor.address.toLowerCase()) {
       return NextResponse.json({ error: 'Name not owned by sponsor' }, { status: 403 });
+    }
+
+    // Verify newOwner's ERC-6538 metaAddress matches the name's resolved metaAddress
+    // Prevents unauthorized name hijacking — attacker cannot transfer without matching on-chain registration
+    const erc6538 = new ethers.Contract(config.contracts.registry, ERC6538_ABI, sponsor.provider);
+    const [nameMetaAddress, ownerMetaAddress] = await Promise.all([
+      registry.resolveName(name),
+      erc6538.stealthMetaAddressOf(newOwner, 1),
+    ]);
+    if (!nameMetaAddress || !ownerMetaAddress ||
+        nameMetaAddress === '0x' || ownerMetaAddress === '0x' ||
+        nameMetaAddress.toLowerCase() !== ownerMetaAddress.toLowerCase()) {
+      return NextResponse.json(
+        { error: 'MetaAddress mismatch — newOwner must have matching ERC-6538 registration' },
+        { status: 403 },
+      );
     }
 
     // Transfer name to new owner

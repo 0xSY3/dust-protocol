@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { WalletIcon, ArrowUpRightIcon } from "@/components/stealth/icons";
 import { DustLogo } from "@/components/DustLogo";
-import { useLogin } from "@privy-io/react-auth";
+import { useLogin, usePrivy, useLogout } from "@privy-io/react-auth";
 import { isPrivyEnabled } from "@/config/privy";
 import { useConnect, useConnectors } from "wagmi";
 import { injected } from "wagmi/connectors";
@@ -70,6 +70,8 @@ function cleanupCorruptedStorage() {
 export default function Home() {
   const { isConnected, isOnboarded, isHydrated, isNamesSettled, address } = useAuth();
   const { login: privyLogin } = useLogin();
+  const { authenticated: privyAuthenticated, ready: privyReady } = usePrivy();
+  const { logout: privyLogout } = useLogout();
   const { connect, isPending: isConnecting, error: connectError } = useConnect();
   const connectors = useConnectors();
   const router = useRouter();
@@ -79,14 +81,17 @@ export default function Home() {
   const hasPrivy = isPrivyEnabled;
   const hasInjectedWallet = typeof window !== "undefined" && !!window.ethereum;
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     setConnectAttempted(true);
     if (hasPrivy) {
-      // Privy's modal handles everything: wallets, WalletConnect, social logins
+      // Stale session: Privy thinks user is authenticated but wagmi has no connection.
+      // Clear the stale Privy session first, then re-login on next click.
+      if (privyReady && privyAuthenticated && !isConnected) {
+        await privyLogout();
+      }
       privyLogin();
       return;
     }
-    // Non-Privy fallback: use injected wallet or prompt install
     if (hasInjectedWallet) {
       const injectedConnector = connectors.find(c => c.type === "injected") ?? injected();
       connect({ connector: injectedConnector as ReturnType<typeof injected> });

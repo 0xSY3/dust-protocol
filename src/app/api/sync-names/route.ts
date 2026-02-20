@@ -6,6 +6,7 @@ import { getServerSponsor, getServerProvider } from '@/lib/server-provider';
 export const maxDuration = 60;
 
 const SPONSOR_KEY = process.env.RELAYER_PRIVATE_KEY;
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
 
 const NAME_REGISTRY_ABI = [
   'function registerName(string calldata name, bytes calldata stealthMetaAddress) external',
@@ -19,8 +20,17 @@ const NAME_REGISTRY_ABI = [
  * Syncs all names from the canonical chain (Ethereum Sepolia) to all other chains.
  * This ensures cross-chain name resolution works for existing users.
  */
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    // Admin-only: requires ADMIN_SECRET bearer token (this endpoint spends deployer gas)
+    if (!ADMIN_SECRET) {
+      return NextResponse.json({ error: 'Admin secret not configured' }, { status: 500 });
+    }
+    const authHeader = req.headers.get('authorization');
+    if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     if (!SPONSOR_KEY) {
       return NextResponse.json({ error: 'Sponsor not configured' }, { status: 500 });
     }

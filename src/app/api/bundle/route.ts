@@ -6,6 +6,10 @@ import { ENTRY_POINT_ABI, DUST_PAYMASTER_ABI } from '@/lib/stealth/types';
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
+const bundleCooldowns = new Map<string, number>();
+const BUNDLE_COOLDOWN_MS = 3_000;
+const MAX_BUNDLE_ENTRIES = 500;
+
 interface PartialUserOp {
   sender: string;
   nonce?: string;
@@ -33,6 +37,20 @@ export async function POST(req: Request) {
     if (!sender || !callData) {
       return NextResponse.json({ error: 'Missing sender or callData' }, { status: 400, headers: NO_STORE });
     }
+
+    // Rate limiting per sender
+    const now = Date.now();
+    if (bundleCooldowns.size > MAX_BUNDLE_ENTRIES) {
+      for (const [k, t] of bundleCooldowns) {
+        if (now - t > BUNDLE_COOLDOWN_MS) bundleCooldowns.delete(k);
+      }
+    }
+    const senderKey = sender.toLowerCase();
+    const lastBundle = bundleCooldowns.get(senderKey);
+    if (lastBundle && now - lastBundle < BUNDLE_COOLDOWN_MS) {
+      return NextResponse.json({ error: 'Please wait before preparing another bundle' }, { status: 429, headers: NO_STORE });
+    }
+    bundleCooldowns.set(senderKey, now);
 
     // Whitelist callData selectors to prevent arbitrary contract calls
     const DRAIN_SELECTOR = '0xece53132';   // drain(address)

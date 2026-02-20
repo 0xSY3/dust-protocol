@@ -12,6 +12,12 @@ const NAME_REGISTRY_ABI = [
   'function getOwner(string calldata name) external view returns (address)',
 ];
 
+const NO_STORE = { 'Cache-Control': 'no-store' } as const;
+
+const updateCooldowns = new Map<string, number>();
+const UPDATE_COOLDOWN_MS = 30_000;
+const MAX_UPDATE_ENTRIES = 500;
+
 export async function POST(req: Request) {
   try {
     if (!SPONSOR_KEY) {
@@ -41,6 +47,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid meta-address' }, { status: 400 });
     }
 
+    // Rate limiting per name
+    const now = Date.now();
+    if (updateCooldowns.size > MAX_UPDATE_ENTRIES) {
+      for (const [k, t] of updateCooldowns) {
+        if (now - t > UPDATE_COOLDOWN_MS) updateCooldowns.delete(k);
+      }
+    }
+    const lastUpdate = updateCooldowns.get(stripped);
+    if (lastUpdate && now - lastUpdate < UPDATE_COOLDOWN_MS) {
+      return NextResponse.json({ error: 'Please wait before updating again' }, { status: 429, headers: NO_STORE });
+    }
+    updateCooldowns.set(stripped, now);
+
     const sponsor = getServerSponsor(chainId);
     const registry = new ethers.Contract(config.contracts.nameRegistry, NAME_REGISTRY_ABI, sponsor);
 
@@ -59,9 +78,9 @@ export async function POST(req: Request) {
       success: true,
       txHash: receipt.transactionHash,
       name: stripped,
-    });
+    }, { headers: NO_STORE });
   } catch (e) {
     console.error('[SponsorNameUpdateMeta] Error:', e);
-    return NextResponse.json({ error: 'Meta-address update failed' }, { status: 500 });
+    return NextResponse.json({ error: 'Meta-address update failed' }, { status: 500, headers: NO_STORE });
   }
 }

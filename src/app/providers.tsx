@@ -5,6 +5,7 @@ import { WagmiProvider, createConfig as createPrivyConfig } from "@privy-io/wagm
 import { createConfig as createWagmiConfig } from "wagmi";
 import { http, fallback } from "wagmi";
 import { injected, metaMask } from "wagmi/connectors";
+import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getSupportedChains } from "@/config/chains";
 import { PRIVY_APP_ID, PRIVY_CONFIG, isPrivyEnabled } from "@/config/privy";
@@ -36,9 +37,9 @@ const standaloneConfig = createWagmiConfig({
 // Re-export so the landing page can import WagmiProvider from here when needed
 import { WagmiProvider as WagmiProviderStandalone } from "wagmi";
 
-const queryClient = new QueryClient();
-
 export function Providers({ children }: { children: React.ReactNode }) {
+  // QueryClient inside component prevents SSR cache pollution and cross-session data leakage
+  const [queryClient] = useState(() => new QueryClient());
   if (!isPrivyEnabled) {
     // Always provide a WagmiProvider so useConnect / useAccount work everywhere
     return (

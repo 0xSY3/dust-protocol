@@ -83,8 +83,8 @@ export async function getAllSwapNotes(depositorAddress?: string): Promise<Stored
       let notes = request.result as StoredSwapNote[]
       if (depositorAddress) {
         const addr = depositorAddress.toLowerCase()
-        // Show notes that belong to this address OR legacy notes without depositorAddress
-        notes = notes.filter(n => !n.depositorAddress || n.depositorAddress === addr)
+        // Strict filter: only show notes belonging to this address (no legacy fallback)
+        notes = notes.filter(n => n.depositorAddress === addr)
       }
       resolve(notes)
     }
@@ -101,9 +101,9 @@ export async function getUnspentSwapNotes(depositorAddress?: string): Promise<St
 }
 
 /**
- * Get swap note by commitment
+ * Get swap note by commitment, scoped to a specific depositor address
  */
-export async function getSwapNoteByCommitment(commitment: bigint): Promise<StoredSwapNote | null> {
+export async function getSwapNoteByCommitment(commitment: bigint, depositorAddress?: string): Promise<StoredSwapNote | null> {
   const db = await openSwapDB()
 
   return new Promise((resolve, reject) => {
@@ -112,7 +112,11 @@ export async function getSwapNoteByCommitment(commitment: bigint): Promise<Store
     const request = store.getAll()
 
     request.onsuccess = () => {
-      const allNotes = request.result as StoredSwapNote[]
+      let allNotes = request.result as StoredSwapNote[]
+      if (depositorAddress) {
+        const addr = depositorAddress.toLowerCase()
+        allNotes = allNotes.filter(n => n.depositorAddress === addr)
+      }
       const found = allNotes.find(note => note.commitment === commitment)
       resolve(found || null)
     }
@@ -169,8 +173,8 @@ export async function deleteSwapNote(id: number): Promise<void> {
 /**
  * Export all swap notes as JSON (for backup)
  */
-export async function exportSwapNotes(): Promise<string> {
-  const notes = await getAllSwapNotes()
+export async function exportSwapNotes(depositorAddress?: string): Promise<string> {
+  const notes = await getAllSwapNotes(depositorAddress)
   const exportData = notes.map(note => ({
     ...note,
     nullifier: note.nullifier.toString(),
@@ -186,7 +190,7 @@ export async function exportSwapNotes(): Promise<string> {
 /**
  * Import swap notes from JSON backup
  */
-export async function importSwapNotes(jsonString: string): Promise<number> {
+export async function importSwapNotes(jsonString: string, depositorAddress?: string): Promise<number> {
   const data = JSON.parse(jsonString)
 
   if (!Array.isArray(data)) {
@@ -206,7 +210,8 @@ export async function importSwapNotes(jsonString: string): Promise<number> {
         leafIndex: item.leafIndex,
       }
 
-      await saveSwapNote(note, item.tokenAddress, item.tokenSymbol, item.depositTxHash, item.depositorAddress)
+      // Override depositorAddress with current wallet to prevent cross-account import
+      await saveSwapNote(note, item.tokenAddress, item.tokenSymbol, item.depositTxHash, depositorAddress)
       imported++
     } catch (error) {
       console.error('[DustSwap] Failed to import note:', error)

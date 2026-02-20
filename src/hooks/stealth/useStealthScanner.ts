@@ -603,12 +603,22 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     return privateKeysRef.current.get(txHash) || '';
   }
 
-  // Load persisted payments on mount / address change
+  // Clear ALL scanner state on address change, then reload for new address
+  // Prevents cross-account key leakage when switching wallets
   useEffect(() => {
+    privateKeysRef.current.clear();
+    autoClaimingRef.current.clear();
+    autoClaimCooldownRef.current.clear();
+    setPayments([]);
+    setError(null);
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
     if (address) {
       const stored = loadPaymentsFromStorage(address, chainId);
       if (stored.length > 0) {
-        // Extract keys to ref, strip from state
         stored.forEach(p => {
           if (p.stealthPrivateKey) {
             privateKeysRef.current.set(p.announcement.txHash, p.stealthPrivateKey);

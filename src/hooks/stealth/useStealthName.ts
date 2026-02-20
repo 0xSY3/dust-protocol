@@ -90,10 +90,13 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
   useEffect(() => {
     addressRef.current = address;
     setLegacyOwnedNames([]);
+    setIsLoading(false);
     recoveryAttempted.current = false;
     loadingRef.current = false;
     setLegacyNamesSettled(!address);
-  }, [address]);
+    // Purge stale name cache to prevent one-render data leak across wallet switches
+    queryClient.removeQueries({ queryKey: ['names'] });
+  }, [address, queryClient]);
 
   const validateName = useCallback((name: string): { valid: boolean; error?: string } => {
     const stripped = stripNameSuffix(name);
