@@ -43,6 +43,41 @@ export const DUST_POOL_V2_ABI = [
     inputs: [{ name: '', type: 'bytes32' }],
     outputs: [{ type: 'bool' }],
   },
+  // withdraw — relayer submits ZK proof on behalf of user
+  {
+    name: 'withdraw',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'proof', type: 'bytes' },
+      { name: 'merkleRoot', type: 'bytes32' },
+      { name: 'nullifier0', type: 'bytes32' },
+      { name: 'nullifier1', type: 'bytes32' },
+      { name: 'outCommitment0', type: 'bytes32' },
+      { name: 'outCommitment1', type: 'bytes32' },
+      { name: 'publicAmount', type: 'uint256' },
+      { name: 'publicAsset', type: 'uint256' },
+      { name: 'recipient', type: 'address' },
+      { name: 'tokenAddress', type: 'address' },
+    ],
+    outputs: [],
+  },
+  // updateRoot — relayer posts new Merkle root after processing deposits
+  {
+    name: 'updateRoot',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'newRoot', type: 'bytes32' }],
+    outputs: [],
+  },
+  // depositQueueTail — next queue index (total commitments queued)
+  {
+    name: 'depositQueueTail',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
   // Events
   {
     name: 'DepositQueued',
@@ -53,6 +88,25 @@ export const DUST_POOL_V2_ABI = [
       { name: 'amount', type: 'uint256', indexed: false },
       { name: 'asset', type: 'address', indexed: false },
       { name: 'timestamp', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    name: 'Withdrawal',
+    type: 'event',
+    inputs: [
+      { name: 'nullifier', type: 'bytes32', indexed: true },
+      { name: 'recipient', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+      { name: 'asset', type: 'address', indexed: false },
+    ],
+  },
+  {
+    name: 'RootUpdated',
+    type: 'event',
+    inputs: [
+      { name: 'newRoot', type: 'bytes32', indexed: false },
+      { name: 'index', type: 'uint256', indexed: false },
+      { name: 'relayer', type: 'address', indexed: false },
     ],
   },
 ] as const

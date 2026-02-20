@@ -62,7 +62,9 @@ interface DepositStatusResponse {
 
 // ─── Config ─────────────────────────────────────────────────────────────────────
 
-const DEFAULT_RELAYER_URL = 'http://localhost:3002'
+// V2 relayer runs as Next.js API routes on the same origin — default to empty
+// string for same-origin fetch. Override via env var for external relayer.
+const DEFAULT_RELAYER_URL = ''
 
 function getRelayerBaseUrl(): string {
   if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_RELAYER_V2_URL) {
