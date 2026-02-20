@@ -157,7 +157,6 @@ export function OnboardingWizard() {
           {step === "username" && (
             <UsernameStep
               onNext={(name) => { setUsername(name); setStep("pin"); }}
-              onReclaim={handleReclaim}
               initialName={username}
             />
           )}

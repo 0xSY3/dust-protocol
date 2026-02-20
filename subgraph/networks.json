@@ -1,8 +1,8 @@
 {
   "thanos-sepolia": {
     "NameRegistry": {
-      "address": "0x0129DE641192920AB78eBca2eF4591E2Ac48BA59",
-      "startBlock": 6272527
+      "address": "0xD06389cEEd802817C439E0F803E71b02ceb132b4",
+      "startBlock": 6460347
     },
     "StealthMetaAddressRegistry": {
       "address": "0x9C527Cc8CB3F7C73346EFd48179e564358847296",
@@ -11,8 +11,8 @@
   },
   "sepolia": {
     "NameRegistry": {
-      "address": "0x4364cd60dF5F4dC82E81346c4E64515C08f19BBc",
-      "startBlock": 10251347
+      "address": "0x857e17A85891Ef1C595e51Eb7Cd56c607dB21313",
+      "startBlock": 10300634
     },
     "StealthMetaAddressRegistry": {
       "address": "0xb848398167054cCb66264Ec25C35F8CfB1EF1Ca7",

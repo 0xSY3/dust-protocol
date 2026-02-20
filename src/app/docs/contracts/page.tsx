@@ -19,10 +19,10 @@ const sepoliaContracts = [
   },
   {
     name: "StealthNameRegistry",
-    address: "0x4364cd60dF5F4dC82E81346c4E64515C08f19BBc",
+    address: "0x857e17A85891Ef1C595e51Eb7Cd56c607dB21313",
     role: "Maps .dust names to stealth meta-addresses. Supports register, update, transfer, and sub-accounts.",
     standard: "Custom",
-    explorer: "https://sepolia.etherscan.io/address/0x4364cd60dF5F4dC82E81346c4E64515C08f19BBc",
+    explorer: "https://sepolia.etherscan.io/address/0x857e17A85891Ef1C595e51Eb7Cd56c607dB21313",
   },
   {
     name: "EntryPoint",
@@ -123,8 +123,8 @@ const thanosContracts = [
   },
   {
     name: "StealthNameRegistry",
-    address: "0x0129DE641192920AB78eBca2eF4591E2Ac48BA59",
-    explorer: "https://explorer.thanos-sepolia.tokamak.network/address/0x0129DE641192920AB78eBca2eF4591E2Ac48BA59",
+    address: "0xD06389cEEd802817C439E0F803E71b02ceb132b4",
+    explorer: "https://explorer.thanos-sepolia.tokamak.network/address/0xD06389cEEd802817C439E0F803E71b02ceb132b4",
   },
   {
     name: "DustPool",

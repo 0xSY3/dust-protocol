@@ -54,7 +54,8 @@ async function registerOnChain(
     const registry = new ethers.Contract(config.contracts.nameRegistry, NAME_REGISTRY_ABI, sponsor);
     const available = await registry.isNameAvailable(stripped);
     if (!available) return null; // already registered on this chain
-    const tx = await registry.registerName(stripped, metaBytes);
+    // Manual gas limit prevents UNPREDICTABLE_GAS_LIMIT when RPC estimation fails transiently
+    const tx = await registry.registerName(stripped, metaBytes, { gasLimit: 300_000 });
     const receipt = await tx.wait();
     console.log(`[SponsorNameRegister] Registered "${stripped}" on ${config.name}, tx: ${receipt.transactionHash}`);
 

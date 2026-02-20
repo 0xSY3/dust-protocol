@@ -32,8 +32,8 @@ export function getNameRegistryAddress(): string {
     if (windowEnv) return windowEnv;
   }
 
-  // Hardcoded fallback (Thanos Sepolia, deployed 2026-02-07)
-  return registryAddress || '0x0129DE641192920AB78eBca2eF4591E2Ac48BA59';
+  // Hardcoded fallback (Ethereum Sepolia canonical, deployed 2026-02-20)
+  return registryAddress || '0x857e17A85891Ef1C595e51Eb7Cd56c607dB21313';
 }
 
 export function isNameRegistryConfigured(): boolean {
