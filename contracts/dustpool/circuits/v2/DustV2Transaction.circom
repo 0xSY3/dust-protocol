@@ -98,6 +98,7 @@ template DustV2Transaction(TREE_DEPTH) {
     component inNullifierHasher[2];
     component merkleVerifier[2];
     component isDummy[2];
+    component inAmountRange[2]; // C3: input amount range check
 
     // Pre-declare signals that are used inside the for loop
     signal publicNullifier[2];
@@ -121,6 +122,13 @@ template DustV2Transaction(TREE_DEPTH) {
         // If amount != 0, then inOwner[i] must equal ownerPubKey.out
         // If amount == 0 (dummy), ownership is not enforced
         inAmount[i] * (inOwner[i] - ownerPubKey.out) === 0;
+
+        // C3 fix: range check input amounts (prevents overflow via field arithmetic)
+        inAmountRange[i] = Num2Bits(64);
+        inAmountRange[i].in <== inAmount[i];
+
+        // C2 fix: asset consistency — non-dummy input notes must match publicAsset
+        inAmount[i] * (inAsset[i] - publicAsset) === 0;
 
         // 2c. Compute nullifier = Poseidon(nullifierKey, commitment, leafIndex)
         inNullifierHasher[i] = Poseidon(3);
@@ -177,6 +185,9 @@ template DustV2Transaction(TREE_DEPTH) {
         // 3b. Range proof: outAmount must fit in 64 bits (prevents overflow attacks)
         outAmountRange[j] = Num2Bits(64);
         outAmountRange[j].in <== outAmount[j];
+
+        // C2 fix: asset consistency — non-dummy output notes must match publicAsset
+        outAmount[j] * (outAsset[j] - publicAsset) === 0;
     }
 
     // 3c. Output commitment matching (public signals must match computed commitments)
