@@ -9,9 +9,10 @@ import type { OwnedName } from "@/lib/design/types";
 interface PersonalLinkCardProps {
   ownedNames: OwnedName[];
   metaAddress: string | null;
+  isNamesSettled?: boolean;
 }
 
-export function PersonalLinkCard({ ownedNames, metaAddress }: PersonalLinkCardProps) {
+export function PersonalLinkCard({ ownedNames, metaAddress, isNamesSettled = true }: PersonalLinkCardProps) {
   const [copied, setCopied] = useState(false);
   const [showQR, setShowQR] = useState(false);
 
@@ -82,6 +83,11 @@ export function PersonalLinkCard({ ownedNames, metaAddress }: PersonalLinkCardPr
                 <ExternalLinkIcon size={12} color="rgba(255,255,255,0.5)" />
               </button>
             </div>
+          </div>
+        ) : !isNamesSettled ? (
+          <div className="flex items-center gap-2 py-3">
+            <div className="w-4 h-4 border-2 border-[rgba(0,255,65,0.4)] border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs text-[rgba(255,255,255,0.4)] font-mono">Resolving identity...</span>
           </div>
         ) : metaAddress ? (
           <div className="p-3 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.05)]">

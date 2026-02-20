@@ -154,56 +154,57 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     const currentMetaAddress = userMetaAddressRef.current;
 
     try {
-      // 1. Direct on-chain ownership lookup (fast when tryRecoverName has transferred before)
-      const names = await getNamesOwnedBy(null, address, chainId);
-      if (names.length > 0) {
-        setLegacyOwnedNames(names.reverse().map(n => ({ name: n, fullName: formatNameWithSuffix(n) })));
-        return;
-      }
+      // Run RPC discovery and server API in parallel — first result wins.
+      let found = false;
+      const setNameOnce = (name: string) => {
+        if (found) return;
+        found = true;
+        setLegacyOwnedNames([{ name, fullName: formatNameWithSuffix(name) }]);
+        if (!recoveryAttempted.current) {
+          recoveryAttempted.current = true;
+          tryRecoverName(name, address);
+        }
+      };
 
-      // 2 & 3. Discovery: no names found by direct ownership — try deployer-owned name matching.
-      //
-      // Case A — keys are derived (normal session): fast metaAddress match against deployer names.
-      // Case B — cleared cache / new browser: currentMetaAddress is null.
-      //   discoverNameByWalletHistory only needs the wallet address — it scans ERC-6538
-      //   StealthMetaAddressSet events to reconstruct historical meta-addresses, then matches
-      //   deployer names. No key derivation or signing needed.
-      let discovered: string | null = null;
+      // Server API — most reliable, runs in parallel with RPC chain
+      const apiPromise = (async () => {
+        try {
+          const res = await fetch(`/api/lookup-wallet-name?address=${address}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.name) setNameOnce(data.name);
+          }
+        } catch {
+          // Silent — best-effort
+        }
+      })();
 
-      if (currentMetaAddress) {
-        discovered = await discoverNameByMetaAddress(null, currentMetaAddress, chainId);
-      }
+      // RPC discovery chain (sequential within itself)
+      const rpcPromise = (async () => {
+        // 1. Direct on-chain ownership lookup (fast when auto-transfer succeeded)
+        const names = await getNamesOwnedBy(null, address, chainId);
+        if (names.length > 0) {
+          setNameOnce(names[names.length - 1]);
+          return;
+        }
 
-      if (!discovered) {
-        discovered = await discoverNameByWalletHistory(
+        // 2. metaAddress-based discovery (needs derived keys)
+        if (currentMetaAddress) {
+          const d = await discoverNameByMetaAddress(null, currentMetaAddress, chainId);
+          if (d) { setNameOnce(d); return; }
+        }
+
+        // 3. ERC-6538 history scan (works without derived keys)
+        const d = await discoverNameByWalletHistory(
           address,
           currentMetaAddress ?? '',
           CANONICAL_ADDRESSES.registry,
           chainId,
         );
-      }
+        if (d) setNameOnce(d);
+      })();
 
-      // 4. Server-side API fallback — cross-references ERC-6538 events with name tree.
-      //    Most reliable for cleared-cache / new-browser, works regardless of subgraph.
-      if (!discovered) {
-        try {
-          const res = await fetch(`/api/lookup-wallet-name?address=${address}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.name) discovered = data.name;
-          }
-        } catch {
-          // Silent — fallback is best-effort
-        }
-      }
-
-      if (discovered) {
-        setLegacyOwnedNames([{ name: discovered, fullName: formatNameWithSuffix(discovered) }]);
-        if (!recoveryAttempted.current) {
-          recoveryAttempted.current = true;
-          tryRecoverName(discovered, address);
-        }
-      }
+      await Promise.allSettled([rpcPromise, apiPromise]);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load names');
     } finally {

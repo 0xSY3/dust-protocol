@@ -24,7 +24,7 @@ function claimToPoolKey(address: string, chainId: number): string {
 }
 
 export default function DashboardPage() {
-  const { stealthKeys, metaAddress, ownedNames, claimAddresses, refreshClaimBalances, claimAddressesInitialized, activeChainId, address } = useAuth();
+  const { stealthKeys, metaAddress, ownedNames, claimAddresses, refreshClaimBalances, claimAddressesInitialized, activeChainId, address, isNamesSettled } = useAuth();
   const chainConfig = getChainConfig(activeChainId);
   const [claimToPool, setClaimToPool] = useState(() => {
     if (typeof window === 'undefined' || !address) return false;
@@ -199,7 +199,7 @@ export default function DashboardPage() {
         />
 
         {/* Personal link */}
-        <PersonalLinkCard ownedNames={ownedNames} metaAddress={metaAddress} />
+        <PersonalLinkCard ownedNames={ownedNames} metaAddress={metaAddress} isNamesSettled={isNamesSettled} />
 
         {/* Recent activity */}
         <RecentActivityCard payments={payments} outgoingPayments={outgoingPayments} />
