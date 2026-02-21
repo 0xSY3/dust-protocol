@@ -36,7 +36,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://auth.privy.io" crossOrigin="anonymous" />
         <link rel="search" type="application/opensearchdescription+xml" title="Dust Protocol" href="/opensearch.xml" />
         <link rel="alternate" type="application/rss+xml" title="Dust Protocol Docs" href="/docs/feed.xml" />
-        {/* JSON-LD structured data — all values are hardcoded string literals from jsonLd.ts, not user input. XSS-safe: safeJsonLd() escapes '<' as \u003c */}
+      </head>
+      <body className="bg-[#06080F] text-white font-mono selection:bg-[#00FF41] selection:text-black">
+        {/* XSS-safe: all values are hardcoded string literals from jsonLd.ts. safeJsonLd() escapes '<' as \u003c. No user input. */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: organizationJsonLd() }}
@@ -57,8 +59,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: softwareSourceCodeJsonLd() }}
         />
-      </head>
-      <body className="bg-[#06080F] text-white font-mono selection:bg-[#00FF41] selection:text-black">
         <div
           className="fixed inset-0 pointer-events-none opacity-[0.03] z-0"
           style={{
