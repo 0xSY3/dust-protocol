@@ -237,6 +237,7 @@ export const SWAP_ERROR_ABI = [
   { inputs: [], name: 'InvalidMinimumOutput', type: 'error' },
   { inputs: [], name: 'SwapAmountTooLow', type: 'error' },
   { inputs: [], name: 'InvalidChainId', type: 'error' },
+  { inputs: [], name: 'DepositTooRecent', type: 'error' },
   // DustSwapPool custom errors
   { inputs: [], name: 'InvalidCommitment', type: 'error' },
   { inputs: [], name: 'CommitmentAlreadyExists', type: 'error' },

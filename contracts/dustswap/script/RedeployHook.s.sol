@@ -12,7 +12,7 @@ import {DustSwapPoolUSDC} from "../src/DustSwapPoolUSDC.sol";
 
 /// @title RedeployHook — Redeploy DustSwapHook via CREATE2 with correct permission bits
 /// @notice Uniswap V4 requires hook addresses to encode permissions in the lowest 14 bits.
-///         DustSwapHook needs beforeSwap (bit 7) and afterSwap (bit 6) = 0x00C0.
+///         DustSwapHook needs beforeSwap (bit 7) + afterSwap (bit 6) + afterSwapReturnDelta (bit 2) = 0x00C4.
 ///         The original deployment used `new` (regular CREATE), producing address 0xE816bAb...69a5
 ///         whose lower bits (0x29A5) don't match. This script uses CREATE2 to deploy to
 ///         an address with correct bits.
@@ -29,8 +29,8 @@ contract RedeployHook is Script {
     address payable constant POOL_ETH  = payable(0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799);
     address payable constant POOL_USDC = payable(0x1791D13995FfA9e00a9A2C07A9ad1251a668A669);
 
-    /// @dev Required lower 14 bits: beforeSwap (bit 7) + afterSwap (bit 6) = 0x00C0
-    uint160 constant REQUIRED_FLAGS = 0x00C0;
+    /// @dev Required lower 14 bits: beforeSwap (7) + afterSwap (6) + afterSwapReturnDelta (2) = 0x00C4
+    uint160 constant REQUIRED_FLAGS = 0x00C4;
     uint160 constant FLAG_MASK      = 0x3FFF; // lower 14 bits
 
     function run() external {
@@ -172,7 +172,7 @@ contract MineSalt is Script {
         bytes32 initCodeHash = keccak256(initCode);
         console.log("Init code hash:", vm.toString(initCodeHash));
 
-        console.log("Mining salt for flags 0x00C0 (beforeSwap + afterSwap)...");
+        console.log("Mining salt for flags 0x00C4 (beforeSwap + afterSwap + afterSwapReturnDelta)...");
 
         uint256 found = 0;
         for (uint256 i = 0; i < 1_000_000; i++) {

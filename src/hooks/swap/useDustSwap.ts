@@ -118,6 +118,7 @@ const HOOK_ERROR_MESSAGES: Record<string, string> = {
   SwapAmountTooLow: 'Output amount too low (excessive slippage).',
   InvalidMinimumOutput: 'Minimum output amount is zero.',
   InvalidChainId: 'Proof was generated for a different chain. Please refresh and try again.',
+  DepositTooRecent: 'Deposit is too recent. Please wait a few more blocks before swapping.',
   SwapNotInitialized: 'Swap pool not initialized.',
   NotPoolManager: 'Hook called by wrong address (deployment misconfiguration).',
   Unauthorized: 'Caller not authorized for this operation.',

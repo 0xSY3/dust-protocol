@@ -18,8 +18,8 @@ contract InitializePoolV3 is Script {
     address constant POOL_MANAGER = 0x93805603e0167574dFe2F50ABdA8f42C85002FD8;
     address constant USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
 
-    // !! UPDATE THIS after deploying the V3 hook via CREATE2 !!
-    address constant DUST_SWAP_HOOK = 0x09b6a164917F8ab6e8b552E47bD3957cAe6d80C4;
+    // V4 hook with chainId signal + relayerFee range check (deployed 2026-02-22)
+    address constant DUST_SWAP_HOOK = 0xCb2e9147B96e385c2c00A11D92026eb16eB400c4;
 
     // Pool parameters (matches frontend constants.ts)
     uint24 constant FEE = 3000;        // 0.30%

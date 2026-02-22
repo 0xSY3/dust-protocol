@@ -28,28 +28,30 @@
 
 Deployment block: `10251347` · DustPool: `10259728`
 
-### DustSwap (Privacy Swaps) — Poseidon-Binding Verifier
+### DustSwap (Privacy Swaps) — chainId + relayerFee Range Check
 
 | Contract | Address |
 |----------|---------|
 | DustSwapPoolETH | `0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799` |
 | DustSwapPoolUSDC | `0x1791D13995FfA9e00a9A2C07A9ad1251a668A669` |
-| DustSwapHook | `0x78139b89777bAC63B346C2DA4829667529E5c0C4` |
-| DustSwapVerifier | `0xD7Ec2400B53c0E51EBd72a962aeF15f6e22B3b89` |
+| DustSwapHook | `0xCb2e9147B96e385c2c00A11D92026eb16eB400c4` |
+| DustSwapVerifier | `0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F` |
 | DustSwapRouter | `0xDC839820cc24f312f10945939C4aCa41887FC78F` |
 | Uniswap V4 PoolManager | `0x93805603e0167574dFe2F50ABdA8f42C85002FD8` |
 
-Deployment block: `10311323`
+Deployment block: `10313992`
 
-#### Previous DustSwap Deployment (deprecated)
+#### Previous DustSwap Deployments (deprecated)
 
-| Contract | Address |
-|----------|---------|
-| DustSwapPoolETH | `0x52FAc2AC445b6a5b7351cb809DCB0194CEa223D0` |
-| DustSwapPoolUSDC | `0xc788576786381d41B8F5180D0B92A15497CF72B3` |
-| DustSwapHook | `0x09b6a164917F8ab6e8b552E47bD3957cAe6d80C4` |
-| DustSwapVerifier | `0x1677C9c4E575C910B9bCaF398D615B9F3775d0f1` |
-| DustSwapRouter | `0x82faD70Aa95480F719Da4B81E17607EF3A631F42` |
+| Contract | Address | Note |
+|----------|---------|------|
+| DustSwapHook | `0x78139b89777bAC63B346C2DA4829667529E5c0C4` | Poseidon-binding, no chainId |
+| DustSwapVerifier | `0xD7Ec2400B53c0E51EBd72a962aeF15f6e22B3b89` | Pre-chainId verifier |
+| DustSwapPoolETH | `0x52FAc2AC445b6a5b7351cb809DCB0194CEa223D0` | Original pools (V1) |
+| DustSwapPoolUSDC | `0xc788576786381d41B8F5180D0B92A15497CF72B3` | Original pools (V1) |
+| DustSwapHook | `0x09b6a164917F8ab6e8b552E47bD3957cAe6d80C4` | Original hook (V1) |
+| DustSwapVerifier | `0x1677C9c4E575C910B9bCaF398D615B9F3775d0f1` | Original verifier (V1) |
+| DustSwapRouter | `0x82faD70Aa95480F719Da4B81E17607EF3A631F42` | Original router (V1) |
 
 ---
 
@@ -95,7 +97,7 @@ Deployed with: Pausable, Ownable2Step, 9 public signals (chainId), I1 recipient 
 |----------|---------|
 | FflonkVerifier | `0xC639C2594cf2841a7aC2E8298208fe33a98Dc98D` |
 | DustPoolV2 | `0x6f37E2Df430E1c516148157E6d42db6a3747eB8f` |
-| DustSwapVerifierProduction | `0xD7Ec2400B53c0E51EBd72a962aeF15f6e22B3b89` |
+| DustSwapVerifierProduction | `0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F` |
 
 Deployment block: `10311323` · Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
 

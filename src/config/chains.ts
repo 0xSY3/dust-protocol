@@ -162,7 +162,7 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
     // DustSwap V4 contracts — deployed 2026-02-22 with chainId signal + relayerFee range check
     dustSwapPoolETH: '0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799',
     dustSwapPoolUSDC: '0x1791D13995FfA9e00a9A2C07A9ad1251a668A669',
-    dustSwapHook: '0xbFE6710C57d6c0CCC5D296b490b81F38698D00c0', // CREATE2 deployed, flags 0xC0
+    dustSwapHook: '0xCb2e9147B96e385c2c00A11D92026eb16eB400c4', // CREATE2 deployed, flags 0xC4
     dustSwapVerifier: '0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F', // Groth16 with Poseidon(recipient, relayer, swapAmountOut, chainId) binding
     dustSwapRouter: '0xDC839820cc24f312f10945939C4aCa41887FC78F',
     uniswapV4PoolManager: '0x93805603e0167574dFe2F50ABdA8f42C85002FD8',
