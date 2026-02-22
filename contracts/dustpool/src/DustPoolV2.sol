@@ -2,6 +2,7 @@
 pragma solidity 0.8.20;
 
 import {IFFLONKVerifier} from "./IFFLONKVerifier.sol";
+import {IFFLONKSplitVerifier} from "./IFFLONKSplitVerifier.sol";
 
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
@@ -32,7 +33,7 @@ library SafeTransfer {
 }
 
 /// @title DustPoolV2 — ZK-UTXO privacy pool with FFLONK proofs
-/// @notice 2-in-2-out UTXO model with off-chain Merkle tree. Supports native + ERC20 tokens.
+/// @notice 2-in-2-out and 2-in-8-out UTXO model with off-chain Merkle tree. Supports native + ERC20 tokens.
 ///         Relayers maintain the Merkle tree and post roots on-chain.
 contract DustPoolV2 {
     using SafeTransfer for address;
@@ -42,8 +43,10 @@ contract DustPoolV2 {
     uint256 public constant ROOT_HISTORY_SIZE = 100;
     /// @dev Max deposit per tx: 2^64 - 1 (matches circuit range proof width)
     uint256 public constant MAX_DEPOSIT_AMOUNT = (1 << 64) - 1;
+    uint256 public constant MAX_BATCH_SIZE = 8;
 
     IFFLONKVerifier public immutable VERIFIER;
+    IFFLONKSplitVerifier public immutable SPLIT_VERIFIER;
     address public owner;
     address public pendingOwner;
     bool public paused;
@@ -110,6 +113,8 @@ contract DustPoolV2 {
     error NotPendingOwner();
     error ReentrantCall();
     error ContractPaused();
+    error BatchTooLarge();
+    error EmptyBatch();
 
     modifier onlyRelayer() {
         if (!relayers[msg.sender]) revert NotRelayer();
@@ -133,8 +138,9 @@ contract DustPoolV2 {
         _;
     }
 
-    constructor(address _verifier) {
+    constructor(address _verifier, address _splitVerifier) {
         VERIFIER = IFFLONKVerifier(_verifier);
+        SPLIT_VERIFIER = IFFLONKSplitVerifier(_splitVerifier);
         owner = msg.sender;
     }
 
@@ -178,6 +184,33 @@ contract DustPoolV2 {
         token.safeTransferFrom(msg.sender, address(this), amount);
 
         emit DepositQueued(commitment, index, amount, token, block.timestamp);
+    }
+
+    /// @notice Batch-deposit native tokens into the pool, creating multiple UTXOs in one tx
+    /// @param commitments Array of Poseidon commitments (max 8)
+    function batchDeposit(bytes32[] calldata commitments) external payable whenNotPaused {
+        uint256 len = commitments.length;
+        if (len == 0) revert EmptyBatch();
+        if (len > MAX_BATCH_SIZE) revert BatchTooLarge();
+        if (msg.value == 0) revert ZeroValue();
+        if (msg.value > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
+
+        uint256 amountPerCommitment = msg.value / len;
+        totalDeposited[address(0)] += msg.value;
+
+        for (uint256 i = 0; i < len; i++) {
+            bytes32 c = commitments[i];
+            if (c == bytes32(0)) revert ZeroCommitment();
+            if (commitmentUsed[c]) revert DuplicateCommitment();
+
+            commitmentUsed[c] = true;
+
+            uint256 idx = depositQueueTail;
+            depositQueue[idx] = c;
+            depositQueueTail = idx + 1;
+
+            emit DepositQueued(c, idx, amountPerCommitment, address(0), block.timestamp);
+        }
     }
 
     /// @notice Withdraw funds by proving UTXO ownership with an FFLONK proof
@@ -270,6 +303,101 @@ contract DustPoolV2 {
             uint256 withdrawAmount = FIELD_SIZE - publicAmount;
 
             // Solvency check: pool cannot pay out more than was deposited per asset
+            if (totalDeposited[tokenAddress] < withdrawAmount) revert InsufficientPoolBalance();
+            totalDeposited[tokenAddress] -= withdrawAmount;
+
+            if (tokenAddress == address(0)) {
+                (bool ok,) = recipient.call{value: withdrawAmount}("");
+                if (!ok) revert TransferFailed();
+            } else {
+                tokenAddress.safeTransfer(recipient, withdrawAmount);
+            }
+
+            emit Withdrawal(nullifier0, recipient, withdrawAmount, tokenAddress);
+        }
+    }
+
+    /// @notice Withdraw with denomination split — proves 2-in-8-out UTXO ownership via FFLONK proof
+    /// @param proof FFLONK proof (24 * 32 = 768 bytes)
+    /// @param merkleRoot Merkle root the proof was generated against
+    /// @param nullifier0 First input UTXO nullifier
+    /// @param nullifier1 Second input UTXO nullifier (bytes32(0) for single-input)
+    /// @param outCommitments 8 output UTXO commitments (bytes32(0) for unused slots)
+    /// @param publicAmount Net public amount (field element; > FIELD_SIZE/2 encodes withdrawal)
+    /// @param publicAsset Poseidon(chainId, tokenAddress) — must match circuit public signal
+    /// @param recipient Address to receive withdrawn funds
+    /// @param tokenAddress Actual token address for transfer (address(0) = native ETH)
+    function withdrawSplit(
+        bytes calldata proof,
+        bytes32 merkleRoot,
+        bytes32 nullifier0,
+        bytes32 nullifier1,
+        bytes32[8] calldata outCommitments,
+        uint256 publicAmount,
+        uint256 publicAsset,
+        address recipient,
+        address tokenAddress
+    ) external onlyRelayer nonReentrant whenNotPaused {
+        if (recipient == address(0)) revert ZeroRecipient();
+        if (!isKnownRoot(merkleRoot)) revert UnknownRoot();
+
+        if (uint256(merkleRoot) >= FIELD_SIZE) revert InvalidFieldElement();
+        if (uint256(nullifier0) >= FIELD_SIZE) revert InvalidFieldElement();
+        if (uint256(nullifier1) >= FIELD_SIZE) revert InvalidFieldElement();
+        for (uint256 i = 0; i < 8; i++) {
+            if (uint256(outCommitments[i]) >= FIELD_SIZE) revert InvalidFieldElement();
+        }
+        if (publicAmount >= FIELD_SIZE) revert InvalidFieldElement();
+        if (publicAsset >= FIELD_SIZE) revert InvalidFieldElement();
+
+        if (nullifiers[nullifier0]) revert NullifierAlreadySpent();
+        if (nullifier1 != bytes32(0) && nullifiers[nullifier1]) {
+            revert NullifierAlreadySpent();
+        }
+        if (proof.length != 768) revert InvalidProofLength();
+
+        // 15 public signals: [merkleRoot, nullifier0, nullifier1, outCommitment0..7, publicAmount, publicAsset, recipient, chainId]
+        uint256[15] memory pubSignals;
+        pubSignals[0] = uint256(merkleRoot);
+        pubSignals[1] = uint256(nullifier0);
+        pubSignals[2] = uint256(nullifier1);
+        for (uint256 i = 0; i < 8; i++) {
+            pubSignals[3 + i] = uint256(outCommitments[i]);
+        }
+        pubSignals[11] = publicAmount;
+        pubSignals[12] = publicAsset;
+        pubSignals[13] = uint256(uint160(recipient));
+        pubSignals[14] = block.chainid;
+
+        bytes32[24] memory proofData;
+        for (uint256 i = 0; i < 24; i++) {
+            proofData[i] = bytes32(proof[i * 32:(i + 1) * 32]);
+        }
+
+        if (!SPLIT_VERIFIER.verifyProof(proofData, pubSignals)) revert InvalidProof();
+
+        // Effects — mark nullifiers spent (skip zero slot used by dummy inputs)
+        if (nullifier0 != bytes32(0)) {
+            nullifiers[nullifier0] = true;
+        }
+        if (nullifier1 != bytes32(0)) {
+            nullifiers[nullifier1] = true;
+        }
+
+        // Queue output commitments (skip zero commitments)
+        for (uint256 i = 0; i < 8; i++) {
+            if (outCommitments[i] != bytes32(0)) {
+                uint256 idx = depositQueueTail;
+                depositQueue[idx] = outCommitments[i];
+                depositQueueTail = idx + 1;
+                emit DepositQueued(outCommitments[i], idx, 0, tokenAddress, block.timestamp);
+            }
+        }
+
+        // Interactions — transfer if publicAmount encodes a withdrawal
+        if (publicAmount != 0 && publicAmount > FIELD_SIZE / 2) {
+            uint256 withdrawAmount = FIELD_SIZE - publicAmount;
+
             if (totalDeposited[tokenAddress] < withdrawAmount) revert InsufficientPoolBalance();
             totalDeposited[tokenAddress] -= withdrawAmount;
 

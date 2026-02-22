@@ -62,6 +62,32 @@ export const DUST_POOL_V2_ABI = [
     ],
     outputs: [],
   },
+  // withdrawSplit — relayer submits 2-in-8-out ZK proof
+  {
+    name: 'withdrawSplit',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'proof', type: 'bytes' },
+      { name: 'merkleRoot', type: 'bytes32' },
+      { name: 'nullifier0', type: 'bytes32' },
+      { name: 'nullifier1', type: 'bytes32' },
+      { name: 'outCommitments', type: 'bytes32[8]' },
+      { name: 'publicAmount', type: 'uint256' },
+      { name: 'publicAsset', type: 'uint256' },
+      { name: 'recipient', type: 'address' },
+      { name: 'tokenAddress', type: 'address' },
+    ],
+    outputs: [],
+  },
+  // batchDeposit — deposit multiple commitments in a single transaction
+  {
+    name: 'batchDeposit',
+    type: 'function',
+    stateMutability: 'payable',
+    inputs: [{ name: 'commitments', type: 'bytes32[]' }],
+    outputs: [],
+  },
   // updateRoot — relayer posts new Merkle root after processing deposits
   {
     name: 'updateRoot',
@@ -116,8 +142,8 @@ export const DUST_POOL_V2_ABI = [
 /** V2 contract addresses per chain */
 export function getDustPoolV2Address(chainId: number): Address | null {
   const addresses: Record<number, Address> = {
-    111551119090: '0x29f4822161bcf02687e02bDD48850C0385a5eEd2',
-    11155111: '0x6f37E2Df430E1c516148157E6d42db6a3747eB8f',
+    111551119090: '0x283800e6394DF6ad17aC53D8d48CD8C0c048B7Ad',
+    11155111: '0x03D52fd442965cD6791Ce5AFab78C60671f9558A',
   }
   return addresses[chainId] ?? null
 }

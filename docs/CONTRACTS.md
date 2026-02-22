@@ -87,35 +87,39 @@ Deployment block: `6272527` · DustPool: `6372598`
 
 ---
 
-## V2 Contracts (DustPool ZK-UTXO) — Security Hardened
+## V2 Contracts (DustPool ZK-UTXO) — With Split Circuit
 
-Deployed with: Pausable, Ownable2Step, 9 public signals (chainId), I1 recipient binding.
+Deployed with: Pausable, Ownable2Step, chainId, I1 recipient binding, 2-in-8-out split verifier.
 
 ### Ethereum Sepolia (chain ID: 11155111)
 
 | Contract | Address |
 |----------|---------|
-| FflonkVerifier | `0xC639C2594cf2841a7aC2E8298208fe33a98Dc98D` |
-| DustPoolV2 | `0x6f37E2Df430E1c516148157E6d42db6a3747eB8f` |
+| FflonkVerifier (9 signals) | `0xd4B52Fd4CDFCCA41E6F88f1a1AfA9A0B715290e7` |
+| FflonkSplitVerifier (15 signals) | `0x2c53Ea8983dCA7b2d4cA1aa4ECfBc6e513e0Fc6E` |
+| DustPoolV2 | `0x03D52fd442965cD6791Ce5AFab78C60671f9558A` |
 | DustSwapVerifierProduction | `0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F` |
 
-Deployment block: `10311323` · Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
+Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
 
 ### Thanos Sepolia (chain ID: 111551119090)
 
 | Contract | Address |
 |----------|---------|
-| FflonkVerifier | `0x301e16F08238e6414ff8Ea3B1F2A85387e9453Df` |
-| DustPoolV2 | `0x29f4822161bcf02687e02bDD48850C0385a5eEd2` |
+| FflonkVerifier (9 signals) | `0x51B2936AF26Df0f087C18E5B478Ae2bda8AD5325` |
+| FflonkSplitVerifier (15 signals) | `0x4031D4559ba1D5878caa8Acc627555748D528AE4` |
+| DustPoolV2 | `0x283800e6394DF6ad17aC53D8d48CD8C0c048B7Ad` |
 
-Deployment block: `6482414` · Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
+Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
 
 ### Previous V2 Deployments (deprecated)
 
 | Chain | FflonkVerifier | DustPoolV2 |
 |-------|-------|-------|
-| Ethereum Sepolia | `0xD1D89bBAeD5b2e4453d6ED59c6e6fa78C13852A7` | `0x36ECE3c48558630372fa4d35B1C4293Fcc18F7B6` |
-| Thanos Sepolia | `0x1f01345e6dCccfC3E213C391C81a70FAa20Ea6bc` | `0x6987FE79057D83BefD19B80822Decb52235A5a67` |
+| Ethereum Sepolia (pre-split) | `0xC639C2594cf2841a7aC2E8298208fe33a98Dc98D` | `0x6f37E2Df430E1c516148157E6d42db6a3747eB8f` |
+| Thanos Sepolia (pre-split) | `0x301e16F08238e6414ff8Ea3B1F2A85387e9453Df` | `0x29f4822161bcf02687e02bDD48850C0385a5eEd2` |
+| Ethereum Sepolia (1st gen) | `0xD1D89bBAeD5b2e4453d6ED59c6e6fa78C13852A7` | `0x36ECE3c48558630372fa4d35B1C4293Fcc18F7B6` |
+| Thanos Sepolia (1st gen) | `0x1f01345e6dCccfC3E213C391C81a70FAa20Ea6bc` | `0x6987FE79057D83BefD19B80822Decb52235A5a67` |
 
 ---
 

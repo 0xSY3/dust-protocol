@@ -75,7 +75,7 @@ contract DustPoolV2Test is Test {
     function setUp() public {
         vm.startPrank(deployer);
         mockVerifier = new MockFFLONKVerifier();
-        pool = new DustPoolV2(address(mockVerifier));
+        pool = new DustPoolV2(address(mockVerifier), address(mockVerifier));
         pool.setRelayer(relayer, true);
         vm.stopPrank();
 

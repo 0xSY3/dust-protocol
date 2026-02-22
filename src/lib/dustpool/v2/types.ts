@@ -67,3 +67,36 @@ export interface ProofInputs {
   spendingKey: bigint
   nullifierKey: bigint
 }
+
+export interface SplitProofInputs {
+  // ── Public signals (15) ─────────────────────────────────────────────────
+  merkleRoot: bigint
+  nullifier0: bigint
+  nullifier1: bigint
+  outputCommitments: bigint[] // 8 commitments
+  publicAmount: bigint
+  publicAsset: bigint
+  recipient: bigint
+  chainId: bigint
+
+  // ── Private — 2 input notes ─────────────────────────────────────────────
+  inOwner: [bigint, bigint]
+  inAmount: [bigint, bigint]
+  inAsset: [bigint, bigint]
+  inChainId: [bigint, bigint]
+  inBlinding: [bigint, bigint]
+  pathElements: [bigint[], bigint[]]
+  pathIndices: [number[], number[]]
+  leafIndex: [bigint, bigint]
+
+  // ── Private — 8 output notes ────────────────────────────────────────────
+  outOwner: bigint[]
+  outAmount: bigint[]
+  outAsset: bigint[]
+  outChainId: bigint[]
+  outBlinding: bigint[]
+
+  // ── Keys ────────────────────────────────────────────────────────────────
+  spendingKey: bigint
+  nullifierKey: bigint
+}

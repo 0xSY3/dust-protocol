@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, type RefObject } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseEther, formatEther, isAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
-import { useV2Withdraw, useV2Notes } from "@/hooks/dustpool/v2";
+import { useV2Withdraw, useV2Notes, useV2Split } from "@/hooks/dustpool/v2";
 import {
   ShieldCheckIcon,
   AlertCircleIcon,
@@ -12,6 +12,7 @@ import {
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
 import { errorToUserMessage } from "@/lib/dustpool/v2/errors";
+import { decomposeForToken, formatChunks, suggestRoundedAmounts } from "@/lib/dustpool/v2/denominations";
 
 interface V2WithdrawModalProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export function V2WithdrawModal({
 }: V2WithdrawModalProps) {
   const { address } = useAccount();
   const { withdraw, isPending, status, txHash, error, clearError } = useV2Withdraw(keysRef, chainId);
+  const { split, isPending: isSplitPending, status: splitStatus, error: splitError, clearError: clearSplitError } = useV2Split(keysRef, chainId);
   const { unspentNotes } = useV2Notes(keysRef, chainId);
 
   const [amount, setAmount] = useState("");
@@ -54,7 +56,7 @@ export function V2WithdrawModal({
 
   const exceedsBalance = parsedAmount !== null && parsedAmount > shieldedBalance;
   const isValidRecipient = isAddress(recipient);
-  const canWithdraw = parsedAmount !== null && !exceedsBalance && isValidRecipient && !isPending;
+  const canWithdraw = parsedAmount !== null && !exceedsBalance && isValidRecipient && !isPending && !isSplitPending;
 
   // Find notes that will be consumed (simplified: show largest note >= amount)
   // Filter leafIndex >= 0 to match the hook's actual note selection (pending notes excluded)
@@ -75,23 +77,39 @@ export function V2WithdrawModal({
     ? consumedNote.note.amount - parsedAmount
     : null;
 
+  const chunks = parsedAmount ? decomposeForToken(parsedAmount, "ETH") : [];
+  const formattedChunkValues = chunks.length > 0 ? formatChunks(chunks, "ETH") : [];
+  const roundSuggestions = parsedAmount && chunks.length > 1
+    ? suggestRoundedAmounts(parsedAmount, "ETH", 2)
+    : [];
+
+  const useSplitFlow = chunks.length > 1;
+  const activePending = useSplitFlow ? isSplitPending : isPending;
+  const activeStatus = useSplitFlow ? splitStatus : status;
+  const activeError = useSplitFlow ? splitError : error;
+  const activeClearError = useSplitFlow ? clearSplitError : clearError;
+
   const handleWithdraw = async () => {
     if (!parsedAmount || !isValidRecipient) return;
-    await withdraw(parsedAmount, recipient as Address);
+    if (useSplitFlow) {
+      await split(parsedAmount, recipient as Address);
+    } else {
+      await withdraw(parsedAmount, recipient as Address);
+    }
   };
 
   const handleClose = useCallback(() => {
-    if (!isPending) onClose();
-  }, [isPending, onClose]);
+    if (!activePending) onClose();
+  }, [activePending, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isPending) handleClose();
+      if (e.key === "Escape" && !activePending) handleClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isOpen, isPending, handleClose]);
+  }, [isOpen, activePending, handleClose]);
 
   const handleMaxClick = () => {
     if (shieldedBalance > 0n) {
@@ -99,7 +117,7 @@ export function V2WithdrawModal({
     }
   };
 
-  const isSuccess = txHash !== null && !isPending && !error;
+  const isSuccess = txHash !== null && !activePending && !activeError;
   const formattedMax = parseFloat(formatEther(shieldedBalance)).toFixed(4);
 
   return (
@@ -128,7 +146,7 @@ export function V2WithdrawModal({
                   [ WITHDRAW_V2 ]
                 </span>
               </div>
-              {!isPending && (
+              {!activePending && (
                 <button onClick={handleClose} data-testid="modal-close" className="text-[rgba(255,255,255,0.4)] hover:text-white transition-colors">
                   <XIcon size={20} />
                 </button>
@@ -137,7 +155,7 @@ export function V2WithdrawModal({
 
             <div className="flex flex-col gap-4">
               {/* Input state */}
-              {!isPending && !isSuccess && !error && (
+              {!activePending && !isSuccess && !activeError && (
                 <>
                   {/* Shielded balance */}
                   <div className="p-4 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.05)]">
@@ -204,6 +222,46 @@ export function V2WithdrawModal({
                     </div>
                   )}
 
+                  {/* Denomination chunk preview — shows how withdrawal will be split for privacy */}
+                  {parsedAmount && chunks.length > 1 && !exceedsBalance && (
+                    <div className="p-3 rounded-sm bg-[rgba(0,255,65,0.03)] border border-[rgba(0,255,65,0.1)]">
+                      <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono mb-2">
+                        Privacy Split &mdash; {chunks.length} chunks
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {formattedChunkValues.map((val, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 rounded-sm bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.15)] text-[10px] font-mono text-[#00FF41]"
+                          >
+                            {val} ETH
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-[rgba(255,255,255,0.35)] font-mono">
+                        Each chunk blends into its denomination anonymity set.
+                      </p>
+                      {roundSuggestions.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-[rgba(255,255,255,0.05)]">
+                          <p className="text-[10px] text-[rgba(255,255,255,0.4)] font-mono mb-1">
+                            Fewer chunks = better privacy:
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {roundSuggestions.map((s, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setAmount(s.formatted)}
+                                className="px-2 py-0.5 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] hover:border-[#00FF41] text-[10px] font-mono text-[rgba(255,255,255,0.6)] hover:text-[#00FF41] transition-colors"
+                              >
+                                {s.formatted} ETH ({s.chunks} chunk{s.chunks !== 1 ? "s" : ""})
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Recipient input */}
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
@@ -239,23 +297,41 @@ export function V2WithdrawModal({
                     disabled={!canWithdraw}
                     className="w-full py-3 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] transition-all text-sm font-bold text-[#00FF41] font-mono tracking-wider disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {parsedAmount ? `Withdraw ${amount} ETH` : "Enter Amount"}
+                    {parsedAmount
+                      ? useSplitFlow
+                        ? `Split & Withdraw ${amount} ETH`
+                        : `Withdraw ${amount} ETH`
+                      : "Enter Amount"}
                   </button>
                 </>
               )}
 
               {/* Processing */}
-              {isPending && (
+              {activePending && (
                 <div className="flex flex-col items-center gap-4 py-6">
                   <div className="w-8 h-8 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm font-semibold text-white font-mono">{status || "Generating ZK proof..."}</p>
-                  <div className="flex items-center gap-2 text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
-                    <span className="text-[#00FF41]">proof</span>
-                    <span>&rarr;</span>
-                    <span className={status?.includes("Submitting") || status?.includes("Confirming") ? "text-[#00FF41]" : ""}>submit</span>
-                    <span>&rarr;</span>
-                    <span className={status?.includes("Confirming") ? "text-[#00FF41]" : ""}>confirm</span>
-                  </div>
+                  <p className="text-sm font-semibold text-white font-mono">
+                    {activeStatus || (useSplitFlow ? "Generating denomination split proof..." : "Generating ZK proof...")}
+                  </p>
+                  {useSplitFlow ? (
+                    <div className="flex items-center gap-2 text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
+                      <span className="text-[#00FF41]">proof</span>
+                      <span>&rarr;</span>
+                      <span className={activeStatus?.includes("Verifying") ? "text-[#00FF41]" : ""}>verify</span>
+                      <span>&rarr;</span>
+                      <span className={activeStatus?.includes("Submitting") ? "text-[#00FF41]" : ""}>submit</span>
+                      <span>&rarr;</span>
+                      <span className={activeStatus?.includes("Confirming") ? "text-[#00FF41]" : ""}>confirm</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
+                      <span className="text-[#00FF41]">proof</span>
+                      <span>&rarr;</span>
+                      <span className={activeStatus?.includes("Submitting") || activeStatus?.includes("Confirming") ? "text-[#00FF41]" : ""}>submit</span>
+                      <span>&rarr;</span>
+                      <span className={activeStatus?.includes("Confirming") ? "text-[#00FF41]" : ""}>confirm</span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -266,9 +342,29 @@ export function V2WithdrawModal({
                     <div className="inline-flex mb-3">
                       <ShieldCheckIcon size={40} color="#00FF41" />
                     </div>
-                    <p className="text-base font-bold text-white mb-1 font-mono">Withdrawal Successful</p>
+                    <p className="text-base font-bold text-white mb-1 font-mono">
+                      {useSplitFlow ? "Denomination Split Successful" : "Withdrawal Successful"}
+                    </p>
                     <p className="text-[13px] text-[rgba(255,255,255,0.5)] font-mono">{amount} ETH withdrawn privately</p>
                   </div>
+
+                  {useSplitFlow && (
+                    <div className="p-3 rounded-sm bg-[rgba(0,255,65,0.04)] border border-[rgba(0,255,65,0.15)]">
+                      <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono mb-2">
+                        {chunks.length} denomination notes created
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {formattedChunkValues.map((val, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 rounded-sm bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.15)] text-[10px] font-mono text-[#00FF41]"
+                          >
+                            {val} ETH
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {txHash && (
                     <div className="p-3 rounded-sm bg-[rgba(0,255,65,0.04)] border border-[rgba(0,255,65,0.15)]">
@@ -301,14 +397,16 @@ export function V2WithdrawModal({
               )}
 
               {/* Error */}
-              {error && !isPending && (
+              {activeError && !activePending && (
                 <div className="flex flex-col gap-4">
                   <div className="text-center py-2">
                     <div className="inline-flex mb-3">
                       <AlertCircleIcon size={40} color="#ef4444" />
                     </div>
-                    <p className="text-base font-bold text-white mb-1 font-mono">Withdrawal Failed</p>
-                    <p className="text-[13px] text-[rgba(255,255,255,0.5)] font-mono">{errorToUserMessage(error)}</p>
+                    <p className="text-base font-bold text-white mb-1 font-mono">
+                      {useSplitFlow ? "Split Failed" : "Withdrawal Failed"}
+                    </p>
+                    <p className="text-[13px] text-[rgba(255,255,255,0.5)] font-mono">{errorToUserMessage(activeError)}</p>
                   </div>
 
                   <div className="flex gap-3">
@@ -319,7 +417,7 @@ export function V2WithdrawModal({
                       Cancel
                     </button>
                     <button
-                      onClick={() => { clearError(); setAmount(""); }}
+                      onClick={() => { activeClearError(); setAmount(""); }}
                       className="flex-1 py-3 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] text-sm font-bold text-[#00FF41] font-mono tracking-wider transition-all"
                     >
                       Try Again

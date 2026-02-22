@@ -11,7 +11,22 @@ import { BN254_FIELD_SIZE, TREE_DEPTH } from './constants'
 import { computeNoteCommitment } from './commitment'
 import { computeNullifier } from './nullifier'
 import { createDummyNote, createNote } from './note'
-import type { NoteCommitmentV2, NoteV2, ProofInputs, V2Keys } from './types'
+import type { NoteCommitmentV2, NoteV2, ProofInputs, SplitProofInputs, V2Keys } from './types'
+
+// ── Split types ──────────────────────────────────────────────────────────────
+
+export interface SplitOutputNote {
+  commitment: bigint
+  owner: bigint
+  amount: bigint
+  asset: bigint
+  blinding: bigint
+}
+
+export interface SplitBuildResult {
+  circuitInputs: Record<string, string | string[] | string[][]>
+  outputNotes: SplitOutputNote[]
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -294,5 +309,178 @@ export async function buildTransferInputs(
     // Keys
     spendingKey: keys.spendingKey,
     nullifierKey: keys.nullifierKey,
+  }
+}
+
+// ── Split ────────────────────────────────────────────────────────────────────
+
+const N_SPLIT_OUTPUTS = 8
+
+/**
+ * Build circuit inputs for a 2-in-8-out denomination split.
+ *
+ * - Input 0 is the note being consumed; input 1 is dummy.
+ * - Outputs: one note per chunk, optional change note, padded with dummies to 8.
+ * - For withdrawal: publicAmount = field-negative sum(chunks), recipient = address.
+ * - For internal split: publicAmount = 0, recipient = 0.
+ */
+export async function buildSplitInputs(
+  inputNote: NoteCommitmentV2,
+  chunks: bigint[],
+  recipient: string,
+  keys: V2Keys,
+  merkleProof: { pathElements: bigint[]; pathIndices: number[] },
+  chainId: number,
+  recipientOwner?: bigint
+): Promise<SplitBuildResult> {
+  const totalChunks = chunks.reduce((sum, c) => sum + c, 0n)
+
+  if (totalChunks > inputNote.note.amount) {
+    throw new Error(
+      `Chunks total (${totalChunks}) exceeds note balance (${inputNote.note.amount})`
+    )
+  }
+
+  if (chunks.length > N_SPLIT_OUTPUTS) {
+    throw new Error(
+      `Too many chunks (${chunks.length}), maximum is ${N_SPLIT_OUTPUTS}`
+    )
+  }
+
+  const change = inputNote.note.amount - totalChunks
+  const hasChange = change > 0n
+
+  if (hasChange && chunks.length >= N_SPLIT_OUTPUTS) {
+    throw new Error(
+      `No room for change note: ${chunks.length} chunks fills all ${N_SPLIT_OUTPUTS} output slots`
+    )
+  }
+
+  const chunkOwner = recipientOwner ?? inputNote.note.owner
+  const dummy = createDummyNote()
+  const dummyProofData = dummyMerkleProof()
+
+  const notes: NoteV2[] = []
+
+  for (const chunk of chunks) {
+    notes.push(
+      createNote(chunkOwner, chunk, inputNote.note.asset, inputNote.note.chainId)
+    )
+  }
+
+  if (hasChange) {
+    notes.push(
+      createNote(inputNote.note.owner, change, inputNote.note.asset, inputNote.note.chainId)
+    )
+  }
+
+  while (notes.length < N_SPLIT_OUTPUTS) {
+    notes.push(createDummyNote())
+  }
+
+  const commitments = await Promise.all(
+    notes.map((n) => computeNoteCommitment(n))
+  )
+
+  const nullifier0 = await computeNullifier(
+    keys.nullifierKey,
+    inputNote.commitment,
+    inputNote.leafIndex
+  )
+  const nullifier1 = 0n
+
+  const { poseidonHash } = await import('./commitment')
+  let currentHash = inputNote.commitment
+  for (let i = 0; i < TREE_DEPTH; i++) {
+    if (merkleProof.pathIndices[i] === 0) {
+      currentHash = await poseidonHash([currentHash, merkleProof.pathElements[i]])
+    } else {
+      currentHash = await poseidonHash([merkleProof.pathElements[i], currentHash])
+    }
+  }
+
+  const recipientBigInt = BigInt(recipient)
+  const isWithdrawal = recipientBigInt !== 0n
+
+  const inputs: SplitProofInputs = {
+    merkleRoot: currentHash,
+    nullifier0,
+    nullifier1,
+    outputCommitments: commitments,
+    publicAmount: isWithdrawal ? BN254_FIELD_SIZE - totalChunks : 0n,
+    publicAsset: inputNote.note.asset,
+    recipient: recipientBigInt,
+    chainId: BigInt(chainId),
+
+    inOwner: [inputNote.note.owner, dummy.owner],
+    inAmount: [inputNote.note.amount, dummy.amount],
+    inAsset: [inputNote.note.asset, dummy.asset],
+    inChainId: [BigInt(inputNote.note.chainId), BigInt(dummy.chainId)],
+    inBlinding: [inputNote.note.blinding, dummy.blinding],
+    pathElements: [merkleProof.pathElements, dummyProofData.pathElements],
+    pathIndices: [merkleProof.pathIndices, dummyProofData.pathIndices],
+    leafIndex: [BigInt(inputNote.leafIndex), 0n],
+
+    outOwner: notes.map((n) => n.owner),
+    outAmount: notes.map((n) => n.amount),
+    outAsset: notes.map((n) => n.asset),
+    outChainId: notes.map((n) => BigInt(n.chainId)),
+    outBlinding: notes.map((n) => n.blinding),
+
+    spendingKey: keys.spendingKey,
+    nullifierKey: keys.nullifierKey,
+  }
+
+  // Only return non-dummy output notes (amount > 0) for IndexedDB storage
+  const realOutputNotes: SplitOutputNote[] = []
+  for (let i = 0; i < notes.length; i++) {
+    if (notes[i].amount > 0n) {
+      realOutputNotes.push({
+        commitment: commitments[i],
+        owner: notes[i].owner,
+        amount: notes[i].amount,
+        asset: notes[i].asset,
+        blinding: notes[i].blinding,
+      })
+    }
+  }
+
+  return {
+    circuitInputs: formatSplitCircuitInputs(inputs),
+    outputNotes: realOutputNotes,
+  }
+}
+
+function formatSplitCircuitInputs(
+  inputs: SplitProofInputs
+): Record<string, string | string[] | string[][]> {
+  return {
+    merkleRoot: inputs.merkleRoot.toString(),
+    nullifier0: inputs.nullifier0.toString(),
+    nullifier1: inputs.nullifier1.toString(),
+    outputCommitment: inputs.outputCommitments.map(String),
+    publicAmount: inputs.publicAmount.toString(),
+    publicAsset: inputs.publicAsset.toString(),
+    recipient: inputs.recipient.toString(),
+    chainId: inputs.chainId.toString(),
+
+    spendingKey: inputs.spendingKey.toString(),
+    nullifierKey: inputs.nullifierKey.toString(),
+
+    inOwner: inputs.inOwner.map(String),
+    inAmount: inputs.inAmount.map(String),
+    inAsset: inputs.inAsset.map(String),
+    inChainId: inputs.inChainId.map(String),
+    inBlinding: inputs.inBlinding.map(String),
+    leafIndex: inputs.leafIndex.map(String),
+
+    pathElements: inputs.pathElements.map((arr) => arr.map(String)),
+    pathIndices: inputs.pathIndices.map((arr) => arr.map(String)),
+
+    outOwner: inputs.outOwner.map(String),
+    outAmount: inputs.outAmount.map(String),
+    outAsset: inputs.outAsset.map(String),
+    outChainId: inputs.outChainId.map(String),
+    outBlinding: inputs.outBlinding.map(String),
   }
 }

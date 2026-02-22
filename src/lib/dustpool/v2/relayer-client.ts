@@ -52,6 +52,20 @@ interface WithdrawalResponse {
   fee: string
 }
 
+interface BatchWithdrawalResponse {
+  results: Array<{ index: number; txHash: string; blockNumber: number; gasUsed: string; fee: string }>
+  errors: Array<{ index: number; error: string }>
+  total: number
+  succeeded: number
+}
+
+export interface BatchWithdrawalResult {
+  results: WithdrawalResult[]
+  errors: Array<{ index: number; error: string }>
+  total: number
+  succeeded: number
+}
+
 interface TransferResponse {
   success: boolean
   txHash: string
@@ -172,6 +186,55 @@ export function createRelayerClient(config?: Partial<RelayerConfig>) {
       tokenAddress: string
     ): Promise<WithdrawalResult> {
       const data = await relayerFetch<WithdrawalResponse>(resolvedConfig, '/api/v2/withdraw', {
+        method: 'POST',
+        body: JSON.stringify({ proof: proofCalldata, publicSignals, targetChainId, tokenAddress }),
+      })
+      return {
+        txHash: data.txHash,
+        blockNumber: data.blockNumber,
+        gasUsed: data.gasUsed,
+        fee: data.fee,
+      }
+    },
+
+    /**
+     * Submit multiple withdrawal proofs as a batch.
+     * Relayer shuffles execution order and adds timing jitter between chunks
+     * to prevent FIFO timing correlation attacks.
+     */
+    async submitBatchWithdrawal(
+      proofs: Array<{ proof: string; publicSignals: string[]; tokenAddress: string }>,
+      targetChainId: number
+    ): Promise<BatchWithdrawalResult> {
+      const data = await relayerFetch<BatchWithdrawalResponse>(resolvedConfig, '/api/v2/batch-withdraw', {
+        method: 'POST',
+        body: JSON.stringify({ proofs, targetChainId }),
+      })
+      return {
+        results: data.results.map(r => ({
+          txHash: r.txHash,
+          blockNumber: r.blockNumber,
+          gasUsed: r.gasUsed,
+          fee: r.fee,
+        })),
+        errors: data.errors,
+        total: data.total,
+        succeeded: data.succeeded,
+      }
+    },
+
+    /**
+     * Submit a 2-in-8-out split withdrawal proof for the relayer to execute on-chain.
+     * Used when withdrawing into multiple denomination chunks for privacy.
+     * @param proofCalldata 0x-prefixed hex string (768 bytes) from FFLONK prover
+     */
+    async submitSplitWithdrawal(
+      proofCalldata: string,
+      publicSignals: string[],
+      targetChainId: number,
+      tokenAddress: string
+    ): Promise<WithdrawalResult> {
+      const data = await relayerFetch<WithdrawalResponse>(resolvedConfig, '/api/v2/split-withdraw', {
         method: 'POST',
         body: JSON.stringify({ proof: proofCalldata, publicSignals, targetChainId, tokenAddress }),
       })
