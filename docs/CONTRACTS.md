@@ -28,7 +28,20 @@
 
 Deployment block: `10251347` · DustPool: `10259728`
 
-### DustSwap (Privacy Swaps)
+### DustSwap (Privacy Swaps) — Poseidon-Binding Verifier
+
+| Contract | Address |
+|----------|---------|
+| DustSwapPoolETH | `0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799` |
+| DustSwapPoolUSDC | `0x1791D13995FfA9e00a9A2C07A9ad1251a668A669` |
+| DustSwapHook | `0x78139b89777bAC63B346C2DA4829667529E5c0C4` |
+| DustSwapVerifier | `0xD7Ec2400B53c0E51EBd72a962aeF15f6e22B3b89` |
+| DustSwapRouter | `0xDC839820cc24f312f10945939C4aCa41887FC78F` |
+| Uniswap V4 PoolManager | `0x93805603e0167574dFe2F50ABdA8f42C85002FD8` |
+
+Deployment block: `10311323`
+
+#### Previous DustSwap Deployment (deprecated)
 
 | Contract | Address |
 |----------|---------|
@@ -37,9 +50,6 @@ Deployment block: `10251347` · DustPool: `10259728`
 | DustSwapHook | `0x09b6a164917F8ab6e8b552E47bD3957cAe6d80C4` |
 | DustSwapVerifier | `0x1677C9c4E575C910B9bCaF398D615B9F3775d0f1` |
 | DustSwapRouter | `0x82faD70Aa95480F719Da4B81E17607EF3A631F42` |
-| Uniswap V4 PoolManager | `0x93805603e0167574dFe2F50ABdA8f42C85002FD8` |
-
-Deployment block: `10268660`
 
 ---
 
@@ -75,25 +85,35 @@ Deployment block: `6272527` · DustPool: `6372598`
 
 ---
 
-## V2 Contracts (DustPool ZK-UTXO)
+## V2 Contracts (DustPool ZK-UTXO) — Security Hardened
+
+Deployed with: Pausable, Ownable2Step, 9 public signals (chainId), I1 recipient binding.
 
 ### Ethereum Sepolia (chain ID: 11155111)
 
 | Contract | Address |
 |----------|---------|
-| FflonkVerifier | `0xD1D89bBAeD5b2e4453d6ED59c6e6fa78C13852A7` |
-| DustPoolV2 | `0x36ECE3c48558630372fa4d35B1C4293Fcc18F7B6` |
+| FflonkVerifier | `0xC639C2594cf2841a7aC2E8298208fe33a98Dc98D` |
+| DustPoolV2 | `0x6f37E2Df430E1c516148157E6d42db6a3747eB8f` |
+| DustSwapVerifierProduction | `0xD7Ec2400B53c0E51EBd72a962aeF15f6e22B3b89` |
 
-Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
+Deployment block: `10311323` · Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
 
 ### Thanos Sepolia (chain ID: 111551119090)
 
 | Contract | Address |
 |----------|---------|
-| FflonkVerifier | `0x1f01345e6dCccfC3E213C391C81a70FAa20Ea6bc` |
-| DustPoolV2 | `0x6987FE79057D83BefD19B80822Decb52235A5a67` |
+| FflonkVerifier | `0x301e16F08238e6414ff8Ea3B1F2A85387e9453Df` |
+| DustPoolV2 | `0x29f4822161bcf02687e02bDD48850C0385a5eEd2` |
 
-Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
+Deployment block: `6482414` · Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
+
+### Previous V2 Deployments (deprecated)
+
+| Chain | FflonkVerifier | DustPoolV2 |
+|-------|-------|-------|
+| Ethereum Sepolia | `0xD1D89bBAeD5b2e4453d6ED59c6e6fa78C13852A7` | `0x36ECE3c48558630372fa4d35B1C4293Fcc18F7B6` |
+| Thanos Sepolia | `0x1f01345e6dCccfC3E213C391C81a70FAa20Ea6bc` | `0x6987FE79057D83BefD19B80822Decb52235A5a67` |
 
 ---
 

@@ -32,7 +32,7 @@ import {IPoolManagerRouter} from "../src/DustSwapRouter.sol";
 contract DeployV2 is Script {
     // --- Existing Sepolia addresses (unchanged) ---
     address constant POOL_MANAGER = 0x93805603e0167574dFe2F50ABdA8f42C85002FD8;
-    address constant VERIFIER     = 0x1677C9c4E575C910B9bCaF398D615B9F3775d0f1;
+    address constant VERIFIER     = 0xD7Ec2400B53c0E51EBd72a962aeF15f6e22B3b89;
     address constant USDC_TOKEN   = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
 
     // --- Uniswap V4 hook flags ---
