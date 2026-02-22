@@ -1,13 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type RefObject } from 'react'
 import { useAccount, useChainId } from 'wagmi'
 import {
   openV2Database, storedToNoteCommitment, getPendingNotes, updateNoteLeafIndex,
 } from '@/lib/dustpool/v2/storage'
 import type { StoredNoteV2 } from '@/lib/dustpool/v2/storage'
 import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
-import type { NoteCommitmentV2 } from '@/lib/dustpool/v2/types'
+import { deriveStorageKey, decryptNotePayload } from '@/lib/dustpool/v2/storage-crypto'
+import type { NoteCommitmentV2, V2Keys } from '@/lib/dustpool/v2/types'
 
-export function useV2Notes(chainIdOverride?: number) {
+export function useV2Notes(keysRef?: RefObject<V2Keys | null>, chainIdOverride?: number) {
   const { address } = useAccount()
   const wagmiChainId = useChainId()
   const chainId = chainIdOverride ?? wagmiChainId
@@ -28,6 +29,8 @@ export function useV2Notes(chainIdOverride?: number) {
     setIsLoading(true)
     try {
       const db = await openV2Database()
+      const keys = keysRef?.current
+      const encKey = keys ? await deriveStorageKey(keys.spendingKey) : undefined
 
       // Get ALL notes (spent + unspent) for this wallet/chain
       // getUnspentNotes only returns unspent, so we query by wallet index
@@ -37,7 +40,7 @@ export function useV2Notes(chainIdOverride?: number) {
       const index = store.index('walletAddress')
       const addr = address.toLowerCase()
 
-      const allNotes = await new Promise<StoredNoteV2[]>((resolve, reject) => {
+      const rawNotes = await new Promise<StoredNoteV2[]>((resolve, reject) => {
         const request = index.getAll(addr)
         request.onsuccess = () => {
           const results = (request.result as StoredNoteV2[])
@@ -46,6 +49,19 @@ export function useV2Notes(chainIdOverride?: number) {
         }
         request.onerror = () => reject(request.error)
       })
+
+      // Decrypt encrypted notes if encryption key is available
+      let allNotes = rawNotes
+      if (encKey) {
+        allNotes = await Promise.all(rawNotes.map(async (n) => {
+          if (!n.encryptedData || !n.iv) return n
+          const payload = await decryptNotePayload(
+            { ciphertext: n.encryptedData, iv: n.iv },
+            encKey
+          )
+          return { ...n, owner: payload.owner, amount: payload.amount, asset: payload.asset, blinding: payload.blinding }
+        }))
+      }
 
       setNotes(allNotes.map(storedToNoteCommitment))
     } catch (e) {

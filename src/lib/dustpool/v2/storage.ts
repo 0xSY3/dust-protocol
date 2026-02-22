@@ -6,7 +6,18 @@
  *
  * BigInt values are stored as hex strings because IndexedDB cannot serialize bigint.
  * Scoped per wallet address for multi-account isolation.
+ *
+ * Sensitive fields (owner, amount, asset, blinding) are encrypted with AES-256-GCM
+ * when a CryptoKey is provided. Unencrypted notes from before the encryption upgrade
+ * are still readable for backward compatibility.
  */
+
+import {
+  encryptNotePayload,
+  decryptNotePayload,
+  type NotePayload,
+  type EncryptedPayload,
+} from './storage-crypto'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -30,13 +41,13 @@ export interface StoredNoteV2 {
   chainId: number
   /** Poseidon commitment as hex */
   commitment: string
-  /** Poseidon(spendingKey) as hex */
+  /** Poseidon(spendingKey) as hex — empty string when encrypted */
   owner: string
-  /** note value in base units as hex */
+  /** note value in base units as hex — empty string when encrypted */
   amount: string
-  /** Poseidon(chainId, tokenAddress) as hex */
+  /** Poseidon(chainId, tokenAddress) as hex — empty string when encrypted */
   asset: string
-  /** random blinding factor as hex */
+  /** random blinding factor as hex — empty string when encrypted */
   blinding: string
   /** position in the global Merkle tree */
   leafIndex: number
@@ -44,6 +55,10 @@ export interface StoredNoteV2 {
   spent: boolean
   /** Unix timestamp in milliseconds */
   createdAt: number
+  /** AES-256-GCM encrypted payload (base64) — present when note is encrypted */
+  encryptedData?: string
+  /** AES-GCM IV (base64) — present when note is encrypted */
+  iv?: string
 }
 
 // ─── Conversion ─────────────────────────────────────────────────────────────────
@@ -113,28 +128,75 @@ export function openV2Database(): Promise<IDBDatabase> {
   })
 }
 
+// ─── Encryption Helpers ─────────────────────────────────────────────────────────
+
+/** Encrypt sensitive fields before saving. Clears plaintext sensitive fields. */
+async function encryptForStorage(
+  note: StoredNoteV2,
+  encKey: CryptoKey
+): Promise<StoredNoteV2> {
+  const payload: NotePayload = {
+    owner: note.owner,
+    amount: note.amount,
+    asset: note.asset,
+    blinding: note.blinding,
+  }
+  const encrypted: EncryptedPayload = await encryptNotePayload(payload, encKey)
+  return {
+    ...note,
+    owner: '',
+    amount: '',
+    asset: '',
+    blinding: '',
+    encryptedData: encrypted.ciphertext,
+    iv: encrypted.iv,
+  }
+}
+
+/** Decrypt sensitive fields after reading. Returns note with plaintext fields restored. */
+async function decryptFromStorage(
+  note: StoredNoteV2,
+  encKey: CryptoKey
+): Promise<StoredNoteV2> {
+  if (!note.encryptedData || !note.iv) return note
+  const payload = await decryptNotePayload(
+    { ciphertext: note.encryptedData, iv: note.iv },
+    encKey
+  )
+  return {
+    ...note,
+    owner: payload.owner,
+    amount: payload.amount,
+    asset: payload.asset,
+    blinding: payload.blinding,
+  }
+}
+
 // ─── CRUD Operations ────────────────────────────────────────────────────────────
 
 /**
  * Save a V2 note to IndexedDB.
  * The note's `id` (commitment hex) is used as the primary key.
+ * If `encKey` is provided, sensitive fields are AES-256-GCM encrypted.
  */
-export function saveNoteV2(
+export async function saveNoteV2(
   db: IDBDatabase,
   walletAddress: string,
-  note: StoredNoteV2
+  note: StoredNoteV2,
+  encKey?: CryptoKey
 ): Promise<void> {
+  let toStore: StoredNoteV2 = {
+    ...note,
+    walletAddress: walletAddress.toLowerCase(),
+  }
+  if (encKey) {
+    toStore = await encryptForStorage(toStore, encKey)
+  }
+
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_NAME], 'readwrite')
     const store = tx.objectStore(STORE_NAME)
-
-    // Ensure walletAddress is normalized
-    const normalized: StoredNoteV2 = {
-      ...note,
-      walletAddress: walletAddress.toLowerCase(),
-    }
-
-    const request = store.put(normalized)
+    const request = store.put(toStore)
     request.onsuccess = () => resolve()
     request.onerror = () => reject(request.error)
   })
@@ -142,20 +204,21 @@ export function saveNoteV2(
 
 /**
  * Get all unspent notes for a wallet, optionally filtered by chain.
+ * If `encKey` is provided, encrypted notes are decrypted before returning.
  */
-export function getUnspentNotes(
+export async function getUnspentNotes(
   db: IDBDatabase,
   walletAddress: string,
-  chainId?: number
+  chainId?: number,
+  encKey?: CryptoKey
 ): Promise<StoredNoteV2[]> {
   const addr = walletAddress.toLowerCase()
 
-  return new Promise((resolve, reject) => {
+  const raw: StoredNoteV2[] = await new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_NAME], 'readonly')
     const store = tx.objectStore(STORE_NAME)
 
     if (chainId !== undefined) {
-      // Use the compound index for an efficient query
       const index = store.index('wallet_chain_spent')
       const key = IDBKeyRange.only([addr, chainId, false])
       const request = index.getAll(key)
@@ -163,7 +226,6 @@ export function getUnspentNotes(
       request.onsuccess = () => resolve(request.result as StoredNoteV2[])
       request.onerror = () => reject(request.error)
     } else {
-      // Fallback: query by wallet and filter spent in JS
       const index = store.index('walletAddress')
       const request = index.getAll(addr)
 
@@ -174,6 +236,9 @@ export function getUnspentNotes(
       request.onerror = () => reject(request.error)
     }
   })
+
+  if (!encKey) return raw
+  return Promise.all(raw.map(n => decryptFromStorage(n, encKey)))
 }
 
 /**
@@ -209,9 +274,10 @@ export async function getBalance(
   db: IDBDatabase,
   walletAddress: string,
   chainId: number,
-  assetHex: string
+  assetHex: string,
+  encKey?: CryptoKey
 ): Promise<bigint> {
-  const notes = await getUnspentNotes(db, walletAddress, chainId)
+  const notes = await getUnspentNotes(db, walletAddress, chainId, encKey)
 
   let total = 0n
   for (const note of notes) {
@@ -229,9 +295,10 @@ export async function getBalance(
  */
 export async function getAllBalances(
   db: IDBDatabase,
-  walletAddress: string
+  walletAddress: string,
+  encKey?: CryptoKey
 ): Promise<Map<string, bigint>> {
-  const notes = await getUnspentNotes(db, walletAddress)
+  const notes = await getUnspentNotes(db, walletAddress, undefined, encKey)
   const balances = new Map<string, bigint>()
 
   for (const note of notes) {
@@ -246,12 +313,24 @@ export async function getAllBalances(
  * Atomically mark an input note as spent and save a change note (if any).
  * Both operations share a single IndexedDB transaction — if either fails,
  * neither commits, preventing fund loss from partial updates.
+ * If `encKey` is provided, the change note is encrypted before storing.
  */
-export function markSpentAndSaveChange(
+export async function markSpentAndSaveChange(
   db: IDBDatabase,
   inputCommitmentHex: string,
-  changeNote?: StoredNoteV2
+  changeNote?: StoredNoteV2,
+  encKey?: CryptoKey
 ): Promise<void> {
+  let encryptedChange: StoredNoteV2 | undefined
+  if (changeNote && encKey) {
+    encryptedChange = await encryptForStorage(
+      { ...changeNote, walletAddress: changeNote.walletAddress.toLowerCase() },
+      encKey
+    )
+  } else if (changeNote) {
+    encryptedChange = { ...changeNote, walletAddress: changeNote.walletAddress.toLowerCase() }
+  }
+
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_NAME], 'readwrite')
 
@@ -272,11 +351,8 @@ export function markSpentAndSaveChange(
       note.spent = true
       store.put(note)
 
-      if (changeNote) {
-        store.put({
-          ...changeNote,
-          walletAddress: changeNote.walletAddress.toLowerCase(),
-        })
+      if (encryptedChange) {
+        store.put(encryptedChange)
       }
     }
 
@@ -320,14 +396,15 @@ export function updateNoteLeafIndex(
 /**
  * Get all unspent notes with leafIndex === -1 (pending relayer confirmation).
  */
-export function getPendingNotes(
+export async function getPendingNotes(
   db: IDBDatabase,
   walletAddress: string,
-  chainId: number
+  chainId: number,
+  encKey?: CryptoKey
 ): Promise<StoredNoteV2[]> {
   const addr = walletAddress.toLowerCase()
 
-  return new Promise((resolve, reject) => {
+  const raw: StoredNoteV2[] = await new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_NAME], 'readonly')
     const store = tx.objectStore(STORE_NAME)
     const index = store.index('wallet_chain_spent')
@@ -340,6 +417,9 @@ export function getPendingNotes(
     }
     request.onerror = () => reject(request.error)
   })
+
+  if (!encKey) return raw
+  return Promise.all(raw.map(n => decryptFromStorage(n, encKey)))
 }
 
 /**

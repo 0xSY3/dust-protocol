@@ -29,7 +29,7 @@ export function V2WithdrawModal({
 }: V2WithdrawModalProps) {
   const { address } = useAccount();
   const { withdraw, isPending, txHash, error } = useV2Withdraw(keysRef, chainId);
-  const { unspentNotes } = useV2Notes(chainId);
+  const { unspentNotes } = useV2Notes(keysRef, chainId);
 
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");

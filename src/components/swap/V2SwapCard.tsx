@@ -23,7 +23,7 @@ type ModalType = "deposit" | "withdraw" | "transfer" | null;
 export function V2SwapCard({ chainId }: V2SwapCardProps) {
   const { isConnected } = useAccount();
   const { keysRef, hasKeys, hasPin, isDeriving, error: keyError, deriveKeys } = useV2Keys();
-  const { totalEthBalance, notes, isLoading, refreshBalances } = useV2Balance(chainId);
+  const { totalEthBalance, notes, isLoading, refreshBalances } = useV2Balance(keysRef, chainId);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [pinInput, setPinInput] = useState("");
   const [showPinInput, setShowPinInput] = useState(false);

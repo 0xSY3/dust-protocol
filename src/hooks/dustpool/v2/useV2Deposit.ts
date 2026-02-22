@@ -7,6 +7,7 @@ import { MAX_AMOUNT } from '@/lib/dustpool/v2/constants'
 import { getDustPoolV2Config, DUST_POOL_V2_ABI } from '@/lib/dustpool/v2/contracts'
 import { openV2Database, saveNoteV2, bigintToHex } from '@/lib/dustpool/v2/storage'
 import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
+import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
 import type { V2Keys } from '@/lib/dustpool/v2/types'
 import type { StoredNoteV2 } from '@/lib/dustpool/v2/storage'
 
@@ -108,7 +109,8 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
       }
 
       const db = await openV2Database()
-      await saveNoteV2(db, address, stored)
+      const encKey = await deriveStorageKey(keys.spendingKey)
+      await saveNoteV2(db, address, stored, encKey)
 
       if (leafIndex === -1) {
         // Note is saved — background sync (useV2Notes) will resolve leafIndex later

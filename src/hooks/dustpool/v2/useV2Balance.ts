@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef, type RefObject } from 'react'
 import { useAccount, useChainId } from 'wagmi'
 import { zeroAddress } from 'viem'
 import { computeAssetId } from '@/lib/dustpool/v2/commitment'
 import { openV2Database, getUnspentNotes, getPendingNotes, hexToBigint, storedToNoteCommitment } from '@/lib/dustpool/v2/storage'
-import type { NoteCommitmentV2 } from '@/lib/dustpool/v2/types'
+import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
+import type { NoteCommitmentV2, V2Keys } from '@/lib/dustpool/v2/types'
 
-export function useV2Balance(chainIdOverride?: number) {
+export function useV2Balance(keysRef?: RefObject<V2Keys | null>, chainIdOverride?: number) {
   const { address } = useAccount()
   const wagmiChainId = useChainId()
   const chainId = chainIdOverride ?? wagmiChainId
@@ -29,7 +30,9 @@ export function useV2Balance(chainIdOverride?: number) {
     setIsLoading(true)
     try {
       const db = await openV2Database()
-      const storedNotes = await getUnspentNotes(db, address, chainId)
+      const keys = keysRef?.current
+      const encKey = keys ? await deriveStorageKey(keys.spendingKey) : undefined
+      const storedNotes = await getUnspentNotes(db, address, chainId, encKey)
 
       const converted = storedNotes.map(storedToNoteCommitment)
       setNotes(converted)
@@ -47,7 +50,7 @@ export function useV2Balance(chainIdOverride?: number) {
       const ethAssetId = await computeAssetId(chainId, zeroAddress)
       setTotalEthBalance(balanceMap.get(ethAssetId) ?? 0n)
 
-      const pending = await getPendingNotes(db, address, chainId)
+      const pending = await getPendingNotes(db, address, chainId, encKey)
       setPendingDeposits(pending.length)
     } catch (e) {
       console.error('[DustPoolV2] Failed to load balances:', e)

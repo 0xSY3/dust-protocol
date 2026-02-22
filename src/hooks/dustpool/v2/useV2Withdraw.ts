@@ -10,6 +10,7 @@ import {
 import type { StoredNoteV2 } from '@/lib/dustpool/v2/storage'
 import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { generateV2Proof, verifyV2ProofLocally } from '@/lib/dustpool/v2/proof'
+import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
 import type { V2Keys } from '@/lib/dustpool/v2/types'
 
 const RECEIPT_TIMEOUT_MS = 30_000
@@ -58,10 +59,11 @@ export function useV2Withdraw(keysRef: RefObject<V2Keys | null>, chainIdOverride
 
     try {
       const db = await openV2Database()
+      const encKey = await deriveStorageKey(keys.spendingKey)
       const assetId = await computeAssetId(chainId, asset)
       const assetHex = bigintToHex(assetId)
 
-      const storedNotes = await getUnspentNotes(db, address, chainId)
+      const storedNotes = await getUnspentNotes(db, address, chainId, encKey)
 
       // Best-fit selection: smallest note >= amount, with confirmed leafIndex
       const eligible = storedNotes
@@ -89,7 +91,7 @@ export function useV2Withdraw(keysRef: RefObject<V2Keys | null>, chainIdOverride
 
         const merkleProof = await relayer.getMerkleProof(inputNote.leafIndex)
         const proofInputs = await buildWithdrawInputs(
-          inputNote, amount, recipient, keys, merkleProof
+          inputNote, amount, recipient, keys, merkleProof, chainId
         )
 
         const { proof, publicSignals, proofCalldata } = await generateV2Proof(proofInputs)
@@ -156,7 +158,7 @@ export function useV2Withdraw(keysRef: RefObject<V2Keys | null>, chainIdOverride
           createdAt: Date.now(),
         }
       }
-      await markSpentAndSaveChange(db, inputStored.id, changeStored)
+      await markSpentAndSaveChange(db, inputStored.id, changeStored, encKey)
     } catch (e) {
       setError(extractRelayerError(e, 'Withdrawal failed'))
     } finally {

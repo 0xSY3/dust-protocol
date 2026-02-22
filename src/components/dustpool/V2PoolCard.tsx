@@ -20,8 +20,8 @@ export function V2PoolCard({ chainId: chainIdOverride }: V2PoolCardProps) {
   const { isConnected } = useAccount();
   const wagmiChainId = useChainId();
   const chainId = chainIdOverride ?? wagmiChainId;
-  const { totalEthBalance, notes, isLoading, refreshBalances } = useV2Balance(chainId);
   const { keysRef, hasKeys, hasPin, isDeriving, error: keyError, deriveKeys } = useV2Keys();
+  const { totalEthBalance, notes, isLoading, refreshBalances } = useV2Balance(keysRef, chainId);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [pinInput, setPinInput] = useState("");
   const [showPinInput, setShowPinInput] = useState(false);
