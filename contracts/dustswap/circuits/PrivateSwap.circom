@@ -81,17 +81,15 @@ template PrivateSwap(levels) {
     // 6. Verify computed root matches public merkleRoot
     merkleRoot === computedPath[levels];
 
-    // 7. Constrain recipient
-    signal recipientSquare;
-    recipientSquare <== recipient * recipient;
-
-    // 8. Constrain relayer
-    signal relayerSquare;
-    relayerSquare <== relayer * relayer;
-
-    // 9. Constrain swapAmountOut
-    signal swapSquare;
-    swapSquare <== swapAmountOut * swapAmountOut;
+    // 7. Bind recipient, relayer, and swapAmountOut into the proof via Poseidon hash.
+    // Prevents relay-time substitution of these public signals — a compromised relayer
+    // cannot swap the recipient address without invalidating the proof.
+    component publicBinding = Poseidon(3);
+    publicBinding.inputs[0] <== recipient;
+    publicBinding.inputs[1] <== relayer;
+    publicBinding.inputs[2] <== swapAmountOut;
+    signal publicBindingHash;
+    publicBindingHash <== publicBinding.out;
 }
 
 component main {public [merkleRoot, nullifierHash, recipient, relayer, relayerFee, swapAmountOut, reserved1, reserved2]} = PrivateSwap(20);
