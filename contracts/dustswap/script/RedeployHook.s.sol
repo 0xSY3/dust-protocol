@@ -25,9 +25,9 @@ import {DustSwapPoolUSDC} from "../src/DustSwapPoolUSDC.sol";
 contract RedeployHook is Script {
     // ─── Deployed Contracts (Ethereum Sepolia) ──────────────────────────────────
     address constant POOL_MANAGER    = 0x93805603e0167574dFe2F50ABdA8f42C85002FD8;
-    address constant VERIFIER        = 0x99D18d3dBC5cDFbE20539833D64426CdAd47F1Cd;
-    address payable constant POOL_ETH  = payable(0xD342940442AC499656a514e5C355d2b82975155B);
-    address payable constant POOL_USDC = payable(0xa4218b115219ba96e2c5CAAaC42D0d04D60e3269);
+    address constant VERIFIER        = 0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F;
+    address payable constant POOL_ETH  = payable(0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799);
+    address payable constant POOL_USDC = payable(0x1791D13995FfA9e00a9A2C07A9ad1251a668A669);
 
     /// @dev Required lower 14 bits: beforeSwap (bit 7) + afterSwap (bit 6) = 0x00C0
     uint160 constant REQUIRED_FLAGS = 0x00C0;
@@ -137,9 +137,9 @@ contract RedeployHook is Script {
 /// @dev Usage: forge script script/RedeployHook.s.sol:MineSalt --fork-url $RPC_URL -vvv
 contract MineSalt is Script {
     address constant POOL_MANAGER    = 0x93805603e0167574dFe2F50ABdA8f42C85002FD8;
-    address constant VERIFIER        = 0x99D18d3dBC5cDFbE20539833D64426CdAd47F1Cd;
-    address payable constant POOL_ETH  = payable(0xD342940442AC499656a514e5C355d2b82975155B);
-    address payable constant POOL_USDC = payable(0xa4218b115219ba96e2c5CAAaC42D0d04D60e3269);
+    address constant VERIFIER        = 0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F;
+    address payable constant POOL_ETH  = payable(0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799);
+    address payable constant POOL_USDC = payable(0x1791D13995FfA9e00a9A2C07A9ad1251a668A669);
 
     uint160 constant REQUIRED_FLAGS = 0x00C0;
     uint160 constant FLAG_MASK      = 0x3FFF;
