@@ -4,15 +4,16 @@ Privacy swap system built on Uniswap V4 with ZK proof verification. Deposits go 
 
 ## Deployed Contracts (Ethereum Sepolia)
 
+See `docs/CONTRACTS.md` for full address list including deprecated deployments.
+
 | Contract | Address |
 |----------|---------|
 | PoolManager | `0x93805603e0167574dFe2F50ABdA8f42C85002FD8` |
-| StateView | `0x9C1CF9F4C496b7Df66d4EaBbff127Db6Af3c1C14` |
-| Quoter | `0xc3b43472250ab15dD91DB8900ce10f77fbDd22DB` |
-| DustSwapPoolETH | `0xD342940442AC499656a514e5C355d2b82975155B` |
-| DustSwapPoolUSDC | `0xa4218b115219ba96e2c5CAAaC42D0d04D60e3269` |
-| DustSwapHook | `0x06829AAC5bF68172158DE18972fb1107363500C0` |
-| DustSwapVerifier | `0x99D18d3dBC5cDFbE20539833D64426CdAd47F1Cd` |
+| DustSwapPoolETH | `0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799` |
+| DustSwapPoolUSDC | `0x1791D13995FfA9e00a9A2C07A9ad1251a668A669` |
+| DustSwapHook | `0xCb2e9147B96e385c2c00A11D92026eb16eB400c4` |
+| DustSwapVerifier | `0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F` |
+| DustSwapRouter | `0xDC839820cc24f312f10945939C4aCa41887FC78F` |
 
 ## Quick Start: Initialize the Pool
 
@@ -82,11 +83,11 @@ These must stay in sync with `src/lib/swap/constants.ts`:
 
 | Parameter | Value | Notes |
 |-----------|-------|-------|
-| Fee | 500 (0.05%) | `POOL_FEE` in constants.ts |
-| Tick Spacing | 10 | `POOL_TICK_SPACING` in constants.ts |
+| Fee | 3000 (0.30%) | `POOL_FEE` in constants.ts |
+| Tick Spacing | 60 | `POOL_TICK_SPACING` in constants.ts |
 | currency0 | `0x0000...0000` (ETH) | Native token |
 | currency1 | `0x1c7D...7238` (USDC) | Circle USDC on Sepolia |
-| Hook | `0x0682...00C0` | DustSwapHook |
+| Hook | `0xCb2e...00c4` | DustSwapHook (flags 0xC4) |
 | sqrtPriceX96 | ~3.96e30 | ETH = $2500 USDC |
 
 ## Deployment Scripts

@@ -22,7 +22,6 @@ import { type Address, type Hash, encodeAbiParameters, parseAbiParameters, decod
 import {
   getDustSwapPoolKey,
   DUST_SWAP_POOL_ABI,
-  POOL_HELPER_ABI,
   SWAP_ERROR_ABI,
   getSwapDirection,
   type PoolKey,
@@ -123,6 +122,7 @@ const HOOK_ERROR_MESSAGES: Record<string, string> = {
   NotPoolManager: 'Hook called by wrong address (deployment misconfiguration).',
   Unauthorized: 'Caller not authorized for this operation.',
   HookNotImplemented: 'Hook callback not implemented.',
+  TransferFailed: 'Token transfer failed. The pool may have insufficient liquidity.',
 }
 
 /**

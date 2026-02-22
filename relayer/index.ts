@@ -89,10 +89,10 @@ const FEE_BPS = parseInt(process.env.FEE_BPS || '50'); // 0.5%
 const MIN_FEE = ethers.utils.parseEther(process.env.MIN_FEE || '0.001');
 
 // ─── DustSwap Contract Addresses ─────────────────────────────────────────────
-const DUST_SWAP_ROUTER = process.env.DUST_SWAP_ROUTER || '0x82faD70Aa95480F719Da4B81E17607EF3A631F42';
-const DUST_SWAP_POOL_ETH = process.env.DUST_SWAP_POOL_ETH || '0x52FAc2AC445b6a5b7351cb809DCB0194CEa223D0';
-const DUST_SWAP_POOL_USDC = process.env.DUST_SWAP_POOL_USDC || '0xc788576786381d41B8F5180D0B92A15497CF72B3';
-const DUST_SWAP_HOOK = process.env.DUST_SWAP_HOOK || '0x09b6a164917F8ab6e8b552E47bD3957cAe6d80C4';
+const DUST_SWAP_ROUTER = process.env.DUST_SWAP_ROUTER || '0xDC839820cc24f312f10945939C4aCa41887FC78F';
+const DUST_SWAP_POOL_ETH = process.env.DUST_SWAP_POOL_ETH || '0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799';
+const DUST_SWAP_POOL_USDC = process.env.DUST_SWAP_POOL_USDC || '0x1791D13995FfA9e00a9A2C07A9ad1251a668A669';
+const DUST_SWAP_HOOK = process.env.DUST_SWAP_HOOK || '0xCb2e9147B96e385c2c00A11D92026eb16eB400c4';
 
 // ─── Contract ABIs ───────────────────────────────────────────────────────────
 
