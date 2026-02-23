@@ -1,8 +1,11 @@
 "use client";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { useV2Keys } from "@/hooks/dustpool/v2";
+import { useChainId } from "wagmi";
 import { AccountSection } from "@/components/settings/AccountSection";
 import { SecuritySection } from "@/components/settings/SecuritySection";
+import { DisclosureSection } from "@/components/settings/DisclosureSection";
 import { ClaimAddressSection } from "@/components/settings/ClaimAddressSection";
 import { DangerZoneSection } from "@/components/settings/DangerZoneSection";
 
@@ -12,6 +15,8 @@ export default function SettingsPage() {
     claimAddresses, claimAddressesInitialized,
     clearKeys, clearPin,
   } = useAuth();
+  const { keysRef, hasKeys } = useV2Keys();
+  const chainId = useChainId();
 
   const viewingPublicKey = stealthKeys?.viewingPublicKey
     ? (stealthKeys.viewingPublicKey.startsWith("0x") ? stealthKeys.viewingPublicKey : `0x${stealthKeys.viewingPublicKey}`)
@@ -24,6 +29,7 @@ export default function SettingsPage() {
 
         <AccountSection address={address} ownedNames={ownedNames} isRegistered={isRegistered} />
         <SecuritySection metaAddress={metaAddress} viewingPublicKey={viewingPublicKey} />
+        {hasKeys && <DisclosureSection keysRef={keysRef} chainId={chainId} />}
         <ClaimAddressSection claimAddresses={claimAddresses} claimAddressesInitialized={claimAddressesInitialized} />
         <DangerZoneSection clearKeys={clearKeys} clearPin={clearPin} />
       </div>

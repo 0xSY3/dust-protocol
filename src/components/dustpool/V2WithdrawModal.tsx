@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback, type RefObject } from "react";
+import { useState, useEffect, useCallback, useRef, type RefObject } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseEther, formatEther, isAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 import { useV2Withdraw, useV2Notes, useV2Split } from "@/hooks/dustpool/v2";
+import { useV2Compliance } from "@/hooks/dustpool/v2/useV2Compliance";
 import {
   ShieldCheckIcon,
   AlertCircleIcon,
   XIcon,
+  InfoIcon,
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
 import { errorToUserMessage } from "@/lib/dustpool/v2/errors";
@@ -33,9 +35,12 @@ export function V2WithdrawModal({
   const { withdraw, isPending, status, txHash, error, clearError } = useV2Withdraw(keysRef, chainId);
   const { split, isPending: isSplitPending, status: splitStatus, error: splitError, clearError: clearSplitError } = useV2Split(keysRef, chainId);
   const { unspentNotes } = useV2Notes(keysRef, chainId);
+  const { checkCooldown, cooldown } = useV2Compliance(chainId);
 
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
+  const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -56,7 +61,6 @@ export function V2WithdrawModal({
 
   const exceedsBalance = parsedAmount !== null && parsedAmount > shieldedBalance;
   const isValidRecipient = isAddress(recipient);
-  const canWithdraw = parsedAmount !== null && !exceedsBalance && isValidRecipient && !isPending && !isSplitPending;
 
   // Find notes that will be consumed (simplified: show largest note >= amount)
   // Filter leafIndex >= 0 to match the hook's actual note selection (pending notes excluded)
@@ -76,6 +80,49 @@ export function V2WithdrawModal({
   const changeAmount = consumedNote && parsedAmount
     ? consumedNote.note.amount - parsedAmount
     : null;
+
+  // Check cooldown on consumed note
+  useEffect(() => {
+    if (!consumedNote) return;
+    const commitmentHex = ("0x" + consumedNote.commitment.toString(16).padStart(64, "0")) as `0x${string}`;
+    checkCooldown(commitmentHex);
+  }, [consumedNote, checkCooldown]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (cooldown?.inCooldown && cooldown.remainingSeconds > 0) {
+      setCooldownRemaining(cooldown.remainingSeconds);
+      cooldownTimerRef.current = setInterval(() => {
+        setCooldownRemaining(prev => {
+          if (prev <= 1) {
+            if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      setCooldownRemaining(0);
+    }
+    return () => {
+      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+    };
+  }, [cooldown]);
+
+  const cooldownActive = cooldownRemaining > 0;
+  const cooldownOriginator = cooldown?.originator;
+  const recipientMatchesOriginator = cooldownOriginator
+    ? recipient.toLowerCase() === cooldownOriginator.toLowerCase()
+    : false;
+  const cooldownBlocksSubmit = cooldownActive && !recipientMatchesOriginator;
+
+  const formatCooldownTime = (seconds: number): string => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const canWithdraw = parsedAmount !== null && !exceedsBalance && isValidRecipient && !isPending && !isSplitPending && !cooldownBlocksSubmit;
 
   const chunks = parsedAmount ? decomposeForToken(parsedAmount, "ETH") : [];
   const formattedChunkValues = chunks.length > 0 ? formatChunks(chunks, "ETH") : [];
@@ -282,6 +329,33 @@ export function V2WithdrawModal({
                       Use a fresh address for maximum privacy. Defaults to connected wallet.
                     </p>
                   </div>
+
+                  {/* Cooldown warning */}
+                  {cooldownActive && consumedNote && (
+                    <div className="p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
+                      <div className="flex items-start gap-2">
+                        <div className="flex-shrink-0 mt-0.5">
+                          <InfoIcon size={14} color="#FFB000" />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <p className="text-xs text-amber-400 font-semibold font-mono">
+                            Deposit in cooldown &mdash; {formatCooldownTime(cooldownRemaining)} remaining
+                          </p>
+                          {cooldownOriginator && (
+                            <p className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono leading-relaxed">
+                              Withdrawal must go to original depositor:{" "}
+                              <span className="text-[rgba(255,255,255,0.6)] break-all">{cooldownOriginator}</span>
+                            </p>
+                          )}
+                          {cooldownBlocksSubmit && (
+                            <p className="text-[11px] text-red-400 font-mono">
+                              Change recipient to the original depositor, or wait for cooldown to expire.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Relayer fee notice */}
                   <div className="p-2.5 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)]">

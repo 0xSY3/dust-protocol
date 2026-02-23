@@ -30,6 +30,9 @@ const ERROR_MAP: [pattern: RegExp, message: string][] = [
   [/amount exceeds maximum/i, 'Amount exceeds the maximum allowed deposit'],
   [/not deployed on chain/i, 'V2 pool is not available on this network'],
   [/public client not available/i, 'Network connection lost. Please refresh and try again.'],
+  [/recipient address is sanctioned/i, 'Recipient address is blocked by compliance screening. Try a different address.'],
+  [/compliance screening unavailable/i, 'Compliance screening is temporarily unavailable. Please try again later.'],
+  [/cooldown active|CooldownActive/i, 'This deposit is still in its 1-hour cooldown period. You can only withdraw to the original deposit address.'],
 ]
 
 export function errorToUserMessage(raw: string): string {
