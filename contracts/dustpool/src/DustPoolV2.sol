@@ -3,6 +3,8 @@ pragma solidity 0.8.20;
 
 import {IFFLONKVerifier} from "./IFFLONKVerifier.sol";
 import {IFFLONKSplitVerifier} from "./IFFLONKSplitVerifier.sol";
+import {IFFLONKComplianceVerifier} from "./IFFLONKComplianceVerifier.sol";
+import {IComplianceOracle} from "./IComplianceOracle.sol";
 
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
@@ -44,12 +46,33 @@ contract DustPoolV2 {
     /// @dev Max deposit per tx: 2^64 - 1 (matches circuit range proof width)
     uint256 public constant MAX_DEPOSIT_AMOUNT = (1 << 64) - 1;
     uint256 public constant MAX_BATCH_SIZE = 8;
+    /// @dev Post-deposit standby — depositor can only withdraw to self during cooldown
+    uint256 public constant COOLDOWN_PERIOD = 1 hours;
 
     IFFLONKVerifier public immutable VERIFIER;
     IFFLONKSplitVerifier public immutable SPLIT_VERIFIER;
     address public owner;
     address public pendingOwner;
     bool public paused;
+
+    /// @notice Compliance oracle (address(0) = disabled, no screening)
+    IComplianceOracle public complianceOracle;
+
+    /// @notice ZK exclusion-proof verifier (address(0) = disabled, no compliance proof required)
+    IFFLONKComplianceVerifier public complianceVerifier;
+
+    /// @notice Exclusion SMT root history — circular buffer of flagged commitment tree roots
+    mapping(uint256 => bytes32) public exclusionRoots;
+    uint256 public currentExclusionRootIndex;
+
+    /// @notice Pre-verified compliance proofs per nullifier (set by verifyComplianceProof, consumed by withdraw)
+    mapping(bytes32 => bool) public complianceVerified;
+
+    /// @notice Tracks when each commitment was deposited (for cooldown enforcement)
+    mapping(bytes32 => uint256) public depositTimestamp;
+
+    /// @notice Tracks who deposited each commitment (for cooldown-period withdraw restriction)
+    mapping(bytes32 => address) public depositOriginator;
 
     // Root history — circular buffer
     mapping(uint256 => bytes32) public roots;
@@ -95,6 +118,11 @@ contract DustPoolV2 {
     event RelayerUpdated(address indexed relayer, bool allowed);
     event Paused(address account);
     event Unpaused(address account);
+    event ComplianceOracleUpdated(address indexed oracle);
+    event ComplianceVerifierUpdated(address indexed verifier);
+    event ExclusionRootUpdated(bytes32 newRoot, uint256 index, address relayer);
+    event DepositScreened(address indexed depositor, bool passed);
+    event ComplianceProofVerified(bytes32 indexed nullifier, bytes32 exclusionRoot);
 
     error ZeroCommitment();
     error ZeroValue();
@@ -115,6 +143,14 @@ contract DustPoolV2 {
     error ContractPaused();
     error BatchTooLarge();
     error EmptyBatch();
+    error DepositBlocked();
+    error CooldownActive();
+    error InvalidComplianceProof();
+    error UnknownExclusionRoot();
+    error ComplianceRequired();
+    error ComplianceNotEnabled();
+    error ZeroNullifier();
+    error ZeroExclusionRoot();
 
     modifier onlyRelayer() {
         if (!relayers[msg.sender]) revert NotRelayer();
@@ -138,9 +174,10 @@ contract DustPoolV2 {
         _;
     }
 
-    constructor(address _verifier, address _splitVerifier) {
+    constructor(address _verifier, address _splitVerifier, address _complianceOracle) {
         VERIFIER = IFFLONKVerifier(_verifier);
         SPLIT_VERIFIER = IFFLONKSplitVerifier(_splitVerifier);
+        complianceOracle = IComplianceOracle(_complianceOracle);
         owner = msg.sender;
     }
 
@@ -151,9 +188,12 @@ contract DustPoolV2 {
         if (msg.value == 0) revert ZeroValue();
         if (msg.value > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
         if (commitmentUsed[commitment]) revert DuplicateCommitment();
+        _screenDepositor(msg.sender);
 
         commitmentUsed[commitment] = true;
         totalDeposited[address(0)] += msg.value;
+        depositTimestamp[commitment] = block.timestamp;
+        depositOriginator[commitment] = msg.sender;
 
         uint256 index = depositQueueTail;
         depositQueue[index] = commitment;
@@ -171,10 +211,13 @@ contract DustPoolV2 {
         if (amount == 0) revert ZeroValue();
         if (amount > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
         if (commitmentUsed[commitment]) revert DuplicateCommitment();
+        _screenDepositor(msg.sender);
 
         // Effects before interactions (CEI pattern)
         commitmentUsed[commitment] = true;
         totalDeposited[token] += amount;
+        depositTimestamp[commitment] = block.timestamp;
+        depositOriginator[commitment] = msg.sender;
 
         uint256 index = depositQueueTail;
         depositQueue[index] = commitment;
@@ -194,6 +237,7 @@ contract DustPoolV2 {
         if (len > MAX_BATCH_SIZE) revert BatchTooLarge();
         if (msg.value == 0) revert ZeroValue();
         if (msg.value > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
+        _screenDepositor(msg.sender);
 
         uint256 amountPerCommitment = msg.value / len;
         totalDeposited[address(0)] += msg.value;
@@ -204,6 +248,8 @@ contract DustPoolV2 {
             if (commitmentUsed[c]) revert DuplicateCommitment();
 
             commitmentUsed[c] = true;
+            depositTimestamp[c] = block.timestamp;
+            depositOriginator[c] = msg.sender;
 
             uint256 idx = depositQueueTail;
             depositQueue[idx] = c;
@@ -274,6 +320,9 @@ contract DustPoolV2 {
         }
 
         if (!VERIFIER.verifyProof(proofData, pubSignals)) revert InvalidProof();
+
+        // Exclusion compliance gate: each non-zero nullifier must be pre-verified if compliance is enabled
+        _checkComplianceGate(nullifier0, nullifier1);
 
         // Effects — mark nullifiers spent (skip zero slot used by dummy inputs)
         if (nullifier0 != bytes32(0)) {
@@ -376,6 +425,9 @@ contract DustPoolV2 {
 
         if (!SPLIT_VERIFIER.verifyProof(proofData, pubSignals)) revert InvalidProof();
 
+        // Exclusion compliance gate: each non-zero nullifier must be pre-verified if compliance is enabled
+        _checkComplianceGate(nullifier0, nullifier1);
+
         // Effects — mark nullifiers spent (skip zero slot used by dummy inputs)
         if (nullifier0 != bytes32(0)) {
             nullifiers[nullifier0] = true;
@@ -470,6 +522,121 @@ contract DustPoolV2 {
     function unpause() external onlyOwner {
         paused = false;
         emit Unpaused(msg.sender);
+    }
+
+    /// @notice Update the compliance oracle address (address(0) disables screening)
+    /// @param oracle New oracle address (or address(0) to disable)
+    function setComplianceOracle(address oracle) external onlyOwner {
+        complianceOracle = IComplianceOracle(oracle);
+        emit ComplianceOracleUpdated(oracle);
+    }
+
+    /// @notice Check if a commitment is still in the post-deposit cooldown period
+    /// @param commitment The commitment to check
+    /// @return inCooldown True if the cooldown is still active
+    /// @return originator The address that deposited this commitment
+    function getCooldownStatus(bytes32 commitment) external view returns (bool inCooldown, address originator) {
+        uint256 ts = depositTimestamp[commitment];
+        originator = depositOriginator[commitment];
+        // ts == 0 means commitment came from a withdraw (change output), not a deposit
+        inCooldown = ts != 0 && block.timestamp < ts + COOLDOWN_PERIOD;
+    }
+
+    /// @notice Set the ZK exclusion-proof verifier (address(0) disables compliance proof checks)
+    /// @param _verifier New compliance verifier address (or address(0) to disable)
+    function setComplianceVerifier(address _verifier) external onlyOwner {
+        complianceVerifier = IFFLONKComplianceVerifier(_verifier);
+        emit ComplianceVerifierUpdated(_verifier);
+    }
+
+    /// @notice Post a new exclusion SMT root (relayer feeds from Chainalysis/sanctions data)
+    /// @param newRoot New exclusion tree root (must be non-zero)
+    function updateExclusionRoot(bytes32 newRoot) external onlyRelayer {
+        if (newRoot == bytes32(0)) revert ZeroExclusionRoot();
+
+        uint256 newIndex = (currentExclusionRootIndex + 1) % ROOT_HISTORY_SIZE;
+        exclusionRoots[newIndex] = newRoot;
+        currentExclusionRootIndex = newIndex;
+
+        emit ExclusionRootUpdated(newRoot, newIndex, msg.sender);
+    }
+
+    /// @notice Check if an exclusion root exists in the history buffer
+    /// @param root Root to check
+    /// @return True if root is in the circular buffer
+    function isKnownExclusionRoot(bytes32 root) public view returns (bool) {
+        if (root == bytes32(0)) return false;
+        uint256 i = currentExclusionRootIndex;
+        do {
+            if (exclusionRoots[i] == root) return true;
+            if (i == 0) i = ROOT_HISTORY_SIZE;
+            i--;
+        } while (i != currentExclusionRootIndex);
+        return false;
+    }
+
+    /// @dev Screen depositor against compliance oracle. No-op if oracle is address(0).
+    function _screenDepositor(address depositor) internal {
+        IComplianceOracle oracle = complianceOracle;
+        if (address(oracle) == address(0)) return;
+        bool blocked = oracle.isBlocked(depositor);
+        emit DepositScreened(depositor, !blocked);
+        if (blocked) revert DepositBlocked();
+    }
+
+    /// @notice Pre-verify an exclusion compliance proof for a nullifier.
+    ///         Relayer calls this before withdraw/withdrawSplit. Proves the commitment
+    ///         behind the nullifier is NOT in the exclusion SMT (sanctions list).
+    ///         The compliance flag is NOT bound to a specific exclusion root — it persists
+    ///         until consumed by withdraw/withdrawSplit. Root staleness is mitigated by the
+    ///         relayer using recent roots and the circular buffer expiring old ones.
+    /// @param exclusionRoot Root of the exclusion SMT the proof was generated against
+    /// @param nullifier The nullifier to verify compliance for (must match withdraw's nullifier, non-zero)
+    /// @param proof FFLONK proof (768 bytes) for the DustV2Compliance circuit
+    function verifyComplianceProof(
+        bytes32 exclusionRoot,
+        bytes32 nullifier,
+        bytes calldata proof
+    ) external onlyRelayer whenNotPaused {
+        if (nullifier == bytes32(0)) revert ZeroNullifier();
+
+        IFFLONKComplianceVerifier verifier = complianceVerifier;
+        if (address(verifier) == address(0)) revert ComplianceNotEnabled();
+        if (!isKnownExclusionRoot(exclusionRoot)) revert UnknownExclusionRoot();
+        if (proof.length != 768) revert InvalidProofLength();
+
+        // BN254 field element guards — prevent field overflow equivalence attacks
+        if (uint256(exclusionRoot) >= FIELD_SIZE) revert InvalidFieldElement();
+        if (uint256(nullifier) >= FIELD_SIZE) revert InvalidFieldElement();
+
+        uint256[2] memory pubSignals;
+        pubSignals[0] = uint256(exclusionRoot);
+        pubSignals[1] = uint256(nullifier);
+
+        bytes32[24] memory proofData;
+        for (uint256 i = 0; i < 24; i++) {
+            proofData[i] = bytes32(proof[i * 32:(i + 1) * 32]);
+        }
+
+        if (!verifier.verifyProof(proofData, pubSignals)) revert InvalidComplianceProof();
+
+        complianceVerified[nullifier] = true;
+        emit ComplianceProofVerified(nullifier, exclusionRoot);
+    }
+
+    /// @dev Check exclusion compliance gate for non-zero nullifiers. No-op if verifier == address(0).
+    ///      Consumes (clears) the pre-verified flag to prevent reuse.
+    function _checkComplianceGate(bytes32 nullifier0, bytes32 nullifier1) internal {
+        if (address(complianceVerifier) == address(0)) return;
+
+        if (nullifier0 != bytes32(0)) {
+            if (!complianceVerified[nullifier0]) revert ComplianceRequired();
+            delete complianceVerified[nullifier0];
+        }
+        if (nullifier1 != bytes32(0)) {
+            if (!complianceVerified[nullifier1]) revert ComplianceRequired();
+            delete complianceVerified[nullifier1];
+        }
     }
 
     receive() external payable {}
