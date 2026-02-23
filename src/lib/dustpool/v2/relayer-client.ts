@@ -76,6 +76,27 @@ interface DepositStatusResponse {
   leafIndex: number
 }
 
+interface ComplianceWitnessResponse {
+  exclusionRoot: string
+  smtSiblings: string[]
+  smtOldKey: string
+  smtOldValue: string
+  smtIsOld0: string
+}
+
+interface ComplianceVerifyResponse {
+  txHash: string
+  verified: boolean
+}
+
+export interface ComplianceWitness {
+  exclusionRoot: bigint
+  smtSiblings: bigint[]
+  smtOldKey: bigint
+  smtOldValue: bigint
+  smtIsOld0: bigint
+}
+
 // ─── Config ─────────────────────────────────────────────────────────────────────
 
 // V2 relayer runs as Next.js API routes on the same origin — default to empty
@@ -276,6 +297,49 @@ export function createRelayerClient(config?: Partial<RelayerConfig>) {
         confirmed: data.confirmed,
         leafIndex: data.leafIndex,
       }
+    },
+
+    /**
+     * Fetch an exclusion compliance witness for a commitment.
+     * Returns the non-membership witness needed by the DustV2Compliance circuit.
+     */
+    async getComplianceWitness(commitment: bigint, chainId?: number): Promise<ComplianceWitness> {
+      const params = new URLSearchParams({ commitment: commitment.toString() })
+      if (chainId != null) params.set('chainId', String(chainId))
+      const data = await relayerFetch<ComplianceWitnessResponse>(
+        resolvedConfig,
+        `/api/v2/compliance?${params.toString()}`
+      )
+      return {
+        exclusionRoot: BigInt(data.exclusionRoot),
+        smtSiblings: data.smtSiblings.map(s => BigInt(s)),
+        smtOldKey: BigInt(data.smtOldKey),
+        smtOldValue: BigInt(data.smtOldValue),
+        smtIsOld0: BigInt(data.smtIsOld0),
+      }
+    },
+
+    /**
+     * Submit an exclusion compliance proof for on-chain verification.
+     * Must be called for each nullifier before withdraw/withdrawSplit
+     * when a compliance verifier is active on-chain.
+     */
+    async submitComplianceProof(
+      proof: string,
+      exclusionRoot: bigint,
+      nullifier: bigint,
+      targetChainId: number
+    ): Promise<{ txHash: string; verified: boolean }> {
+      const data = await relayerFetch<ComplianceVerifyResponse>(resolvedConfig, '/api/v2/compliance', {
+        method: 'POST',
+        body: JSON.stringify({
+          proof,
+          exclusionRoot: exclusionRoot.toString(),
+          nullifier: nullifier.toString(),
+          targetChainId,
+        }),
+      })
+      return { txHash: data.txHash, verified: data.verified }
     },
   }
 }

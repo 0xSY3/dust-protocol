@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useMemo, type RefObject } from 'react'
-import { useAccount, useChainId, useWalletClient } from 'wagmi'
+import { useAccount, useChainId, usePublicClient, useWalletClient } from 'wagmi'
 import { publicActions, zeroAddress, type Address } from 'viem'
 import { computeOwnerPubKey, computeAssetId, computeNoteCommitment } from '@/lib/dustpool/v2/commitment'
 import { createNote } from '@/lib/dustpool/v2/note'
@@ -8,6 +8,7 @@ import { getDustPoolV2Config, DUST_POOL_V2_ABI } from '@/lib/dustpool/v2/contrac
 import { openV2Database, saveNoteV2, bigintToHex } from '@/lib/dustpool/v2/storage'
 import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
+import { checkDepositorCompliance } from '@/lib/dustpool/v2/compliance'
 import type { V2Keys } from '@/lib/dustpool/v2/types'
 import type { StoredNoteV2 } from '@/lib/dustpool/v2/storage'
 
@@ -18,6 +19,7 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
   const { address, isConnected } = useAccount()
   const wagmiChainId = useChainId()
   const chainId = chainIdOverride ?? wagmiChainId
+  const publicClient = usePublicClient()
   const { data: walletClient } = useWalletClient()
 
   const [isPending, setIsPending] = useState(false)
@@ -43,6 +45,14 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
     setTxHash(null)
 
     try {
+      // Pre-deposit compliance screening (no-op if oracle disabled on-chain)
+      if (publicClient) {
+        const complianceResult = await checkDepositorCompliance(publicClient, address, chainId)
+        if (complianceResult.status === 'blocked') {
+          throw new Error(complianceResult.reason)
+        }
+      }
+
       const owner = await computeOwnerPubKey(keys.spendingKey)
       const assetId = await computeAssetId(chainId, asset)
       const note = createNote(owner, amount, assetId, chainId)
@@ -130,7 +140,7 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
       setIsPending(false)
       depositingRef.current = false
     }
-  }, [isConnected, address, walletClient, chainId])
+  }, [isConnected, address, publicClient, walletClient, chainId])
 
   const clearError = useCallback(() => {
     setError(null)

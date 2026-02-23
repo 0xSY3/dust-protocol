@@ -104,6 +104,57 @@ export const DUST_POOL_V2_ABI = [
     inputs: [],
     outputs: [{ type: 'uint256' }],
   },
+  // Compliance oracle
+  {
+    name: 'complianceOracle',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+  // setComplianceOracle(address oracle)
+  {
+    name: 'setComplianceOracle',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'oracle', type: 'address' }],
+    outputs: [],
+  },
+  // depositTimestamp(bytes32) view returns (uint256)
+  {
+    name: 'depositTimestamp',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'bytes32' }],
+    outputs: [{ type: 'uint256' }],
+  },
+  // depositOriginator(bytes32) view returns (address)
+  {
+    name: 'depositOriginator',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'bytes32' }],
+    outputs: [{ type: 'address' }],
+  },
+  // getCooldownStatus(bytes32) view returns (bool inCooldown, address originator)
+  {
+    name: 'getCooldownStatus',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'commitment', type: 'bytes32' }],
+    outputs: [
+      { name: 'inCooldown', type: 'bool' },
+      { name: 'originator', type: 'address' },
+    ],
+  },
+  // COOLDOWN_PERIOD() view returns (uint256)
+  {
+    name: 'COOLDOWN_PERIOD',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
   // Events
   {
     name: 'DepositQueued',
@@ -133,6 +184,92 @@ export const DUST_POOL_V2_ABI = [
       { name: 'newRoot', type: 'bytes32', indexed: false },
       { name: 'index', type: 'uint256', indexed: false },
       { name: 'relayer', type: 'address', indexed: false },
+    ],
+  },
+  {
+    name: 'ComplianceOracleUpdated',
+    type: 'event',
+    inputs: [
+      { name: 'oracle', type: 'address', indexed: true },
+    ],
+  },
+  // ZK exclusion compliance verifier
+  {
+    name: 'complianceVerifier',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+  {
+    name: 'setComplianceVerifier',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'verifier', type: 'address' }],
+    outputs: [],
+  },
+  {
+    name: 'updateExclusionRoot',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'newRoot', type: 'bytes32' }],
+    outputs: [],
+  },
+  {
+    name: 'isKnownExclusionRoot',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'root', type: 'bytes32' }],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    name: 'complianceVerified',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'bytes32' }],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    name: 'verifyComplianceProof',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'exclusionRoot', type: 'bytes32' },
+      { name: 'nullifier', type: 'bytes32' },
+      { name: 'proof', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'ComplianceVerifierUpdated',
+    type: 'event',
+    inputs: [
+      { name: 'verifier', type: 'address', indexed: true },
+    ],
+  },
+  {
+    name: 'ExclusionRootUpdated',
+    type: 'event',
+    inputs: [
+      { name: 'newRoot', type: 'bytes32', indexed: false },
+      { name: 'index', type: 'uint256', indexed: false },
+      { name: 'relayer', type: 'address', indexed: false },
+    ],
+  },
+  {
+    name: 'DepositScreened',
+    type: 'event',
+    inputs: [
+      { name: 'depositor', type: 'address', indexed: true },
+      { name: 'passed', type: 'bool', indexed: false },
+    ],
+  },
+  {
+    name: 'ComplianceProofVerified',
+    type: 'event',
+    inputs: [
+      { name: 'nullifier', type: 'bytes32', indexed: true },
+      { name: 'exclusionRoot', type: 'bytes32', indexed: false },
     ],
   },
 ] as const

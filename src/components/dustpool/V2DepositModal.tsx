@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, type RefObject } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseEther, formatEther } from "viem";
 import { useAccount, useBalance } from "wagmi";
-import { useV2Deposit } from "@/hooks/dustpool/v2";
+import { useV2Deposit, useV2Compliance } from "@/hooks/dustpool/v2";
 import {
   ShieldIcon,
   ShieldCheckIcon,
@@ -25,6 +25,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
   const { address } = useAccount();
   const { data: walletBalance } = useBalance({ address });
   const { deposit, isPending, txHash, error, clearError } = useV2Deposit(keysRef, chainId);
+  const { screenAddress, screeningResult, isScreening, clearScreening } = useV2Compliance(chainId);
 
   const [amount, setAmount] = useState("");
   const [maxWarning, setMaxWarning] = useState("");
@@ -33,8 +34,10 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
     if (isOpen) {
       setAmount("");
       setMaxWarning("");
+      clearScreening();
+      if (address) screenAddress();
     }
-  }, [isOpen]);
+  }, [isOpen, address, clearScreening, screenAddress]);
 
   const parsedAmount = (() => {
     try {
@@ -54,7 +57,9 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
     ? parsedAmount > walletBalance.value
     : false;
 
-  const canDeposit = parsedAmount !== null && !exceedsBalance && !isPending;
+  const isScreeningBlocked = screeningResult?.status === 'blocked';
+  const isScreeningPassed = screeningResult?.status === 'clear' || screeningResult?.status === 'no-screening';
+  const canDeposit = parsedAmount !== null && !exceedsBalance && !isPending && !isScreening && isScreeningPassed;
 
   const handleDeposit = async () => {
     if (!parsedAmount) return;
@@ -127,15 +132,47 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
               {/* Input state */}
               {!isPending && !isSuccess && !error && (
                 <>
-                  {/* Info */}
-                  <div className="p-3 rounded-sm bg-[rgba(0,255,65,0.04)] border border-[rgba(0,255,65,0.15)]">
-                    <div className="flex items-start gap-2">
-                      <div className="mt-0.5 shrink-0"><ShieldIcon size={14} color="#00FF41" /></div>
-                      <p className="text-xs text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
-                        V2 pool supports arbitrary deposit amounts. Your UTXO note is stored locally in IndexedDB.
-                      </p>
+                  {/* Compliance screening status */}
+                  {isScreening && (
+                    <div className="p-3 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 border border-[#00FF41] border-t-transparent rounded-full animate-spin" />
+                        <p className="text-xs text-[rgba(255,255,255,0.5)] font-mono">Screening address...</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  {isScreeningBlocked && (
+                    <div className="p-3 rounded-sm bg-[rgba(239,68,68,0.06)] border border-[rgba(239,68,68,0.2)]">
+                      <div className="flex items-start gap-2">
+                        <div className="mt-0.5 shrink-0"><AlertCircleIcon size={14} color="#ef4444" /></div>
+                        <p className="text-xs text-red-400 font-mono">
+                          Address blocked by compliance screening. Deposits are not available.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {isScreeningPassed && !isScreening && (
+                    <div className="p-3 rounded-sm bg-[rgba(0,255,65,0.04)] border border-[rgba(0,255,65,0.15)]">
+                      <div className="flex items-start gap-2">
+                        <div className="mt-0.5 shrink-0"><ShieldCheckIcon size={14} color="#00FF41" /></div>
+                        <p className="text-xs text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
+                          Address cleared. V2 pool supports arbitrary deposit amounts. Note stored locally in IndexedDB.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Info (fallback when screening errored) */}
+                  {screeningResult?.status === 'error' && (
+                    <div className="p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
+                      <div className="flex items-start gap-2">
+                        <div className="mt-0.5 shrink-0"><ShieldIcon size={14} color="#f59e0b" /></div>
+                        <p className="text-xs text-amber-400 font-mono">
+                          Compliance check unavailable. Deposit may fail if address is blocked on-chain.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Amount input */}
                   <div className="flex flex-col gap-1.5">
@@ -212,6 +249,13 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
                     <p className="text-xs text-amber-400 font-semibold mb-1 font-mono">Note Saved Locally</p>
                     <p className="text-[11px] text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
                       Your UTXO note is stored in this browser&apos;s IndexedDB. Clearing browser data will lose access to this deposit.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-sm bg-[rgba(99,102,241,0.06)] border border-[rgba(99,102,241,0.15)]">
+                    <p className="text-xs text-indigo-400 font-semibold mb-1 font-mono">1-Hour Cooldown Active</p>
+                    <p className="text-[11px] text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
+                      For compliance, private transfers are available after a 1-hour cooldown. During this period, you can only withdraw back to your deposit address.
                     </p>
                   </div>
 
