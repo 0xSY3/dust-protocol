@@ -61,7 +61,7 @@ contract DustPoolV2SplitTest is Test {
         vm.startPrank(deployer);
         mockVerifier = new MockFFLONKVerifier9();
         mockSplitVerifier = new MockFFLONKSplitVerifier();
-        pool = new DustPoolV2(address(mockVerifier), address(mockSplitVerifier));
+        pool = new DustPoolV2(address(mockVerifier), address(mockSplitVerifier), address(0));
         pool.setRelayer(relayer, true);
         vm.stopPrank();
 
