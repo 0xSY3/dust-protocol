@@ -3,6 +3,8 @@ pragma solidity ^0.8.20;
 
 import {IDustSwapPool} from "./IDustSwapPool.sol";
 import {IDustSwapVerifier} from "./DustSwapVerifier.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title IERC20 — Minimal ERC20 interface for token transfers
 interface IERC20 {
@@ -51,16 +53,15 @@ struct ModifyLiquidityParams {
 ///      executes → afterSwap takes output from PoolManager and sends to stealth address.
 ///
 ///      Dual-mode: swaps without hookData pass through as regular (non-private) swaps.
-contract DustSwapHook {
+contract DustSwapHook is Ownable2Step {
     IPoolManager public immutable poolManager;
     IDustSwapVerifier public immutable verifier;
     IDustSwapPool public immutable dustSwapPoolETH;
     IDustSwapPool public immutable dustSwapPoolUSDC;
 
-    address public owner;                      // slot 0: 20 bytes
-    bool public relayerWhitelistEnabled;       // slot 0: 1 byte (packed)
-    uint128 public totalPrivateSwaps;          // slot 1: 16 bytes
-    uint128 public totalPrivateVolume;         // slot 1: 16 bytes (packed)
+    bool public relayerWhitelistEnabled;
+    uint128 public totalPrivateSwaps;
+    uint256 public totalPrivateVolume;
 
     /// @notice Minimum blocks a deposit root must age before it can be used in a swap.
     ///         Prevents timing-correlation attacks by ensuring other deposits mix in.
@@ -111,7 +112,6 @@ contract DustSwapHook {
     error InvalidRelayerFee();
     error UnauthorizedRelayer();
     error SwapNotInitialized();
-    error Unauthorized();
     error InvalidMinimumOutput();
     error SwapAmountTooLow();
     error TransferFailed();
@@ -120,11 +120,6 @@ contract DustSwapHook {
 
     modifier onlyPoolManager() {
         if (msg.sender != address(poolManager)) revert NotPoolManager();
-        _;
-    }
-
-    modifier onlyOwner() {
-        if (msg.sender != owner) revert Unauthorized();
         _;
     }
 
@@ -139,12 +134,11 @@ contract DustSwapHook {
         IDustSwapPool _dustSwapPoolETH,
         IDustSwapPool _dustSwapPoolUSDC,
         address _owner
-    ) {
+    ) Ownable(_owner) {
         poolManager = _poolManager;
         verifier = _verifier;
         dustSwapPoolETH = _dustSwapPoolETH;
         dustSwapPoolUSDC = _dustSwapPoolUSDC;
-        owner = _owner;
     }
 
     // ─── BalanceDelta Helpers ─────────────────────────────────────────────────────
@@ -294,38 +288,11 @@ contract DustSwapHook {
         }
         uint256 recipientAmount = absOutput - feeAmount;
 
-        // Take output tokens from PoolManager to this hook
-        poolManager.take(outputCurrency, address(this), absOutput);
-
-        // Transfer output tokens to stealth recipient
-        if (outputCurrency == address(0)) {
-            // Native ETH
-            (bool success, ) = pending.recipient.call{value: recipientAmount}("");
-            if (!success) revert TransferFailed();
-        } else {
-            // ERC20
-            if (!IERC20(outputCurrency).transfer(pending.recipient, recipientAmount)) {
-                revert TransferFailed();
-            }
-        }
-
-        // Transfer fee to relayer (if applicable)
-        if (feeAmount > 0 && pending.relayer != address(0)) {
-            if (outputCurrency == address(0)) {
-                (bool success, ) = pending.relayer.call{value: feeAmount}("");
-                if (!success) revert TransferFailed();
-            } else {
-                if (!IERC20(outputCurrency).transfer(pending.relayer, feeAmount)) {
-                    revert TransferFailed();
-                }
-            }
-        }
-
-        // Update stats
+        // Effects — all state changes before external calls (CEI pattern)
         totalPrivateSwaps++;
-        totalPrivateVolume += uint128(absOutput);
+        totalPrivateVolume += absOutput;
+        delete pendingSwaps[sender];
 
-        // Emit events for stealth payment tracking
         emit StealthPayment(
             pending.recipient,
             outputCurrency,
@@ -343,8 +310,28 @@ contract DustSwapHook {
             block.timestamp
         );
 
-        // Clear pending swap data
-        delete pendingSwaps[sender];
+        // Interactions — external calls last
+        poolManager.take(outputCurrency, address(this), absOutput);
+
+        if (outputCurrency == address(0)) {
+            (bool success, ) = pending.recipient.call{value: recipientAmount}("");
+            if (!success) revert TransferFailed();
+        } else {
+            if (!IERC20(outputCurrency).transfer(pending.recipient, recipientAmount)) {
+                revert TransferFailed();
+            }
+        }
+
+        if (feeAmount > 0 && pending.relayer != address(0)) {
+            if (outputCurrency == address(0)) {
+                (bool success, ) = pending.relayer.call{value: feeAmount}("");
+                if (!success) revert TransferFailed();
+            } else {
+                if (!IERC20(outputCurrency).transfer(pending.relayer, feeAmount)) {
+                    revert TransferFailed();
+                }
+            }
+        }
 
         // Return the output amount as hook delta
         // This tells PoolManager that the hook consumed these output tokens

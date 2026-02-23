@@ -363,6 +363,56 @@ export async function markSpentAndSaveChange(
 }
 
 /**
+ * Atomically mark an input note as spent and save multiple output notes.
+ * Used by split operations where one input produces N outputs.
+ * All operations share a single IndexedDB transaction — if any fails,
+ * the entire batch rolls back, preventing partial state corruption.
+ * If `encKey` is provided, output notes are encrypted before storing.
+ */
+export async function markSpentAndSaveMultiple(
+  db: IDBDatabase,
+  inputCommitmentHex: string,
+  outputNotes: StoredNoteV2[],
+  encKey?: CryptoKey
+): Promise<void> {
+  const encrypted: StoredNoteV2[] = []
+  for (const note of outputNotes) {
+    const normalized = { ...note, walletAddress: note.walletAddress.toLowerCase() }
+    encrypted.push(encKey ? await encryptForStorage(normalized, encKey) : normalized)
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_NAME], 'readwrite')
+
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+    tx.onabort = () => reject(tx.error ?? new Error('Transaction aborted'))
+
+    const store = tx.objectStore(STORE_NAME)
+    const getRequest = store.get(inputCommitmentHex)
+
+    getRequest.onsuccess = () => {
+      const note = getRequest.result as StoredNoteV2 | undefined
+      if (!note) {
+        tx.abort()
+        return
+      }
+
+      note.spent = true
+      store.put(note)
+
+      for (const outputNote of encrypted) {
+        store.put(outputNote)
+      }
+    }
+
+    getRequest.onerror = () => {
+      tx.abort()
+    }
+  })
+}
+
+/**
  * Update a stored note's leafIndex. Used by background sync to resolve
  * pending notes (leafIndex === -1) after the relayer confirms them.
  */

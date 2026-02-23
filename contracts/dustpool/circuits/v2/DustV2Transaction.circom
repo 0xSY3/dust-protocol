@@ -152,6 +152,15 @@ template DustV2Transaction(TREE_DEPTH) {
         // Constraint: inAmount[i] * (computedRoot - merkleRoot) === 0
         inAmount[i] * (merkleVerifier[i].root - merkleRoot) === 0;
 
+        // C1 fix: bind leafIndex to pathIndices (prevents nullifier unbinding double-spend)
+        // Without this, an attacker can use valid pathIndices for Merkle proof but
+        // vary leafIndex to produce different nullifiers for the same UTXO.
+        var computedLeafIndex = 0;
+        for (var j = 0; j < TREE_DEPTH; j++) {
+            computedLeafIndex += pathIndices[i][j] * (1 << j);
+        }
+        leafIndex[i] === computedLeafIndex;
+
         // 2e. Determine if this is a dummy note
         isDummy[i] = IsZero();
         isDummy[i].in <== inAmount[i];

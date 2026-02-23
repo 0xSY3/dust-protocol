@@ -1,48 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { parseEther } from 'viem'
-import { createNote } from '../note'
-import {
-  computeNoteCommitment,
-  computeAssetId,
-  computeOwnerPubKey,
-} from '../commitment'
-import { BN254_FIELD_SIZE, TREE_DEPTH } from '../constants'
+import { computeNoteCommitment } from '../commitment'
 import { buildSplitInputs } from '../proof-inputs'
-import type { NoteCommitmentV2, V2Keys } from '../types'
-
-const TEST_CHAIN_ID = 11155111
-
-const MOCK_KEYS: V2Keys = {
-  spendingKey: 12345n,
-  nullifierKey: 67890n,
-}
-
-async function mockNote(
-  amount: bigint,
-  chainId = TEST_CHAIN_ID
-): Promise<NoteCommitmentV2> {
-  const ownerPubKey = await computeOwnerPubKey(MOCK_KEYS.spendingKey)
-  const assetId = await computeAssetId(
-    chainId,
-    '0x0000000000000000000000000000000000000000'
-  )
-  const note = createNote(ownerPubKey, amount, assetId, chainId)
-  const commitment = await computeNoteCommitment(note)
-  return {
-    note,
-    commitment,
-    leafIndex: 0,
-    spent: false,
-    createdAt: Date.now(),
-  }
-}
-
-function dummyMerkleProof() {
-  return {
-    pathElements: new Array<bigint>(TREE_DEPTH).fill(0n),
-    pathIndices: new Array<number>(TREE_DEPTH).fill(0),
-  }
-}
+import { mockNote, dummyMerkleProof, MOCK_KEYS, TEST_CHAIN_ID } from './test-helpers'
 
 describe('buildSplitInputs', () => {
   it('splits 1.37 ETH into [1.0, 0.3, 0.05, 0.02] with correct output amounts', async () => {
@@ -59,7 +19,6 @@ describe('buildSplitInputs', () => {
     const result = await buildSplitInputs(
       noteCommitment,
       chunks,
-      '0x0',
       MOCK_KEYS,
       dummyMerkleProof(),
       TEST_CHAIN_ID
@@ -92,7 +51,6 @@ describe('buildSplitInputs', () => {
     const result = await buildSplitInputs(
       noteCommitment,
       chunks,
-      '0x0',
       MOCK_KEYS,
       dummyMerkleProof(),
       TEST_CHAIN_ID
@@ -127,7 +85,6 @@ describe('buildSplitInputs', () => {
     const result = await buildSplitInputs(
       noteCommitment,
       chunks,
-      '0x0',
       MOCK_KEYS,
       dummyMerkleProof(),
       TEST_CHAIN_ID
@@ -152,7 +109,6 @@ describe('buildSplitInputs', () => {
     const result = await buildSplitInputs(
       noteCommitment,
       chunks,
-      '0x0',
       MOCK_KEYS,
       dummyMerkleProof(),
       TEST_CHAIN_ID
@@ -185,7 +141,6 @@ describe('buildSplitInputs', () => {
     const result = await buildSplitInputs(
       noteCommitment,
       chunks,
-      '0x0',
       MOCK_KEYS,
       dummyMerkleProof(),
       TEST_CHAIN_ID
@@ -198,7 +153,7 @@ describe('buildSplitInputs', () => {
     expect(result.outputNotes[2].owner).toBe(noteCommitment.note.owner)
   })
 
-  it('sets field-negative publicAmount and recipient for withdrawal', async () => {
+  it('always sets publicAmount=0 and recipient=0 (internal split only)', async () => {
     // #given
     const noteCommitment = await mockNote(parseEther('1.37'))
     const chunks = [
@@ -207,22 +162,19 @@ describe('buildSplitInputs', () => {
       parseEther('0.05'),
       parseEther('0.02'),
     ]
-    const totalChunks = chunks.reduce((s, c) => s + c, 0n)
-    const recipient = '0x1234567890123456789012345678901234567890'
 
     // #when
     const result = await buildSplitInputs(
       noteCommitment,
       chunks,
-      recipient,
       MOCK_KEYS,
       dummyMerkleProof(),
       TEST_CHAIN_ID
     )
 
-    // #then
-    expect(BigInt(result.circuitInputs.publicAmount as string)).toBe(BN254_FIELD_SIZE - totalChunks)
-    expect(BigInt(result.circuitInputs.recipient as string)).toBe(BigInt(recipient))
+    // #then — splits are always internal (no value leaves the pool)
+    expect(BigInt(result.circuitInputs.publicAmount as string)).toBe(0n)
+    expect(BigInt(result.circuitInputs.recipient as string)).toBe(0n)
   })
 
   it('throws when chunks exceed input note amount', async () => {
@@ -233,7 +185,6 @@ describe('buildSplitInputs', () => {
       buildSplitInputs(
         noteCommitment,
         chunks,
-        '0x0',
         MOCK_KEYS,
         dummyMerkleProof(),
         TEST_CHAIN_ID
@@ -249,11 +200,165 @@ describe('buildSplitInputs', () => {
       buildSplitInputs(
         noteCommitment,
         chunks,
-        '0x0',
         MOCK_KEYS,
         dummyMerkleProof(),
         TEST_CHAIN_ID
       )
     ).rejects.toThrow(/Too many chunks/)
+  })
+
+  it('throws when no room for change note (8 chunks + remainder)', async () => {
+    // #given — 8 chunks that don't sum to input amount
+    const noteCommitment = await mockNote(parseEther('10.0'))
+    const chunks = new Array(8).fill(parseEther('1.0')) // sum=8, input=10, change=2
+
+    // #when / #then
+    await expect(
+      buildSplitInputs(
+        noteCommitment,
+        chunks,
+        MOCK_KEYS,
+        dummyMerkleProof(),
+        TEST_CHAIN_ID
+      )
+    ).rejects.toThrow(/No room for change note/)
+  })
+})
+
+describe('buildSplitInputs — two-step flow invariants', () => {
+  it('publicAmount is always 0 regardless of input amount', async () => {
+    // Two-step design: split is always internal, withdrawal is a separate step
+    const amounts = [
+      parseEther('0.01'),
+      parseEther('1.0'),
+      parseEther('10.0'),
+      parseEther('29.99'),
+    ]
+
+    for (const amount of amounts) {
+      const noteCommitment = await mockNote(amount)
+      const chunks = [amount] // single chunk, no change
+      const result = await buildSplitInputs(
+        noteCommitment,
+        chunks,
+        MOCK_KEYS,
+        dummyMerkleProof(),
+        TEST_CHAIN_ID
+      )
+      expect(BigInt(result.circuitInputs.publicAmount as string)).toBe(0n)
+    }
+  })
+
+  it('recipient is always 0 regardless of input', async () => {
+    // Internal split: no external recipient
+    const noteCommitment = await mockNote(parseEther('5.0'))
+    const chunks = [parseEther('3.0'), parseEther('1.0')]
+
+    const result = await buildSplitInputs(
+      noteCommitment,
+      chunks,
+      MOCK_KEYS,
+      dummyMerkleProof(),
+      TEST_CHAIN_ID
+    )
+    expect(BigInt(result.circuitInputs.recipient as string)).toBe(0n)
+  })
+
+  it('balance conservation: sum(input amounts) = sum(output amounts) when publicAmount=0', async () => {
+    // #given — split with change
+    const noteCommitment = await mockNote(parseEther('5.5'))
+    const chunks = [parseEther('3.0'), parseEther('1.0'), parseEther('0.5')]
+    // expected change: 5.5 - 4.5 = 1.0
+
+    // #when
+    const result = await buildSplitInputs(
+      noteCommitment,
+      chunks,
+      MOCK_KEYS,
+      dummyMerkleProof(),
+      TEST_CHAIN_ID
+    )
+
+    // #then
+    const inAmounts = result.circuitInputs.inAmount as string[]
+    const outAmounts = result.circuitInputs.outAmount as string[]
+    const sumIn = inAmounts.reduce((s, a) => s + BigInt(a), 0n)
+    const sumOut = outAmounts.reduce((s, a) => s + BigInt(a), 0n)
+    expect(sumIn).toBe(sumOut)
+  })
+
+  it('change note = input total - sum(denomination chunks)', async () => {
+    // #given
+    const noteCommitment = await mockNote(parseEther('3.0'))
+    const chunks = [parseEther('1.0'), parseEther('0.5'), parseEther('0.3')]
+    const expectedChange = parseEther('3.0') - parseEther('1.8')
+
+    // #when
+    const result = await buildSplitInputs(
+      noteCommitment,
+      chunks,
+      MOCK_KEYS,
+      dummyMerkleProof(),
+      TEST_CHAIN_ID
+    )
+
+    // #then — last real output note is the change note
+    const changeNote = result.outputNotes[result.outputNotes.length - 1]
+    expect(changeNote.amount).toBe(expectedChange)
+  })
+
+  it('no change note when chunks exactly equal input amount', async () => {
+    // #given
+    const noteCommitment = await mockNote(parseEther('1.3'))
+    const chunks = [parseEther('1.0'), parseEther('0.3')]
+
+    // #when
+    const result = await buildSplitInputs(
+      noteCommitment,
+      chunks,
+      MOCK_KEYS,
+      dummyMerkleProof(),
+      TEST_CHAIN_ID
+    )
+
+    // #then — only chunk notes, no change
+    expect(result.outputNotes).toHaveLength(2)
+    expect(result.outputNotes[0].amount).toBe(parseEther('1.0'))
+    expect(result.outputNotes[1].amount).toBe(parseEther('0.3'))
+  })
+
+  it('balance conservation holds with maximum output slots (7 chunks + change)', async () => {
+    // #given — 7 chunks with a remainder that creates a change note
+    const noteCommitment = await mockNote(parseEther('8.0'))
+    const chunks = [
+      parseEther('1.0'),
+      parseEther('1.0'),
+      parseEther('1.0'),
+      parseEther('1.0'),
+      parseEther('1.0'),
+      parseEther('1.0'),
+      parseEther('1.0'),
+    ] // sum=7, change=1
+
+    // #when
+    const result = await buildSplitInputs(
+      noteCommitment,
+      chunks,
+      MOCK_KEYS,
+      dummyMerkleProof(),
+      TEST_CHAIN_ID
+    )
+
+    // #then
+    expect(result.outputNotes).toHaveLength(8) // 7 chunks + 1 change
+    const totalOutput = result.outputNotes.reduce((s, n) => s + n.amount, 0n)
+    expect(totalOutput).toBe(parseEther('8.0'))
+
+    // Circuit-level conservation
+    const inAmounts = result.circuitInputs.inAmount as string[]
+    const outAmounts = result.circuitInputs.outAmount as string[]
+    const sumIn = inAmounts.reduce((s, a) => s + BigInt(a), 0n)
+    const sumOut = outAmounts.reduce((s, a) => s + BigInt(a), 0n)
+    expect(sumIn).toBe(sumOut)
   })
 })

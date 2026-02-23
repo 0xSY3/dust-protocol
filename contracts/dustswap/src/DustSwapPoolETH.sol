@@ -114,7 +114,7 @@ contract DustSwapPoolETH is MerkleTree {
     ///      The caller must be an atomic contract that immediately swaps.
     ///      If the swap fails (invalid proof), the entire tx reverts.
     /// @param amount Amount of ETH to release
-    function releaseForSwap(uint256 amount) external {
+    function releaseForSwap(uint256 amount) external nonReentrant {
         if (!authorizedRouters[msg.sender] && msg.sender != dustSwapHook) revert Unauthorized();
         if (address(this).balance < amount) revert InsufficientPoolBalance();
         (bool success, ) = msg.sender.call{value: amount}("");

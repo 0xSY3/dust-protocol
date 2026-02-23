@@ -13,6 +13,7 @@ import {
 export const maxDuration = 60
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const
+const MAX_GAS_PRICE = ethers.utils.parseUnits('100', 'gwei')
 
 /**
  * GET /api/v2/compliance?commitment=<bigint>&chainId=<number>
@@ -137,11 +138,25 @@ export async function POST(req: Request) {
       await tx.wait()
     }
 
+    const feeData = await sponsor.provider.getFeeData()
+    const maxFeePerGas = feeData.maxFeePerGas || ethers.utils.parseUnits('5', 'gwei')
+    if (maxFeePerGas.gt(MAX_GAS_PRICE)) {
+      return NextResponse.json(
+        { error: 'Gas price too high, try again later' },
+        { status: 503, headers: NO_STORE },
+      )
+    }
+
     const tx = await contract.verifyComplianceProof(
       exclusionRootHex,
       nullifierHex,
       proof,
-      { gasLimit: 500_000, type: 2 },
+      {
+        gasLimit: 500_000,
+        type: 2,
+        maxFeePerGas,
+        maxPriorityFeePerGas: feeData.maxPriorityFeePerGas || ethers.utils.parseUnits('1.5', 'gwei'),
+      },
     )
     const receipt = await tx.wait()
 

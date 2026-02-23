@@ -3,44 +3,32 @@ import { useAccount, useChainId, usePublicClient } from 'wagmi'
 import { zeroAddress, type Address } from 'viem'
 import { fflonk } from 'snarkjs'
 import { computeAssetId } from '@/lib/dustpool/v2/commitment'
-import { buildSplitInputs, type SplitBuildResult } from '@/lib/dustpool/v2/proof-inputs'
+import { buildSplitInputs, type SplitOutputNote } from '@/lib/dustpool/v2/proof-inputs'
+import { buildWithdrawInputs } from '@/lib/dustpool/v2/proof-inputs'
 import {
-  openV2Database, getUnspentNotes, markNoteSpent, saveNoteV2,
-  bigintToHex, hexToBigint, storedToNoteCommitment,
+  openV2Database, getUnspentNotes, markNoteSpent, markSpentAndSaveMultiple,
+  updateNoteLeafIndex, bigintToHex, hexToBigint, storedToNoteCommitment,
 } from '@/lib/dustpool/v2/storage'
 import type { StoredNoteV2 } from '@/lib/dustpool/v2/storage'
-import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
+import { createRelayerClient, type RelayerClient } from '@/lib/dustpool/v2/relayer-client'
+import { generateV2Proof, verifyV2ProofLocally } from '@/lib/dustpool/v2/proof'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
 import { extractRelayerError } from '@/lib/dustpool/v2/errors'
-import { decomposeForToken } from '@/lib/dustpool/v2/denominations'
-import type { V2Keys } from '@/lib/dustpool/v2/types'
+import { decomposeForSplit } from '@/lib/dustpool/v2/denominations'
+import {
+  resolveTokenSymbol,
+  parseSplitCalldata,
+  splitOutputToNoteCommitment,
+} from '@/lib/dustpool/v2/split-utils'
+import type { V2Keys, NoteCommitmentV2 } from '@/lib/dustpool/v2/types'
 
 const SPLIT_CIRCUIT_WASM = '/circuits/v2-split/DustV2Split.wasm'
 const SPLIT_CIRCUIT_ZKEY = process.env.NEXT_PUBLIC_V2_SPLIT_ZKEY_URL || '/circuits/v2-split/DustV2Split.zkey'
 const SPLIT_VKEY_PATH = '/circuits/v2-split/verification_key.json'
 const RECEIPT_TIMEOUT_MS = 30_000
 const MAX_SPLIT_OUTPUTS = 8
-
-function resolveTokenSymbol(asset: Address): string {
-  if (asset === zeroAddress) return 'ETH'
-  return 'ETH'
-}
-
-function parseSplitCalldata(calldata: string, numPublicSignals: number): {
-  proofCalldata: string
-  publicSignals: string[]
-} {
-  const hexElements = calldata.match(/0x[0-9a-fA-F]+/g)
-  const expectedMin = 24 + numPublicSignals
-  if (!hexElements || hexElements.length < expectedMin) {
-    throw new Error(
-      `Failed to parse split proof calldata — expected ≥${expectedMin} hex elements, got ${hexElements?.length ?? 0}`
-    )
-  }
-  const proofCalldata = '0x' + hexElements.slice(0, 24).map(e => e.slice(2)).join('')
-  const publicSignals = hexElements.slice(24, 24 + numPublicSignals)
-  return { proofCalldata, publicSignals }
-}
+const LEAF_POLL_ATTEMPTS = 15
+const LEAF_POLL_DELAY_MS = 2_000
 
 async function generateSplitProof(
   circuitInputs: Record<string, string | string[] | string[][]>
@@ -68,6 +56,23 @@ async function verifySplitProofLocally(
     console.error('[DustPoolV2] Split proof local verification failed:', error)
     return false
   }
+}
+
+async function pollForLeafIndex(
+  relayer: RelayerClient,
+  commitmentHex: string,
+  chainId: number
+): Promise<number> {
+  for (let i = 0; i < LEAF_POLL_ATTEMPTS; i++) {
+    const status = await relayer.getDepositStatus(commitmentHex, chainId)
+    if (status.confirmed && status.leafIndex >= 0) {
+      return status.leafIndex
+    }
+    if (i < LEAF_POLL_ATTEMPTS - 1) {
+      await new Promise(r => setTimeout(r, LEAF_POLL_DELAY_MS))
+    }
+  }
+  throw new Error(`Leaf index not confirmed for ${commitmentHex.slice(0, 18)}...`)
 }
 
 export function useV2Split(keysRef: RefObject<V2Keys | null>, chainIdOverride?: number) {
@@ -99,9 +104,12 @@ export function useV2Split(keysRef: RefObject<V2Keys | null>, chainIdOverride?: 
     setTxHash(null)
 
     try {
+      // ──────────────────────────────────────────────────────────────────────
+      // Step 1: Decompose amount into denomination chunks
+      // ──────────────────────────────────────────────────────────────────────
       setStatus('Decomposing into denomination chunks...')
-      const tokenSymbol = resolveTokenSymbol(asset)
-      const chunks = decomposeForToken(amount, tokenSymbol)
+      const tokenSymbol = resolveTokenSymbol(asset, chainId)
+      const chunks = decomposeForSplit(amount, tokenSymbol)
 
       if (chunks.length === 0) {
         throw new Error('Amount too small to decompose into denominations')
@@ -138,9 +146,13 @@ export function useV2Split(keysRef: RefObject<V2Keys | null>, chainIdOverride?: 
 
       const relayer = createRelayerClient()
 
+      // ──────────────────────────────────────────────────────────────────────
+      // Step 2: Internal split — break large note into denomination notes
+      // publicAmount=0, recipient=0 (no value leaves the pool)
+      // ──────────────────────────────────────────────────────────────────────
       setStatus(`Generating split proof (${chunks.length} outputs)...`)
 
-      const generateAndSubmit = async (isRetry: boolean) => {
+      const generateAndSubmitSplit = async (isRetry: boolean) => {
         if (isRetry) {
           setStatus('Tree updated during proof generation. Retrying with fresh state...')
         }
@@ -148,7 +160,7 @@ export function useV2Split(keysRef: RefObject<V2Keys | null>, chainIdOverride?: 
         const merkleProof = await relayer.getMerkleProof(inputNote.leafIndex, chainId)
 
         const splitResult = await buildSplitInputs(
-          inputNote, chunks, recipient, keys, merkleProof, chainId
+          inputNote, chunks, keys, merkleProof, chainId
         )
 
         const { proof, publicSignals, proofCalldata } = await generateSplitProof(
@@ -160,64 +172,138 @@ export function useV2Split(keysRef: RefObject<V2Keys | null>, chainIdOverride?: 
           throw new Error('Generated split proof failed local verification')
         }
 
-        setStatus('Submitting to relayer...')
+        setStatus('Submitting split to relayer...')
         return {
           splitResult,
           result: await relayer.submitSplitWithdrawal(proofCalldata, publicSignals, chainId, asset),
         }
       }
 
-      let submission: Awaited<ReturnType<typeof generateAndSubmit>>
+      let splitSubmission: Awaited<ReturnType<typeof generateAndSubmitSplit>>
       try {
-        submission = await generateAndSubmit(false)
+        splitSubmission = await generateAndSubmitSplit(false)
       } catch (submitErr) {
         const errMsg = submitErr instanceof Error ? submitErr.message : ''
         const errBody = (submitErr as { body?: string }).body ?? ''
         const combined = `${errMsg} ${errBody}`.toLowerCase()
         if (combined.includes('unknown merkle root') || combined.includes('unknown root')) {
-          submission = await generateAndSubmit(true)
+          splitSubmission = await generateAndSubmitSplit(true)
         } else {
           throw submitErr
         }
       }
 
-      setTxHash(submission.result.txHash)
+      setTxHash(splitSubmission.result.txHash)
 
       if (!publicClient) {
         throw new Error('Public client not available — cannot verify transaction')
       }
-      setStatus('Confirming on-chain...')
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash: submission.result.txHash as `0x${string}`,
+      setStatus('Confirming split on-chain...')
+      const splitReceipt = await publicClient.waitForTransactionReceipt({
+        hash: splitSubmission.result.txHash as `0x${string}`,
         timeout: RECEIPT_TIMEOUT_MS,
       })
-      if (receipt.status === 'reverted') {
-        throw new Error(`Split transaction reverted (tx: ${submission.result.txHash})`)
+      if (splitReceipt.status === 'reverted') {
+        throw new Error(`Split transaction reverted (tx: ${splitSubmission.result.txHash})`)
       }
 
-      setStatus('Saving output notes...')
-
-      await markNoteSpent(db, inputStored.id)
-
+      // Save all output notes atomically (M11)
+      setStatus('Saving split notes...')
       const now = Date.now()
-      for (const out of submission.splitResult.outputNotes) {
-        const stored: StoredNoteV2 = {
-          id: bigintToHex(out.commitment),
-          walletAddress: address.toLowerCase(),
-          chainId,
-          commitment: bigintToHex(out.commitment),
-          owner: bigintToHex(out.owner),
-          amount: bigintToHex(out.amount),
-          asset: bigintToHex(out.asset),
-          blinding: bigintToHex(out.blinding),
-          leafIndex: -1,
-          spent: false,
-          createdAt: now,
+      const outputStored: StoredNoteV2[] = splitSubmission.splitResult.outputNotes.map(out => ({
+        id: bigintToHex(out.commitment),
+        walletAddress: address.toLowerCase(),
+        chainId,
+        commitment: bigintToHex(out.commitment),
+        owner: bigintToHex(out.owner),
+        amount: bigintToHex(out.amount),
+        asset: bigintToHex(out.asset),
+        blinding: bigintToHex(out.blinding),
+        leafIndex: -1,
+        spent: false,
+        createdAt: now,
+      }))
+      await markSpentAndSaveMultiple(db, inputStored.id, outputStored, encKey)
+
+      // Separate denomination notes (to withdraw) from change note (stays in pool)
+      const denomNotes = splitSubmission.splitResult.outputNotes.slice(0, chunks.length)
+      const hasChange = splitSubmission.splitResult.outputNotes.length > chunks.length
+
+      // ──────────────────────────────────────────────────────────────────────
+      // Step 3: Wait for leaf indices — the relayer's tree must include
+      // the split outputs before we can build withdrawal Merkle proofs
+      // ──────────────────────────────────────────────────────────────────────
+      setStatus('Waiting for leaf index confirmation...')
+      const denomLeafIndices: number[] = []
+      for (const note of denomNotes) {
+        const hex = bigintToHex(note.commitment)
+        const leafIndex = await pollForLeafIndex(relayer, hex, chainId)
+        denomLeafIndices.push(leafIndex)
+        await updateNoteLeafIndex(db, hex, leafIndex)
+      }
+
+      // Also update change note leaf index if present
+      if (hasChange) {
+        const changeNote = splitSubmission.splitResult.outputNotes[chunks.length]
+        const changeHex = bigintToHex(changeNote.commitment)
+        const changeLeaf = await pollForLeafIndex(relayer, changeHex, chainId)
+        await updateNoteLeafIndex(db, changeHex, changeLeaf)
+      }
+
+      // ──────────────────────────────────────────────────────────────────────
+      // Step 4: Batch-withdraw — generate standard 2-in-2-out proofs for
+      // each denomination note and submit as a batch
+      // ──────────────────────────────────────────────────────────────────────
+      const withdrawalProofs: Array<{ proof: string; publicSignals: string[]; tokenAddress: string }> = []
+
+      for (let i = 0; i < denomNotes.length; i++) {
+        setStatus(`Generating withdrawal proof ${i + 1}/${denomNotes.length}...`)
+
+        const noteCommitment = splitOutputToNoteCommitment(
+          denomNotes[i], denomLeafIndices[i], chainId
+        )
+        const merkleProof = await relayer.getMerkleProof(denomLeafIndices[i], chainId)
+        const proofInputs = await buildWithdrawInputs(
+          noteCommitment, noteCommitment.note.amount, recipient, keys, merkleProof, chainId
+        )
+        const proofResult = await generateV2Proof(proofInputs)
+
+        const isValid = await verifyV2ProofLocally(proofResult.proof, proofResult.publicSignals)
+        if (!isValid) {
+          throw new Error(`Withdrawal proof ${i + 1} failed local verification`)
         }
-        await saveNoteV2(db, address, stored, encKey)
+
+        withdrawalProofs.push({
+          proof: proofResult.proofCalldata,
+          publicSignals: proofResult.publicSignals,
+          tokenAddress: asset,
+        })
+      }
+
+      setStatus(`Submitting batch withdrawal (${denomNotes.length} chunks)...`)
+      const batchResult = await relayer.submitBatchWithdrawal(withdrawalProofs, chainId)
+
+      if (batchResult.succeeded > 0 && batchResult.results.length > 0) {
+        setTxHash(batchResult.results[0].txHash)
+      }
+
+      // Mark successfully withdrawn denomination notes as spent
+      const failedIndices = new Set(batchResult.errors.map(e => e.index))
+      for (let i = 0; i < denomNotes.length; i++) {
+        if (!failedIndices.has(i)) {
+          await markNoteSpent(db, bigintToHex(denomNotes[i].commitment))
+        }
+      }
+
+      if (batchResult.errors.length > 0) {
+        const failedCount = batchResult.errors.length
+        throw new Error(
+          `${batchResult.succeeded}/${batchResult.total} withdrawals succeeded. ` +
+          `${failedCount} failed — denomination notes remain in pool for retry.`
+        )
       }
     } catch (e) {
-      setError(extractRelayerError(e, 'Split failed'))
+      setError(extractRelayerError(e, 'Split withdrawal failed'))
     } finally {
       setIsPending(false)
       setStatus(null)

@@ -147,6 +147,13 @@ template DustV2Split(TREE_DEPTH, N_OUTPUTS) {
         // Skip Merkle verification for dummy notes (amount == 0)
         inAmount[i] * (merkleVerifier[i].root - merkleRoot) === 0;
 
+        // C1 fix: bind leafIndex to pathIndices (prevents nullifier unbinding double-spend)
+        var computedLeafIndex = 0;
+        for (var j = 0; j < TREE_DEPTH; j++) {
+            computedLeafIndex += pathIndices[i][j] * (1 << j);
+        }
+        leafIndex[i] === computedLeafIndex;
+
         isDummy[i] = IsZero();
         isDummy[i].in <== inAmount[i];
 

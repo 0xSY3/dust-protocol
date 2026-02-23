@@ -107,7 +107,9 @@ export async function checkCooldownStatus(
     }
 
     return { inCooldown, originator, remainingSeconds }
-  } catch {
-    return null
+  } catch (e) {
+    // Fail closed: treat RPC errors as cooldown active
+    console.error('[compliance] Cooldown check failed (treating as active):', e)
+    return { inCooldown: true, originator: zeroAddress, remainingSeconds: 3600 }
   }
 }

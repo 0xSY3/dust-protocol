@@ -30,7 +30,7 @@ export function getDenominations(token: string): bigint[] {
     case 'USDC':
       return USDC_DENOMINATIONS
     default:
-      return []
+      throw new Error(`No denomination table for token: ${token}. Supported: ETH, USDC`)
   }
 }
 
@@ -44,23 +44,29 @@ export function getDenominations(token: string): bigint[] {
  *
  * @returns Array of chunk amounts in descending order. sum(chunks) === amount.
  */
-export function decompose(amount: bigint, denominations: bigint[]): bigint[] {
+export function decompose(amount: bigint, denominations: bigint[], maxChunks?: number): bigint[] {
   if (amount <= 0n) return []
   if (denominations.length === 0) return [amount]
 
+  const limit = maxChunks ?? Infinity
   const chunks: bigint[] = []
   let remaining = amount
 
   for (const denom of denominations) {
-    while (remaining >= denom) {
+    while (remaining >= denom && chunks.length < limit) {
       chunks.push(denom)
       remaining -= denom
     }
+    if (chunks.length >= limit) break
   }
 
-  // Remainder smaller than smallest denomination — include as-is
   if (remaining > 0n) {
-    chunks.push(remaining)
+    if (chunks.length >= limit && chunks.length > 0) {
+      // Merge remainder into last chunk to stay within limit
+      chunks[chunks.length - 1] += remaining
+    } else {
+      chunks.push(remaining)
+    }
   }
 
   return chunks
@@ -72,6 +78,16 @@ export function decompose(amount: bigint, denominations: bigint[]): bigint[] {
  */
 export function decomposeForToken(amount: bigint, token: string): bigint[] {
   return decompose(amount, getDenominations(token))
+}
+
+/**
+ * Decompose for a split operation with a max chunk count.
+ * Default maxChunks=7 leaves room for one change note in the 8-output circuit.
+ * If the decomposition would exceed maxChunks, the remainder is merged
+ * into the last chunk (losing some denomination privacy for that chunk).
+ */
+export function decomposeForSplit(amount: bigint, token: string, maxChunks = 7): bigint[] {
+  return decompose(amount, getDenominations(token), maxChunks)
 }
 
 /**

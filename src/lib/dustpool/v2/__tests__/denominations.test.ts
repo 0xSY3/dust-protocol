@@ -3,6 +3,7 @@ import { parseEther, parseUnits } from 'viem'
 import {
   decompose,
   decomposeForToken,
+  decomposeForSplit,
   formatChunks,
   suggestRoundedAmounts,
   ETH_DENOMINATIONS,
@@ -32,8 +33,8 @@ describe('getDenominations', () => {
     expect(getDenominations('usdc')).toEqual(getDenominations('USDC'))
   })
 
-  it('returns empty for unknown tokens', () => {
-    expect(getDenominations('DOGE')).toEqual([])
+  it('throws for unknown tokens', () => {
+    expect(() => getDenominations('DOGE')).toThrow(/No denomination table/)
   })
 })
 
@@ -123,9 +124,8 @@ describe('decomposeForToken', () => {
     expect(result[1]).toBe(parseUnits('50', 6))
   })
 
-  it('handles unknown token by returning amount as-is', () => {
-    const amount = 1000n
-    expect(decomposeForToken(amount, 'UNKNOWN')).toEqual([amount])
+  it('throws for unknown token', () => {
+    expect(() => decomposeForToken(1000n, 'UNKNOWN')).toThrow(/No denomination table/)
   })
 })
 
@@ -148,8 +148,8 @@ describe('suggestRoundedAmounts', () => {
     expect(suggestRoundedAmounts(0n, 'ETH')).toEqual([])
   })
 
-  it('returns empty for unknown token', () => {
-    expect(suggestRoundedAmounts(parseEther('1'), 'DOGE')).toEqual([])
+  it('throws for unknown token', () => {
+    expect(() => suggestRoundedAmounts(parseEther('1'), 'DOGE')).toThrow(/No denomination table/)
   })
 
   it('suggests fewer-chunk alternatives for 1.37 ETH', () => {
@@ -182,5 +182,135 @@ describe('suggestRoundedAmounts', () => {
       expect(sum).toBe(s.amount)
       expect(chunks.length).toBe(s.chunks)
     }
+  })
+})
+
+describe('decompose — maxChunks', () => {
+  it('respects maxChunks and merges remainder into last chunk', () => {
+    // #given — 29.99 ETH needs 11 chunks without limit
+    const amount = parseEther('29.99')
+    const unlimitedChunks = decompose(amount, ETH_DENOMINATIONS)
+    expect(unlimitedChunks.length).toBe(11)
+
+    // #when — limit to 7 chunks
+    const limited = decompose(amount, ETH_DENOMINATIONS, 7)
+
+    // #then
+    expect(limited.length).toBe(7)
+    const sum = limited.reduce((a, b) => a + b, 0n)
+    expect(sum).toBe(amount)
+  })
+
+  it('last chunk absorbs remainder when maxChunks reached', () => {
+    // #given — 29.99 ETH limited to 7 chunks
+    // Expected: [10, 10, 5, 3, 1, 0.5, 0.3+0.19=0.49]
+    const amount = parseEther('29.99')
+    const limited = decompose(amount, ETH_DENOMINATIONS, 7)
+
+    // #then — first 6 chunks are standard denominations
+    expect(limited[0]).toBe(parseEther('10'))
+    expect(limited[1]).toBe(parseEther('10'))
+    expect(limited[2]).toBe(parseEther('5'))
+    expect(limited[3]).toBe(parseEther('3'))
+    expect(limited[4]).toBe(parseEther('1'))
+    expect(limited[5]).toBe(parseEther('0.5'))
+    // Last chunk: 0.3 + 0.19 remainder = 0.49
+    expect(limited[6]).toBe(parseEther('0.49'))
+  })
+
+  it('returns all chunks when count is within limit', () => {
+    // #given — 1.3 ETH = [1.0, 0.3] — only 2 chunks, well under limit
+    const amount = parseEther('1.3')
+    const result = decompose(amount, ETH_DENOMINATIONS, 7)
+
+    // #then — same as unlimited
+    expect(result).toEqual([parseEther('1'), parseEther('0.3')])
+  })
+
+  it('maxChunks=1 returns single chunk equal to full amount', () => {
+    // #given
+    const amount = parseEther('3.57')
+
+    // #when
+    const result = decompose(amount, ETH_DENOMINATIONS, 1)
+
+    // #then — first denomination chunk + merged remainder
+    expect(result.length).toBe(1)
+    expect(result[0]).toBe(amount)
+  })
+})
+
+describe('decomposeForSplit', () => {
+  it('defaults to maxChunks=7', () => {
+    // #given — 29.99 ETH needs 11 chunks unlimited
+    const amount = parseEther('29.99')
+
+    // #when
+    const result = decomposeForSplit(amount, 'ETH')
+
+    // #then — limited to 7
+    expect(result.length).toBe(7)
+    const sum = result.reduce((a, b) => a + b, 0n)
+    expect(sum).toBe(amount)
+  })
+
+  it('allows custom maxChunks', () => {
+    // #given
+    const amount = parseEther('29.99')
+
+    // #when
+    const result = decomposeForSplit(amount, 'ETH', 5)
+
+    // #then
+    expect(result.length).toBe(5)
+    const sum = result.reduce((a, b) => a + b, 0n)
+    expect(sum).toBe(amount)
+  })
+
+  it('works with USDC denominations', () => {
+    // #given — 12345 USDC
+    const amount = parseUnits('12345', 6)
+
+    // #when
+    const result = decomposeForSplit(amount, 'USDC')
+
+    // #then
+    expect(result.length).toBeLessThanOrEqual(7)
+    const sum = result.reduce((a, b) => a + b, 0n)
+    expect(sum).toBe(amount)
+  })
+
+  it('throws for unknown token', () => {
+    expect(() => decomposeForSplit(1000n, 'DOGE')).toThrow(/No denomination table/)
+  })
+})
+
+describe('decompose — edge cases', () => {
+  it('decompose(0) returns empty array', () => {
+    expect(decompose(0n, ETH_DENOMINATIONS)).toEqual([])
+  })
+
+  it('decompose(0) with maxChunks returns empty array', () => {
+    expect(decompose(0n, ETH_DENOMINATIONS, 7)).toEqual([])
+  })
+
+  it('amount smaller than all denominations returns single non-standard chunk', () => {
+    // 0.005 ETH is below smallest denomination (0.01 ETH)
+    const result = decompose(parseEther('0.005'), ETH_DENOMINATIONS)
+    expect(result).toEqual([parseEther('0.005')])
+  })
+
+  it('1 wei returns single chunk', () => {
+    expect(decompose(1n, ETH_DENOMINATIONS)).toEqual([1n])
+  })
+
+  it('decompose with empty denominations returns amount as-is', () => {
+    expect(decompose(parseEther('5.0'), [])).toEqual([parseEther('5.0')])
+  })
+
+  it('exact large amount decomposes cleanly', () => {
+    // 30 ETH = 3 x 10 ETH — no remainder
+    const result = decompose(parseEther('30'), ETH_DENOMINATIONS)
+    expect(result).toEqual([parseEther('10'), parseEther('10'), parseEther('10')])
   })
 })

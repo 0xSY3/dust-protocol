@@ -3,6 +3,7 @@
  */
 
 import { type Address } from 'viem'
+import { getChainConfig, isChainSupported } from '@/config/chains'
 
 // ─── DustPoolV2 ABI ─────────────────────────────────────────────────────────────
 
@@ -272,17 +273,74 @@ export const DUST_POOL_V2_ABI = [
       { name: 'exclusionRoot', type: 'bytes32', indexed: false },
     ],
   },
+  // Verifier addresses (immutable)
+  {
+    name: 'VERIFIER',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+  {
+    name: 'SPLIT_VERIFIER',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+  // Pausable
+  {
+    name: 'pause',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: 'unpause',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: 'paused',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'bool' }],
+  },
+  // Ownable2Step
+  {
+    name: 'pendingOwner',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'address' }],
+  },
+  {
+    name: 'acceptOwnership',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: 'transferOwnership',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'newOwner', type: 'address' }],
+    outputs: [],
+  },
 ] as const
 
 // ─── Address Resolution ─────────────────────────────────────────────────────────
 
-/** V2 contract addresses per chain */
+/** V2 contract addresses per chain — sourced from chains.ts registry */
 export function getDustPoolV2Address(chainId: number): Address | null {
-  const addresses: Record<number, Address> = {
-    111551119090: '0x283800e6394DF6ad17aC53D8d48CD8C0c048B7Ad',
-    11155111: '0x03D52fd442965cD6791Ce5AFab78C60671f9558A',
-  }
-  return addresses[chainId] ?? null
+  if (!isChainSupported(chainId)) return null
+  const addr = getChainConfig(chainId).contracts.dustPoolV2
+  return addr ? (addr as Address) : null
 }
 
 /**

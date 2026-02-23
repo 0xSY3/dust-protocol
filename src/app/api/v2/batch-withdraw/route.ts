@@ -8,6 +8,7 @@ import { toBytes32Hex } from '@/lib/dustpool/poseidon'
 import { computeAssetId } from '@/lib/dustpool/v2/commitment'
 import { acquireNullifier, releaseNullifier } from '@/lib/dustpool/v2/pending-nullifiers'
 import { checkCooldown } from '@/lib/dustpool/v2/persistent-cooldown'
+import { screenRecipient } from '@/lib/dustpool/v2/relayer-compliance'
 
 export const maxDuration = 120
 
@@ -175,6 +176,13 @@ export async function POST(req: Request) {
           const recipient = ethers.utils.getAddress(
             '0x' + recipientBigInt.toString(16).padStart(40, '0'),
           )
+
+          // Compliance: screen recipient against on-chain oracle
+          const screenResult = await screenRecipient(recipient, chainId)
+          if (screenResult.blocked) {
+            errors.push({ index: item.originalIndex, error: 'Recipient address is sanctioned' })
+            continue
+          }
 
           const feeData = await sponsor.provider.getFeeData()
           const maxFeePerGas = feeData.maxFeePerGas || ethers.utils.parseUnits('5', 'gwei')

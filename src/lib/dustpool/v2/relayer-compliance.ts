@@ -16,7 +16,7 @@ type ScreenResult = { blocked: false } | { blocked: true; reason: string }
  * Screen a recipient address against the on-chain compliance oracle.
  * Returns { blocked: false } if no oracle is set or address is clean.
  * Returns { blocked: true, reason } if sanctioned.
- * Swallows errors (oracle down = allow through, contract will enforce on-chain).
+ * Fails CLOSED: oracle errors block the recipient (contract only screens depositors, not recipients).
  */
 export async function screenRecipient(
   recipient: string,
@@ -43,8 +43,8 @@ export async function screenRecipient(
 
     return { blocked: false }
   } catch (e) {
-    // Compliance check failure = allow through (on-chain contract will reject if sanctioned)
-    console.error('[relayer-compliance] Screening failed (allowing through):', e)
-    return { blocked: false }
+    // Fail CLOSED: relayer is the only screening layer for recipients
+    console.error('[relayer-compliance] Screening failed (blocking):', e)
+    return { blocked: true, reason: 'Compliance screening unavailable' }
   }
 }

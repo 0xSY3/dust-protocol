@@ -1,0 +1,445 @@
+================================================================================
+DUST PROTOCOL — FULL VERIFICATION AUDIT REPORT
+Date: 2026-02-23
+Scope: Plan.txt Steps 1-3 (Deposit Screening, View Keys, ZK Compliance)
+Agents: 15 (contract, circuit, frontend, relayer, test, config, swap, stealth)
+================================================================================
+
+SUMMARY
+-------
+  CRITICAL:  3
+  HIGH:      1
+  MEDIUM:    11
+  LOW:       2
+  STEP 2 GAPS: 4
+  TEST GAPS: 5
+
+================================================================================
+CRITICAL FINDINGS
+================================================================================
+
+C1: leafIndex / pathIndices UNBINDING — POOL DRAIN VULNERABILITY
+    Files: contracts/dustpool/circuits/v2/DustV2Transaction.circom
+           contracts/dustpool/circuits/v2/DustV2Split.circom
+    Lines: DustV2Transaction.circom:79-80, 137-141, 146-148
+
+    Description:
+      The circuit has two independent private inputs: `pathIndices[2][TREE_DEPTH]`
+      (used in Merkle proof verification) and `leafIndex[2]` (used in nullifier
+      computation). There is NO constraint binding leafIndex to pathIndices.
+
+      nullifier = Poseidon(nullifierKey, commitment, leafIndex[i])
+      merkleProof uses pathIndices[i][j] — NOT leafIndex
+
+      An attacker can prove ownership of the same UTXO multiple times by varying
+      leafIndex each time, producing a different nullifier for each proof while
+      the Merkle proof still validates via pathIndices.
+
+    Impact: Unlimited double-spend. Any depositor can drain the entire pool.
+
+    Fix: Add constraint in both circuits:
+      for (var j = 0; j < TREE_DEPTH; j++) {
+          leafIndex[i] += pathIndices[i][j] * (1 << j);
+      }
+      // Then use the SAME leafIndex in nullifier computation
+
+    Status: UNPATCHED — requires circuit recompilation + redeployment
+
+
+C2: screenRecipient FAILS OPEN ON ORACLE ERROR
+    File: src/lib/dustpool/v2/relayer-compliance.ts
+    Lines: 45-49
+
+    Description:
+      The catch block in screenRecipient() returns { blocked: false } when the
+      oracle call throws any error (RPC timeout, network failure, etc).
+      The inline comment says "on-chain contract will reject" — this is FALSE
+      for withdrawal recipients. The on-chain contract only screens depositors,
+      NOT withdrawal recipients. Relayer screening is the ONLY check.
+
+    Impact: Sanctioned addresses can receive funds during any oracle outage.
+
+    Fix: Change catch block to return { blocked: true } (fail closed), or
+         throw the error to abort the withdrawal relay.
+
+    Status: UNPATCHED
+
+
+C3: SPLIT-WITHDRAWAL PATH PRODUCES UNSATISFIABLE CIRCUIT CONSTRAINTS
+    Files: src/lib/dustpool/v2/proof-inputs.ts (lines 327-452)
+           src/hooks/dustpool/v2/useV2Split.ts (lines 85-225)
+           contracts/dustpool/circuits/v2/DustV2Split.circom (line 198)
+
+    Description:
+      When recipient is non-zero (withdrawal mode), buildSplitInputs sets:
+        publicAmount = BN254_FIELD_SIZE - totalChunks  (field-negative)
+        outputs = denomination chunks + change note
+
+      The circuit balance constraint (DustV2Split.circom:198):
+        inAmount[0] + inAmount[1] + publicAmount === outSum[N_OUTPUTS - 1]
+
+      With chunks as outputs AND negative publicAmount:
+        inputAmount + (p - totalChunks) = totalChunks + change
+        inputAmount + (p - totalChunks) = totalChunks + (inputAmount - totalChunks)
+        inputAmount + (p - totalChunks) = inputAmount
+        p - totalChunks ≡ 0 (mod p)
+
+      This is ONLY satisfiable when totalChunks = 0. For ANY non-zero
+      withdrawal amount, the witness computation fails. useV2Split always
+      passes a non-zero recipient (line 151), so denomination-private
+      withdrawal is COMPLETELY NON-FUNCTIONAL.
+
+    Impact: The entire denomination privacy feature (split-withdraw) cannot
+      produce valid proofs. Every split-withdrawal attempt fails at proof
+      generation. The feature shipped broken.
+
+    Root Cause: Output notes include denomination chunks (amounts leaving
+      the pool) as committed notes (amounts staying in the pool). This
+      double-counts — you can't both withdraw AND keep the same amount.
+
+    Correct Design: Split-withdrawal should be TWO steps:
+      1. Internal split (publicAmount=0): Split large note into denomination notes
+      2. Batch-withdraw: Withdraw each denomination note via standard 2-in-2-out
+
+      The isWithdrawal branch in buildSplitInputs (lines 402-410) should
+      be removed or the function redesigned for two-step flow.
+
+    Evidence: split-inputs.test.ts:201 verifies publicAmount and recipient
+      are set correctly, but does NOT verify balance conservation for the
+      withdrawal case. Balance conservation test at line 121 only covers
+      internal split (publicAmount=0).
+
+    Status: UNPATCHED — requires proof-inputs.ts + useV2Split.ts redesign
+
+
+================================================================================
+HIGH FINDINGS
+================================================================================
+
+H1: batch-withdraw/route.ts HAS ZERO RECIPIENT COMPLIANCE SCREENING
+    File: src/app/api/v2/batch-withdraw/route.ts
+
+    Description:
+      The batch withdrawal endpoint does NOT import or call screenRecipient().
+      Both withdraw/route.ts and split-withdraw/route.ts perform recipient
+      screening, but batch-withdraw completely skips it. Each batch item's
+      recipient address goes unscreened.
+
+    Impact: Sanctioned addresses can receive funds via batch withdrawal.
+
+    Fix: Add screenRecipient() call for each item in the batch before relay.
+
+    Status: UNPATCHED
+
+
+================================================================================
+MEDIUM FINDINGS
+================================================================================
+
+M1: useV2Deposit.ts SILENTLY SKIPS COMPLIANCE WHEN publicClient UNAVAILABLE
+    File: src/hooks/dustpool/v2/useV2Deposit.ts
+    Line: ~49
+
+    Description:
+      The compliance check is gated by `if (publicClient)`. If publicClient
+      is undefined (provider not ready, race condition on page load), the
+      deposit proceeds with zero compliance screening.
+
+    Fix: Throw or block the deposit when publicClient is unavailable.
+
+
+M2: compliance/route.ts POST HAS NO GAS PRICE GUARD
+    File: src/app/api/v2/compliance/route.ts
+
+    Description:
+      The compliance verification transaction submission has no gas price
+      cap or sanity check. During gas spikes, the relayer could spend
+      excessive ETH on compliance proof verification.
+
+    Fix: Add maxFeePerGas / maxPriorityFeePerGas bounds.
+
+
+M3: transfer/route.ts HAS NO RECIPIENT SCREENING
+    File: src/app/api/v2/transfer/route.ts
+
+    Description:
+      Internal pool transfers (UTXO-to-UTXO) do not screen the recipient.
+      While the output is a commitment (not an address), the publicAmount
+      recipient field is still present and unscreened.
+
+    Fix: If publicAmount > 0 and recipient != address(0), screen recipient.
+
+
+M4: compliance.ts SILENT ERROR SWALLOW IN COOLDOWN CHECK
+    File: src/lib/dustpool/v2/compliance.ts
+    Line: ~110
+
+    Description:
+      The cooldown period check catches errors and silently continues,
+      potentially allowing operations during cooldown on RPC failure.
+
+    Fix: Fail closed — treat error as "cooldown active".
+
+
+M5: V2 ADDRESSES HARDCODED — DUAL SOURCE OF TRUTH
+    File: src/lib/dustpool/v2/contracts.ts
+    Lines: 281-285
+
+    Description:
+      getDustPoolV2Address() uses an inline Record<chainId, address> instead
+      of reading from the chain config in src/config/chains.ts. This creates
+      two sources of truth that can drift.
+
+    Additional: Missing ABI entries for SPLIT_VERIFIER, VERIFIER, and
+      Pausable/Ownable2Step functions.
+
+    Fix: Import addresses from chains.ts. Add missing ABI entries.
+
+
+M6: DustSwap CEI VIOLATION IN afterSwap
+    File: contracts/dustswap/src/DustSwapHook.sol
+
+    Description:
+      The afterSwap callback performs state changes AFTER external ETH
+      transfers, violating the Checks-Effects-Interactions pattern.
+
+    Fix: Move state updates before the ETH transfer.
+
+
+M7: DustSwap NO Ownable2Step
+    File: contracts/dustswap/src/DustSwapHook.sol
+
+    Description:
+      DustSwapHook has an immutable owner with no transfer mechanism.
+      Unlike DustPoolV2 which uses Ownable2Step, the hook cannot transfer
+      ownership if the owner key is compromised.
+
+
+M8: DustSwap totalPrivateVolume TRUNCATES TO uint128
+    File: contracts/dustswap/src/DustSwapHook.sol
+
+    Description:
+      totalPrivateVolume is stored as uint128, which can overflow/truncate
+      for high-volume pools over time.
+
+
+M9: DustSwap releaseForSwap LACKS REENTRANCY GUARD
+    File: contracts/dustswap/src/DustSwapHook.sol
+
+    Description:
+      The releaseForSwap function makes external calls without a
+      reentrancy guard (nonReentrant modifier).
+
+
+M10: NO MAX OUTPUT COUNT IN decompose()
+     File: src/lib/dustpool/v2/denominations.ts (lines 47-67)
+
+     Description:
+       decompose() has no limit on chunk count. Amounts between ~14-30 ETH
+       can produce 9-12 chunks, exceeding the split circuit's 8-output limit.
+       While useV2Split checks at line 110-113, decompose() is a public API
+       and callers outside the hook get no guardrail or guidance.
+
+     Fix: Add maxChunks parameter or a decomposeForSplit() helper that
+       truncates at 7 (room for change note) and groups remainder.
+
+
+M11: NON-ATOMIC IndexedDB OPERATIONS IN useV2Split
+     File: src/hooks/dustpool/v2/useV2Split.ts (lines 200-218)
+
+     Description:
+       Unlike useV2Withdraw and useV2Transfer which use markSpentAndSaveChange()
+       (single IndexedDB transaction), useV2Split uses separate calls:
+         await markNoteSpent(db, inputStored.id)      // line 200
+         for (const out of ...) {
+             await saveNoteV2(db, address, stored, encKey)  // line 217
+         }
+
+       If the tab crashes between markNoteSpent and the save loop completing,
+       the input note is marked spent but output notes are lost. The user has
+       notes in the on-chain Merkle tree that they can't find locally —
+       effective fund loss requiring manual recovery.
+
+     Fix: Wrap the mark-spent + all saves in a single IndexedDB read-write
+       transaction.
+
+
+================================================================================
+LOW FINDINGS
+================================================================================
+
+L1: resolveTokenSymbol ALWAYS RETURNS 'ETH'
+    File: src/hooks/dustpool/v2/useV2Split.ts (lines 24-27)
+
+    Description:
+      Both branches return 'ETH' — any ERC-20 (including USDC) gets ETH
+      denomination tables. Wrong denominations and wrong decimal handling.
+
+
+L2: EMPTY ARRAY FOR UNKNOWN TOKENS IN getDenominations()
+    File: src/lib/dustpool/v2/denominations.ts (lines 32-34)
+
+    Description:
+      Returns [] for unknown tokens. decompose() with empty denominations
+      returns [amount] (the full amount as one chunk) — safe but zero
+      denomination privacy. Should warn or fallback more explicitly.
+
+
+================================================================================
+STEP 2 (VIEW KEYS + SELECTIVE DISCLOSURE) — IMPLEMENTATION GAPS
+================================================================================
+
+G1: NO FRONTEND DISCLOSURE UI COMPONENT
+    Description:
+      The disclosure data structures and export formats (CSV, JSON) exist
+      in the lib layer, but there is no React component for users to
+      generate, view, or manage disclosure reports.
+
+    Expected: A DisclosurePanel or similar component in
+      src/components/dustpool/ that lets users select UTXOs, generate
+      disclosure statements, and download exports.
+
+
+G2: NO PDF EXPORT
+    Description:
+      The plan specified PDF export for auditor-friendly reports.
+      Not implemented — only CSV and JSON formats exist.
+
+
+G3: NO CSV DOWNLOAD TRIGGER
+    Description:
+      CSV format generation exists in the lib layer, but there is no
+      browser download trigger (Blob URL + anchor click pattern).
+
+
+G4: NO DIGITAL SIGNATURE ON JSON EXPORT
+    Description:
+      The plan specified digitally signed disclosure statements.
+      JSON export exists but is unsigned.
+
+
+================================================================================
+TEST COVERAGE GAPS
+================================================================================
+
+T1: 5 TEST FILES RE-IMPLEMENT PRODUCTION LOGIC LOCALLY
+    Description:
+      Multiple test files duplicate production logic (e.g., Poseidon
+      commitment computation, key derivation) instead of importing from
+      the production modules. If production logic changes, tests may
+      still pass with stale local copies.
+
+
+T2: NO VITEST FOR V2 REACT HOOKS, RELAYER BUSINESS LOGIC, COMPLIANCE FRONTEND
+    Description:
+      Missing unit tests for:
+        - useV2Deposit, useV2Withdraw, useV2Transfer hooks
+        - Relayer route business logic (mocked contract calls)
+        - Compliance frontend flow (useV2Compliance hook)
+        - pending-nullifiers.ts (cross-chain guard)
+        - storage.ts utility functions
+
+
+T3: NO TESTS FOR V2 KEY DERIVATION MODULE
+    Description:
+      deriveV2Keys() has no dedicated unit tests. It's tested indirectly
+      through integration tests but edge cases (invalid PIN, empty
+      signature, BN254 modular reduction) are not covered.
+
+
+T4: NO BALANCE CONSERVATION TEST FOR SPLIT-WITHDRAWAL CASE
+    File: split-inputs.test.ts
+
+    Description:
+      Tests verify publicAmount and recipient are set correctly for the
+      withdrawal case (line 201), but do NOT verify that the circuit's
+      balance constraint is satisfiable. Balance conservation is only
+      tested for internal split (publicAmount=0, line 121). This is why
+      C3 (unsatisfiable split-withdrawal) went undetected.
+
+
+T5: NO TEST FOR decompose() PRODUCING > 8 CHUNKS
+    File: denominations.test.ts
+
+    Description:
+      No test verifies behavior when decompose() returns more chunks than
+      the split circuit can handle (max 8 outputs). Amounts like 29.99 ETH
+      would produce 12 chunks.
+
+
+================================================================================
+VERIFIED — WORKING CORRECTLY
+================================================================================
+
+The following were audited and found to be correctly implemented:
+
+  [OK] DustPoolV2.sol — Step 1 deposit screening (IComplianceOracle,
+       depositTimestamp, depositOriginator, COOLDOWN_PERIOD, DepositBlocked,
+       DepositScreened, ComplianceOracleUpdated)
+
+  [OK] DustPoolV2.sol — Step 3 compliance (complianceVerifier, exclusionRoots
+       circular buffer, verifyComplianceProof with BN254 field guards,
+       _checkComplianceGate, ComplianceProofVerified event)
+
+  [OK] DustV2Compliance.circom — ZK exclusion proof circuit (13,543
+       constraints, SMTVerifier(20), 2 public signals, nullifier linkage)
+
+  [OK] IComplianceOracle.sol — Interface correct
+  [OK] ChainalysisScreener.sol — Wraps Chainalysis oracle correctly
+  [OK] TestnetComplianceOracle.sol — Mock with setBlocked() works
+  [OK] FFLONKComplianceVerifier.sol — Verifier deployed and functional
+
+  [OK] DeployV2.s.sol — Deploys with 3 verifiers + oracle address
+  [OK] DustPoolV2Compliance.t.sol — 11 compliance-specific Foundry tests
+  [OK] 126 Foundry tests pass (80 existing + 46 new)
+  [OK] 301+ vitest tests pass
+
+  [OK] Pausable + Ownable2Step on DustPoolV2
+  [OK] chainId as public signal in all 3 circuits
+  [OK] AES-256-GCM note encryption (storage-crypto.ts)
+  [OK] Persistent rate limiting (/tmp/dust-v2-cooldowns.json)
+  [OK] Cross-chain nullifier guard (pending-nullifiers.ts)
+  [OK] Tree checkpoint persistence + health endpoint
+  [OK] Denomination engine — decompose() greedy algorithm correct for ETH
+  [OK] 2-in-8-out split circuit — constraints correct (issue is in TS proof builder)
+  [OK] useV2Withdraw.ts — note selection, underflow guard, atomic DB, receipt check
+  [OK] useV2Transfer.ts — publicAmount=0, correct note indices, atomic DB
+  [OK] R2 circuit assets — all 9 files returning HTTP 200
+
+================================================================================
+PRIORITY ACTION ITEMS
+================================================================================
+
+1. [CRITICAL] Fix leafIndex/pathIndices constraint in Transaction + Split
+   circuits → recompile → redeploy verifiers → redeploy pool
+
+2. [CRITICAL] Fix screenRecipient to fail CLOSED (not open) on error
+
+3. [CRITICAL] Redesign split-withdrawal proof builder — current implementation
+   produces unsatisfiable constraints. Two-step approach needed:
+   (a) Internal split: break large note into denomination notes (publicAmount=0)
+   (b) Batch-withdraw: withdraw each denomination note via 2-in-2-out circuit
+
+4. [HIGH] Add recipient screening to batch-withdraw/route.ts
+
+5. [MEDIUM] Fix publicClient guard in useV2Deposit (fail, don't skip)
+
+6. [MEDIUM] Fix silent error swallow in compliance.ts cooldown check
+
+7. [MEDIUM] Add recipient screening to transfer/route.ts
+
+8. [MEDIUM] Move V2 addresses to chains.ts (single source of truth)
+
+9. [MEDIUM] Fix DustSwap CEI violation in afterSwap
+
+10. [MEDIUM] Wrap useV2Split IndexedDB ops in single transaction
+
+11. [MEDIUM] Add maxChunks parameter to decompose()
+
+12. [LOW] Fix resolveTokenSymbol to handle non-ETH tokens
+
+13. [LOW] Add explicit warning for unknown tokens in getDenominations()
+
+================================================================================
+END OF REPORT
+================================================================================

@@ -7,6 +7,7 @@ import { syncAndPostRoot } from '@/lib/dustpool/v2/relayer-tree'
 import { toBytes32Hex } from '@/lib/dustpool/poseidon'
 import { acquireNullifier, releaseNullifier } from '@/lib/dustpool/v2/pending-nullifiers'
 import { checkCooldown } from '@/lib/dustpool/v2/persistent-cooldown'
+import { screenRecipient } from '@/lib/dustpool/v2/relayer-compliance'
 
 export const maxDuration = 60
 
@@ -95,6 +96,18 @@ export async function POST(req: Request) {
       const recipient = ethers.utils.getAddress(
         '0x' + recipientBigInt.toString(16).padStart(40, '0'),
       )
+
+      // Defense-in-depth: screen recipient if publicAmount > 0 (shouldn't pass the check above, but guards against future changes)
+      if (publicAmount > 0n && recipient !== ethers.constants.AddressZero) {
+        const screenResult = await screenRecipient(recipient, chainId)
+        if (screenResult.blocked) {
+          return NextResponse.json(
+            { error: 'Recipient address is sanctioned' },
+            { status: 403, headers: NO_STORE },
+          )
+        }
+      }
+
       // Transfers have publicAmount=0, no actual token transfer — use address(0)
       const tokenAddress = ethers.constants.AddressZero
 

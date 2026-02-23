@@ -46,11 +46,12 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
 
     try {
       // Pre-deposit compliance screening (no-op if oracle disabled on-chain)
-      if (publicClient) {
-        const complianceResult = await checkDepositorCompliance(publicClient, address, chainId)
-        if (complianceResult.status === 'blocked') {
-          throw new Error(complianceResult.reason)
-        }
+      if (!publicClient) {
+        throw new Error('Provider not available for compliance screening')
+      }
+      const complianceResult = await checkDepositorCompliance(publicClient, address, chainId)
+      if (complianceResult.status === 'blocked') {
+        throw new Error(complianceResult.reason)
       }
 
       const owner = await computeOwnerPubKey(keys.spendingKey)

@@ -120,7 +120,7 @@ contract DustSwapPoolUSDC is MerkleTree {
     /// @notice Release deposited USDC for a private swap
     /// @dev Only callable by authorized routers or DustSwapHook.
     /// @param amount Amount of USDC to release
-    function releaseForSwap(uint256 amount) external {
+    function releaseForSwap(uint256 amount) external nonReentrant {
         if (!authorizedRouters[msg.sender] && msg.sender != dustSwapHook) revert Unauthorized();
         uint256 balance = usdc.balanceOf(address(this));
         if (balance < amount) revert InsufficientPoolBalance();

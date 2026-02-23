@@ -317,17 +317,16 @@ export async function buildTransferInputs(
 const N_SPLIT_OUTPUTS = 8
 
 /**
- * Build circuit inputs for a 2-in-8-out denomination split.
+ * Build circuit inputs for a 2-in-8-out internal denomination split.
  *
  * - Input 0 is the note being consumed; input 1 is dummy.
  * - Outputs: one note per chunk, optional change note, padded with dummies to 8.
- * - For withdrawal: publicAmount = field-negative sum(chunks), recipient = address.
- * - For internal split: publicAmount = 0, recipient = 0.
+ * - Always internal: publicAmount = 0, recipient = 0 (no value leaves the pool).
+ * - External withdrawal happens in a separate batch-withdraw step using standard 2-in-2-out proofs.
  */
 export async function buildSplitInputs(
   inputNote: NoteCommitmentV2,
   chunks: bigint[],
-  recipient: string,
   keys: V2Keys,
   merkleProof: { pathElements: bigint[]; pathIndices: number[] },
   chainId: number,
@@ -399,17 +398,15 @@ export async function buildSplitInputs(
     }
   }
 
-  const recipientBigInt = BigInt(recipient)
-  const isWithdrawal = recipientBigInt !== 0n
-
+  // Internal split: no value leaves the pool
   const inputs: SplitProofInputs = {
     merkleRoot: currentHash,
     nullifier0,
     nullifier1,
     outputCommitments: commitments,
-    publicAmount: isWithdrawal ? BN254_FIELD_SIZE - totalChunks : 0n,
+    publicAmount: 0n,
     publicAsset: inputNote.note.asset,
-    recipient: recipientBigInt,
+    recipient: 0n,
     chainId: BigInt(chainId),
 
     inOwner: [inputNote.note.owner, dummy.owner],
