@@ -10,8 +10,8 @@ export const docsNav = [
     group: "Core Features",
     items: [
       { href: "/docs/stealth-transfers", label: "Stealth Transfers" },
-      { href: "/docs/privacy-pool", label: "Privacy Pool" },
-      { href: "/docs/privacy-swaps", label: "Privacy Swaps" },
+      { href: "/docs/privacy-pool", label: "ZK-UTXO Pool (FFLONK)" },
+      { href: "/docs/privacy-swaps", label: "Privacy Swaps (Uniswap V4)" },
       { href: "/docs/payment-links", label: "Payment Links" },
     ],
   },
@@ -19,7 +19,7 @@ export const docsNav = [
     group: "Account & Security",
     items: [
       { href: "/docs/eip-7702", label: "Account Types & EIP-7702" },
-      { href: "/docs/key-management", label: "Key Management" },
+      { href: "/docs/key-management", label: "Keys & View Keys" },
       { href: "/docs/compliance", label: "Compliance & Disclosure" },
     ],
   },
