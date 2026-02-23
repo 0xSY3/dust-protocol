@@ -72,7 +72,7 @@ export function V2SwapCard({ chainId }: V2SwapCardProps) {
 
   if (!isConnected) {
     return (
-      <div className="w-full max-w-[620px]">
+      <div className="w-full">
         <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm relative overflow-hidden">
           <CornerAccents />
           <div className="p-6 sm:p-8">
@@ -90,7 +90,7 @@ export function V2SwapCard({ chainId }: V2SwapCardProps) {
 
   if (!v2Config) {
     return (
-      <div className="w-full max-w-[620px]">
+      <div className="w-full">
         <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm relative overflow-hidden">
           <CornerAccents />
           <div className="p-6 sm:p-8">
@@ -116,159 +116,176 @@ export function V2SwapCard({ chainId }: V2SwapCardProps) {
 
   return (
     <>
-      <div className="w-full max-w-[620px]" data-testid="v2-pool-card">
+      <div className="w-full" data-testid="v2-pool-card">
         <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(0,255,65,0.08)] rounded-sm backdrop-blur-sm relative overflow-hidden">
           <CornerAccents />
           <div className="p-6 sm:p-8">
             <V2Header isLoading={isLoading} />
 
-            {/* V2 feature highlight */}
-            <div className="mb-5 text-[10px] text-[rgba(255,255,255,0.4)] font-mono border-l-2 border-[#00FF41] pl-2">
-              Arbitrary amounts &middot; UTXO model &middot; FFLONK proofs
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+              {/* Left Column: Balance & Actions */}
+              <div className="flex flex-col justify-between">
+                <div>
+                  {/* Shielded Balance */}
+                  <div className="mb-5 p-4 rounded-sm bg-[rgba(0,255,65,0.03)] border border-[rgba(0,255,65,0.1)]">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
+                        Shielded Balance
+                      </span>
+                      {unspentCount > 0 && (
+                        <span className="text-[10px] text-[#00FF41] font-mono">
+                          {unspentCount} note{unspentCount !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-bold text-white font-mono tracking-tight">
+                        {isLoading ? "-.----" : displayBalance}
+                      </span>
+                      <span className="text-sm text-[rgba(255,255,255,0.4)] font-mono">ETH</span>
+                    </div>
+                  </div>
 
-            {/* Shielded Balance */}
-            <div className="mb-5 p-4 rounded-sm bg-[rgba(0,255,65,0.03)] border border-[rgba(0,255,65,0.1)]">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
-                  Shielded Balance
-                </span>
-                {unspentCount > 0 && (
-                  <span className="text-[10px] text-[#00FF41] font-mono">
-                    {unspentCount} note{unspentCount !== 1 ? "s" : ""}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold text-white font-mono tracking-tight">
-                  {isLoading ? "-.----" : displayBalance}
-                </span>
-                <span className="text-sm text-[rgba(255,255,255,0.4)] font-mono">ETH</span>
-              </div>
-            </div>
+                  {/* PIN verification */}
+                  {!hasKeys && !showPinInput && (
+                    <button
+                      data-testid="pin-unlock-button"
+                      onClick={() => setShowPinInput(true)}
+                      className="mb-5 w-full p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)] hover:border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.1)] transition-all cursor-pointer text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <LockIcon size={12} color="#f59e0b" />
+                        <span className="text-[11px] text-amber-400 font-mono">
+                          {hasPin ? "Enter PIN to unlock V2 pool" : "Set up PIN to use V2 pool"}
+                        </span>
+                      </div>
+                    </button>
+                  )}
 
-            {/* PIN verification */}
-            {!hasKeys && !showPinInput && (
-              <button
-                data-testid="pin-unlock-button"
-                onClick={() => setShowPinInput(true)}
-                className="mb-5 w-full p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)] hover:border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.1)] transition-all cursor-pointer text-left"
-              >
-                <div className="flex items-center gap-2">
-                  <LockIcon size={12} color="#f59e0b" />
-                  <span className="text-[11px] text-amber-400 font-mono">
-                    {hasPin ? "Enter PIN to unlock V2 pool" : "Set up PIN to use V2 pool"}
-                  </span>
+                  {!hasKeys && showPinInput && (
+                    <div className="mb-5 p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <LockIcon size={12} color="#f59e0b" />
+                        <span className="text-[11px] text-amber-400 font-mono font-bold">Enter 6-digit PIN</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          data-testid="pin-input"
+                          type="password"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={pinInput}
+                          onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                          onKeyDown={handlePinKeyDown}
+                          placeholder="------"
+                          autoFocus
+                          className="flex-1 px-3 py-2 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-sm text-center tracking-[0.3em] focus:outline-none focus:border-amber-400/50 transition-all placeholder-[rgba(255,255,255,0.15)]"
+                        />
+                        <button
+                          data-testid="pin-submit"
+                          onClick={handlePinSubmit}
+                          disabled={pinInput.length !== 6 || isDeriving}
+                          className="px-4 py-2 rounded-sm bg-[rgba(245,158,11,0.12)] border border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.2)] text-xs font-bold text-amber-400 font-mono disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        >
+                          {isDeriving ? (
+                            <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            "UNLOCK"
+                          )}
+                        </button>
+                      </div>
+                      {keyError && (
+                        <p className="mt-2 text-[10px] text-red-400 font-mono">{keyError}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Unlocked indicator + V2 public key */}
+                  {hasKeys && (
+                    <div className="mb-5 flex flex-col gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#00FF41]" />
+                        <span className="text-[10px] text-[#00FF41] font-mono">V2 keys active</span>
+                      </div>
+                      {v2PubKey && (
+                        <div className="flex items-center gap-2 p-2 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)]">
+                          <span className="text-[9px] text-[rgba(255,255,255,0.4)] font-mono shrink-0">YOUR V2 KEY</span>
+                          <span className="text-[10px] text-[rgba(255,255,255,0.6)] font-mono truncate">
+                            {v2PubKey.slice(0, 10)}...{v2PubKey.slice(-6)}
+                          </span>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(v2PubKey).then(() => {
+                                setPubKeyCopied(true);
+                                setTimeout(() => setPubKeyCopied(false), 2000);
+                              }).catch(() => { });
+                            }}
+                            className="shrink-0 px-2 py-0.5 rounded-sm text-[9px] font-mono font-bold transition-all bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.15)] hover:bg-[rgba(0,255,65,0.15)] text-[#00FF41] cursor-pointer"
+                          >
+                            {pubKeyCopied ? "COPIED" : "COPY"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </button>
-            )}
 
-            {!hasKeys && showPinInput && (
-              <div className="mb-5 p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
-                <div className="flex items-center gap-2 mb-2.5">
-                  <LockIcon size={12} color="#f59e0b" />
-                  <span className="text-[11px] text-amber-400 font-mono font-bold">Enter 6-digit PIN</span>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    data-testid="pin-input"
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    value={pinInput}
-                    onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    onKeyDown={handlePinKeyDown}
-                    placeholder="------"
-                    autoFocus
-                    className="flex-1 px-3 py-2 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-sm text-center tracking-[0.3em] focus:outline-none focus:border-amber-400/50 transition-all placeholder-[rgba(255,255,255,0.15)]"
-                  />
+                {/* Action Buttons */}
+                <div className="grid grid-cols-3 gap-3">
                   <button
-                    data-testid="pin-submit"
-                    onClick={handlePinSubmit}
-                    disabled={pinInput.length !== 6 || isDeriving}
-                    className="px-4 py-2 rounded-sm bg-[rgba(245,158,11,0.12)] border border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.2)] text-xs font-bold text-amber-400 font-mono disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                    data-testid="v2-deposit-btn"
+                    onClick={() => setActiveModal("deposit")}
+                    disabled={!hasKeys}
+                    className="py-3 px-3 rounded-sm bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.14)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.12)] transition-all text-sm font-bold text-[#00FF41] font-mono tracking-wider disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    {isDeriving ? (
-                      <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      "UNLOCK"
-                    )}
+                    DEPOSIT
+                  </button>
+                  <button
+                    data-testid="v2-withdraw-btn"
+                    onClick={() => setActiveModal("withdraw")}
+                    disabled={!hasKeys || totalEthBalance === 0n}
+                    className="py-3 px-3 rounded-sm border border-[rgba(255,255,255,0.1)] hover:border-[#00FF41] hover:bg-[rgba(0,255,65,0.06)] hover:shadow-[0_0_15px_rgba(0,255,65,0.08)] transition-all text-sm font-bold text-white hover:text-[#00FF41] font-mono tracking-wider disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    WITHDRAW
+                  </button>
+                  <button
+                    data-testid="v2-transfer-btn"
+                    onClick={() => setActiveModal("transfer")}
+                    disabled={!hasKeys || totalEthBalance === 0n}
+                    className="py-3 px-3 rounded-sm border border-[rgba(255,255,255,0.1)] hover:border-[#00FF41] hover:bg-[rgba(0,255,65,0.06)] hover:shadow-[0_0_15px_rgba(0,255,65,0.08)] transition-all text-sm font-bold text-white hover:text-[#00FF41] font-mono tracking-wider disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    TRANSFER
                   </button>
                 </div>
-                {keyError && (
-                  <p className="mt-2 text-[10px] text-red-400 font-mono">{keyError}</p>
-                )}
               </div>
-            )}
 
-            {/* Unlocked indicator + V2 public key */}
-            {hasKeys && (
-              <div className="mb-5 flex flex-col gap-2">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#00FF41]" />
-                  <span className="text-[10px] text-[#00FF41] font-mono">V2 keys active</span>
+              {/* Right Column: Information */}
+              <div className="flex flex-col">
+                {/* V2 feature highlight */}
+                <div className="mb-5 text-[10px] text-[rgba(255,255,255,0.4)] font-mono border-l-2 border-[#00FF41] pl-2">
+                  Arbitrary amounts &middot; UTXO model &middot; FFLONK proofs
                 </div>
-                {v2PubKey && (
-                  <div className="flex items-center gap-2 p-2 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)]">
-                    <span className="text-[9px] text-[rgba(255,255,255,0.4)] font-mono shrink-0">YOUR V2 KEY</span>
-                    <span className="text-[10px] text-[rgba(255,255,255,0.6)] font-mono truncate">
-                      {v2PubKey.slice(0, 10)}...{v2PubKey.slice(-6)}
-                    </span>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(v2PubKey).then(() => {
-                          setPubKeyCopied(true);
-                          setTimeout(() => setPubKeyCopied(false), 2000);
-                        }).catch(() => {
-                          // Clipboard API unavailable (permission denied, insecure context)
-                        });
-                      }}
-                      className="shrink-0 px-2 py-0.5 rounded-sm text-[9px] font-mono font-bold transition-all bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.15)] hover:bg-[rgba(0,255,65,0.15)] text-[#00FF41]"
-                    >
-                      {pubKeyCopied ? "COPIED" : "COPY"}
-                    </button>
+
+                {/* How it works */}
+                <div className="p-4 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)] flex-1 h-full flex flex-col justify-center">
+                  <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono mb-3">
+                    How V2 Works
+                  </p>
+                  <div className="flex flex-col gap-3 text-[11px] text-[rgba(255,255,255,0.4)] font-mono leading-relaxed">
+                    <div className="flex items-start gap-2">
+                      <span className="text-[#00FF41] font-bold">1</span>
+                      <p>Deposit any amount of ETH into the shielded pool quietly</p>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-[#00FF41] font-bold">2</span>
+                      <p>Withdraw any amount to a fresh address — no link to depositor</p>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-[#00FF41] font-bold">3</span>
+                      <p>Transfer shielded funds to another user fully privately</p>
+                    </div>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                data-testid="v2-deposit-btn"
-                onClick={() => setActiveModal("deposit")}
-                disabled={!hasKeys}
-                className="py-3 px-3 rounded-sm bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.14)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.12)] transition-all text-sm font-bold text-[#00FF41] font-mono tracking-wider disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-[rgba(0,255,65,0.08)] disabled:hover:border-[rgba(0,255,65,0.2)] disabled:hover:shadow-none"
-              >
-                DEPOSIT
-              </button>
-              <button
-                data-testid="v2-withdraw-btn"
-                onClick={() => setActiveModal("withdraw")}
-                disabled={!hasKeys || totalEthBalance === 0n}
-                className="py-3 px-3 rounded-sm border border-[rgba(255,255,255,0.1)] hover:border-[#00FF41] hover:bg-[rgba(0,255,65,0.06)] hover:shadow-[0_0_15px_rgba(0,255,65,0.08)] transition-all text-sm font-bold text-white hover:text-[#00FF41] font-mono tracking-wider disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-[rgba(255,255,255,0.1)] disabled:hover:bg-transparent disabled:hover:text-white disabled:hover:shadow-none"
-              >
-                WITHDRAW
-              </button>
-              <button
-                data-testid="v2-transfer-btn"
-                onClick={() => setActiveModal("transfer")}
-                disabled={!hasKeys || totalEthBalance === 0n}
-                className="py-3 px-3 rounded-sm border border-[rgba(255,255,255,0.1)] hover:border-[#00FF41] hover:bg-[rgba(0,255,65,0.06)] hover:shadow-[0_0_15px_rgba(0,255,65,0.08)] transition-all text-sm font-bold text-white hover:text-[#00FF41] font-mono tracking-wider disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-[rgba(255,255,255,0.1)] disabled:hover:bg-transparent disabled:hover:text-white disabled:hover:shadow-none"
-              >
-                TRANSFER
-              </button>
-            </div>
-
-            {/* How it works */}
-            <div className="mt-5 p-3 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.05)]">
-              <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono mb-2">
-                How V2 Works
-              </p>
-              <div className="flex flex-col gap-1.5 text-[11px] text-[rgba(255,255,255,0.35)] font-mono">
-                <p>1. Deposit any amount of ETH into the shielded pool</p>
-                <p>2. Withdraw any amount to a fresh address — no link to depositor</p>
-                <p>3. Transfer shielded funds to another user privately</p>
+                </div>
               </div>
             </div>
           </div>

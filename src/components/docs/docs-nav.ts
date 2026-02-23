@@ -20,6 +20,7 @@ export const docsNav = [
     items: [
       { href: "/docs/eip-7702", label: "Account Types & EIP-7702" },
       { href: "/docs/key-management", label: "Key Management" },
+      { href: "/docs/compliance", label: "Compliance & Disclosure" },
     ],
   },
   {

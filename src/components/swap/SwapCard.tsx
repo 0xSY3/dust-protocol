@@ -12,7 +12,7 @@ import { checkRelayerHealth, getRelayerInfo, type RelayerInfo } from "@/lib/swap
 import { TokenSelector } from "./TokenSelector";
 import { SwapExecuteModal, type SwapStep } from "./SwapExecuteModal";
 import { DepositModal } from "./DepositModal";
-import { AlertCircleIcon } from "@/components/stealth/icons";
+import { AlertCircleIcon, TokenIcon } from "@/components/stealth/icons";
 import { type StoredSwapNote } from "@/lib/swap/storage/swap-notes";
 
 function formatNoteAmount(amount: bigint, tokenSymbol: string): string {
@@ -385,11 +385,10 @@ export function SwapCard() {
                 <span className="text-xs font-bold font-mono text-white tracking-widest uppercase">
                   PRIVACY_SWAP
                 </span>
-                <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-sm border text-[10px] font-mono font-bold ${
-                  relayerOnline
+                <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-sm border text-[10px] font-mono font-bold ${relayerOnline
                     ? 'bg-[rgba(0,255,65,0.08)] border-[rgba(0,255,65,0.25)] text-[#00FF41]'
                     : 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.3)]'
-                }`}>
+                  }`}>
                   <div className={`w-1.5 h-1.5 rounded-full ${relayerOnline ? 'bg-[#00FF41] animate-pulse' : 'bg-[rgba(255,255,255,0.2)]'}`} />
                   {relayerOnline ? 'ONLINE' : 'OFFLINE'}
                 </div>
@@ -544,11 +543,10 @@ export function SwapCard() {
                 type="button"
                 onClick={() => setShowNoteSelector(!showNoteSelector)}
                 disabled={isSwapping}
-                className={`w-full flex items-center justify-between p-3.5 rounded-sm border bg-[rgba(255,255,255,0.02)] transition-all ${
-                  showNoteSelector
+                className={`w-full flex items-center justify-between p-3.5 rounded-sm border bg-[rgba(255,255,255,0.02)] transition-all ${showNoteSelector
                     ? 'border-[#00FF41] shadow-[0_0_15px_rgba(0,255,65,0.08)]'
                     : 'border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.14)]'
-                } ${isSwapping ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  } ${isSwapping ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className="flex items-center gap-3">
                   {/* Token badge — click to switch token */}
@@ -557,10 +555,10 @@ export function SwapCard() {
                     tabIndex={0}
                     onClick={(e) => { e.stopPropagation(); openTokenSelector("from"); }}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openTokenSelector("from"); } }}
-                    className="w-9 h-9 rounded-sm bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] flex items-center justify-center hover:border-[#00FF41] hover:bg-[rgba(0,255,65,0.08)] transition-all shrink-0 cursor-pointer"
+                    className="shrink-0 cursor-pointer rounded-full overflow-hidden hover:opacity-80 transition-opacity flex items-center justify-center bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)] hover:border-[#00FF41]"
                     title={`Switch token (currently ${fromToken.symbol})`}
                   >
-                    <span className="text-[13px] font-bold text-white">{fromToken.symbol[0]}</span>
+                    <TokenIcon symbol={fromToken.symbol} size={36} />
                   </div>
 
                   <div className="flex flex-col items-start">
@@ -592,9 +590,8 @@ export function SwapCard() {
                     </span>
                   )}
                   <ChevronDownIcon
-                    className={`w-4 h-4 text-[rgba(255,255,255,0.3)] transition-transform duration-200 ${
-                      showNoteSelector ? 'rotate-180 !text-[#00FF41]' : ''
-                    }`}
+                    className={`w-4 h-4 text-[rgba(255,255,255,0.3)] transition-transform duration-200 ${showNoteSelector ? 'rotate-180 !text-[#00FF41]' : ''
+                      }`}
                   />
                 </div>
               </button>
@@ -623,8 +620,8 @@ export function SwapCard() {
                           className="w-full flex items-center justify-between px-4 py-3 hover:bg-[rgba(0,255,65,0.04)] transition-colors border-b border-[rgba(255,255,255,0.04)] last:border-0 group/item"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-7 h-7 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] flex items-center justify-center group-hover/item:border-[rgba(0,255,65,0.3)] transition-colors shrink-0">
-                              <span className="text-[11px] font-bold text-white group-hover/item:text-[#00FF41]">{note.tokenSymbol[0]}</span>
+                            <div className="shrink-0 rounded-full overflow-hidden flex items-center justify-center bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] group-hover/item:border-[rgba(0,255,65,0.3)] transition-colors">
+                              <TokenIcon symbol={note.tokenSymbol} size={28} />
                             </div>
                             <div className="flex flex-col items-start">
                               <span className="text-[13px] font-bold font-mono text-white group-hover/item:text-[#00FF41]">
@@ -665,14 +662,13 @@ export function SwapCard() {
                   <button
                     type="button"
                     onClick={() => setShowToTokenDropdown((v) => !v)}
-                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-sm border transition-all ${
-                      showToTokenDropdown
+                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-sm border transition-all ${showToTokenDropdown
                         ? 'bg-[rgba(0,255,65,0.08)] border-[rgba(0,255,65,0.3)]'
                         : 'bg-[rgba(255,255,255,0.04)] border-[rgba(255,255,255,0.08)] hover:border-[rgba(0,255,65,0.25)] hover:bg-[rgba(0,255,65,0.05)]'
-                    }`}
+                      }`}
                   >
-                    <div className="w-6 h-6 rounded-sm bg-[rgba(255,255,255,0.08)] flex items-center justify-center">
-                      <span className="text-[10px] font-bold text-white">{toToken.symbol[0]}</span>
+                    <div className="shrink-0 rounded-full overflow-hidden flex items-center justify-center">
+                      <TokenIcon symbol={toToken.symbol} size={24} />
                     </div>
                     <span className="text-[13px] font-bold font-mono text-white">{toToken.symbol}</span>
                     <ChevronDownIcon className={`w-3 h-3 text-[rgba(255,255,255,0.35)] transition-transform duration-150 ${showToTokenDropdown ? 'rotate-180 !text-[#00FF41]' : ''}`} />
@@ -687,12 +683,11 @@ export function SwapCard() {
                             key={t.symbol}
                             type="button"
                             onClick={() => { handleTokenSelect(t); setShowToTokenDropdown(false); }}
-                            className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[rgba(0,255,65,0.05)] border-b border-[rgba(255,255,255,0.04)] last:border-0 ${
-                              toToken.symbol === t.symbol ? 'bg-[rgba(0,255,65,0.04)]' : ''
-                            }`}
+                            className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[rgba(0,255,65,0.05)] border-b border-[rgba(255,255,255,0.04)] last:border-0 ${toToken.symbol === t.symbol ? 'bg-[rgba(0,255,65,0.04)]' : ''
+                              }`}
                           >
-                            <div className="w-6 h-6 rounded-sm bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.08)] flex items-center justify-center shrink-0">
-                              <span className="text-[10px] font-bold text-white">{t.symbol[0]}</span>
+                            <div className="shrink-0 rounded-full overflow-hidden flex items-center justify-center transition-colors group-hover/item:border-[rgba(0,255,65,0.3)] border border-transparent">
+                              <TokenIcon symbol={t.symbol} size={24} />
                             </div>
                             <span className="text-[12px] font-bold font-mono text-white">{t.symbol}</span>
                             {toToken.symbol === t.symbol && (
@@ -710,9 +705,8 @@ export function SwapCard() {
                     <div className="w-4 h-4 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
-                      <span className={`text-2xl font-bold font-mono leading-none ${
-                        toAmount ? 'text-[#00FF41]' : 'text-[rgba(255,255,255,0.12)]'
-                      }`}>
+                      <span className={`text-2xl font-bold font-mono leading-none ${toAmount ? 'text-[#00FF41]' : 'text-[rgba(255,255,255,0.12)]'
+                        }`}>
                         {toAmount || '—'}
                       </span>
                       <span className="text-[9px] text-[rgba(255,255,255,0.25)] font-mono mt-1">
@@ -762,8 +756,8 @@ export function SwapCard() {
                           priceImpact < 1
                             ? "#00FF41"
                             : priceImpact < 3
-                            ? "#FFB000"
-                            : "rgb(239,68,68)",
+                              ? "#FFB000"
+                              : "rgb(239,68,68)",
                       }}
                     >
                       {priceImpact.toFixed(2)}%
@@ -792,15 +786,14 @@ export function SwapCard() {
                 swapState === "error"
                   ? resetSwapState
                   : buttonDisabled
-                  ? undefined
-                  : handleSwap
+                    ? undefined
+                    : handleSwap
               }
               disabled={swapState !== "error" && buttonDisabled}
               className={`w-full mt-5 py-3 px-4 rounded-sm font-bold font-mono text-sm tracking-wider transition-all
-                ${
-                  swapState !== "error" && buttonDisabled
-                    ? "bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.25)] cursor-not-allowed opacity-50"
-                    : "bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] text-[#00FF41] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] cursor-pointer"
+                ${swapState !== "error" && buttonDisabled
+                  ? "bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.25)] cursor-not-allowed opacity-50"
+                  : "bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] text-[#00FF41] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] cursor-pointer"
                 }
               `}
             >

@@ -1,6 +1,7 @@
 'use client'
 
 import { DollarSignIcon, ShieldIcon, BarChart3Icon } from 'lucide-react'
+import { ETHIcon, USDCIcon } from '@/components/stealth/icons'
 
 interface PoolStatsProps {
   currentPrice: number | null
@@ -86,8 +87,8 @@ export function PoolStats({
             />
           </div>
           <div className="flex justify-between text-[10px] font-mono text-[rgba(255,255,255,0.3)]">
-            <span>{formatNumber(ethReserve, 2)} E</span>
-            <span>{formatNumber(usdcReserve, 0)} U</span>
+            <span className="flex items-center gap-1"><ETHIcon size={12} /> {formatNumber(ethReserve, 2)}</span>
+            <span className="flex items-center gap-1"><USDCIcon size={12} /> {formatNumber(usdcReserve, 0)}</span>
           </div>
         </div>
       </div>
@@ -98,10 +99,14 @@ export function PoolStats({
           <BarChart3Icon className={iconClass} />
           <span className={labelClass}>Oracle</span>
         </div>
-        <span className="text-sm font-bold text-white font-mono tracking-tight">
-          <span className="hidden md:block">1 ETH<br />≈ {currentPrice != null ? formatNumber(currentPrice, 2) : '—'}<br />USDC</span>
-          <span className="md:hidden">1E ≈ {currentPrice != null ? formatNumber(currentPrice, 0) : '—'} U</span>
-        </span>
+        <div className="text-sm font-bold text-white font-mono tracking-tight">
+          <div className="hidden md:flex flex-col items-center gap-0.5">
+            <span className="flex items-center gap-1">1 <ETHIcon size={14} /></span>
+            <span>≈ {currentPrice != null ? formatNumber(currentPrice, 2) : '—'}</span>
+            <USDCIcon size={14} />
+          </div>
+          <span className="md:hidden flex items-center gap-1">1 <ETHIcon size={12} /> ≈ {currentPrice != null ? formatNumber(currentPrice, 0) : '—'} <USDCIcon size={12} /></span>
+        </div>
         {poolTick !== undefined && (
           <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
             tick {poolTick}

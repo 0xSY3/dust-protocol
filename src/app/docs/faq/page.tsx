@@ -26,7 +26,7 @@ const faqs = [
   },
   {
     q: "How long does ZK proof generation take?",
-    a: "DustPool and DustSwap proofs are Groth16 (BN254) and take approximately 1–2 seconds in a modern browser using snarkjs + WASM. The large proving key file (~50MB) is downloaded once and cached by the browser.",
+    a: "DustPool V2 proofs use FFLONK (no trusted setup) and take approximately 2–3 seconds for the standard 2-in-2-out circuit. Split circuit proofs (2-in-8-out for denomination privacy) take 4–5 seconds. DustSwap proofs use Groth16 and take ~1–2 seconds. The proving key files (~50MB) are downloaded once and cached by the browser.",
   },
   {
     q: "Is the ZK proof generated on my device?",
@@ -34,7 +34,7 @@ const faqs = [
   },
   {
     q: "What is the anonymity set for DustPool withdrawals?",
-    a: "The anonymity set is the number of deposits in the Merkle tree at the time you generate your withdrawal proof. A proof references a specific root — the set is everyone who deposited before that root was valid. The dashboard shows the current tree size. Waiting for more deposits before withdrawing increases your privacy.",
+    a: "In DustPool V2, the anonymity set is the number of notes in the off-chain Merkle tree at the time you generate your proof. V2 uses a UTXO model — each deposit creates a note, and the proof references a specific Merkle root. The set includes all notes inserted before that root. Because V2 supports arbitrary amounts (unlike fixed-denomination mixers), the anonymity set grows with every deposit regardless of amount.",
   },
   {
     q: "Can I use Dust on mobile?",
@@ -54,7 +54,39 @@ const faqs = [
   },
   {
     q: "Are there audits?",
-    a: "Dust Protocol is in active testnet development. The contracts have not been audited. Do not use mainnet funds. Audit engagements will be announced before any mainnet deployment.",
+    a: "Dust Protocol has undergone an internal security audit covering circuits, contracts, relayer, and frontend. 16 findings were identified and resolved across critical, high, medium, and low severity levels. The contracts include security hardening: Pausable, Ownable2Step, chainId binding, solvency tracking, and compliance screening. A formal third-party audit is planned before mainnet deployment. Do not use mainnet funds on testnet.",
+  },
+  {
+    q: "What is the difference between DustPool V1 and V2?",
+    a: "V1 uses a simple mixer model with Groth16 proofs and a fixed commitment structure (Poseidon of nullifier, secret, and amount). V2 uses a ZK-UTXO model with FFLONK proofs (no trusted setup), arbitrary-amount deposits, a 2-in-2-out transaction circuit, and a 2-in-8-out split circuit for denomination privacy. V2 also adds compliance screening (Chainalysis oracle), deposit cooldowns, and encrypted note storage.",
+  },
+  {
+    q: "What is FFLONK?",
+    a: "FFLONK is a zero-knowledge proof system that requires no trusted setup ceremony (unlike Groth16). It is 22% cheaper to verify on-chain than Groth16 when there are 8+ public signals. DustPool V2 uses FFLONK for all pool proofs. DustSwap still uses Groth16.",
+  },
+  {
+    q: "What is the deposit cooldown?",
+    a: "After depositing to DustPoolV2, there is a 1-hour cooldown period during which withdrawals can only go to the original depositor's address. After the cooldown expires, funds can be withdrawn to any address. This gives compliance systems time to flag suspicious deposits before funds can be mixed.",
+  },
+  {
+    q: "What are view keys?",
+    a: "A view key is a pair of values (ownerPubKey + nullifierKey) derived from your stealth keys that allows a third party to verify your transaction history without gaining spending authority. You can generate a disclosure report from Settings that lists all your notes with Poseidon commitment verification. Useful for tax reporting, audits, or regulatory compliance.",
+  },
+  {
+    q: "Can a view key holder spend my funds?",
+    a: "No. The view key contains the ownerPubKey and nullifierKey but not the spending key. The holder can see all your deposits, transfers, and which notes are spent, but cannot generate valid withdrawal proofs. Only the spending key (derived from wallet signature + PIN) can authorize fund movement.",
+  },
+  {
+    q: "What is denomination privacy?",
+    a: "When you withdraw a specific amount (e.g., 7.3 ETH), the amount itself can be used to correlate your deposit and withdrawal. The split circuit breaks withdrawals into common denomination chunks (10, 5, 3, 2, 1, 0.5, etc.) submitted as separate transactions with randomized timing. An observer sees only standard-looking amounts with no obvious pattern linking them to your original deposit.",
+  },
+  {
+    q: "Are deposits screened for sanctions compliance?",
+    a: "Yes. DustPoolV2 integrates with the Chainalysis sanctions oracle. Every deposit checks the depositor's address against the sanctions list. If the address is flagged, the transaction reverts. This prevents sanctioned funds from entering the privacy pool while preserving privacy for legitimate users.",
+  },
+  {
+    q: "What happens if I deposit during a chain reorganization?",
+    a: "The contract maintains a root history (100 past roots). Your proof can reference any recent valid root. If a reorg invalidates the latest root, older roots remain valid. The relayer also maintains tree checkpoints for recovery.",
   },
   {
     q: "Is the code open source?",
@@ -62,11 +94,11 @@ const faqs = [
   },
   {
     q: "How do I back up my deposit notes?",
-    a: "Go to Wallet in the navbar. There is an export option for your DustPool and DustSwap deposit notes. Store the exported JSON in a password manager or encrypted storage. Do not share it — these notes are bearer instruments: anyone who has them can generate a withdrawal proof.",
+    a: "V2 deposit notes are encrypted with AES-256-GCM and stored in your browser's IndexedDB (not plaintext localStorage like V1). Go to Settings to export your notes. Store the exported data in a password manager or encrypted storage. Notes are bearer instruments — anyone with the decrypted note data can generate a withdrawal proof.",
   },
 ];
 
-export const metadata = docsMetadata("FAQ — Stealth Addresses, Privacy Pools & ZK Proofs", "Frequently asked questions about Dust Protocol privacy, gas costs, ZK proof generation, supported tokens, .dust names, and security.", "/docs/faq");
+export const metadata = docsMetadata("FAQ — Stealth Addresses, Privacy Pools & ZK Proofs", "Frequently asked questions about Dust Protocol privacy, V2 ZK-UTXO pools, FFLONK proofs, compliance screening, view keys, gas costs, and security.", "/docs/faq");
 
 export default function FaqPage() {
   const faqJsonLd = faqPageJsonLd(faqs.map(f => ({ question: f.q, answer: f.a })));

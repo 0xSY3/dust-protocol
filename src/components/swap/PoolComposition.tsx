@@ -1,5 +1,7 @@
 'use client'
 
+import { ETHIcon, USDCIcon } from '@/components/stealth/icons'
+
 interface PoolCompositionProps {
   ethReserve: string
   usdcReserve: string
@@ -66,14 +68,12 @@ export function PoolComposition({ ethReserve, usdcReserve }: PoolCompositionProp
         </div>
         <div className="flex justify-between text-[11px] font-mono">
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-sm bg-[#00FF41] opacity-60 shrink-0" />
+            <ETHIcon size={14} />
             <span className="text-[rgba(255,255,255,0.7)] font-bold">{formatReserve(ethReserve, false)}</span>
-            <span className="text-[rgba(255,255,255,0.3)]">ETH</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-sm bg-[rgba(255,255,255,0.2)] shrink-0" />
+            <USDCIcon size={14} />
             <span className="text-[rgba(255,255,255,0.7)] font-bold">{formatReserve(usdcReserve, true)}</span>
-            <span className="text-[rgba(255,255,255,0.3)]">USDC</span>
           </div>
         </div>
       </div>
@@ -81,22 +81,16 @@ export function PoolComposition({ ethReserve, usdcReserve }: PoolCompositionProp
       {/* Labels — desktop only */}
       <div className="hidden md:flex flex-col gap-2 mt-3 text-xs font-mono items-center">
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-sm bg-[#00FF41] opacity-60 shrink-0" />
-          <div className="flex flex-col items-center">
-            <span className="text-[rgba(255,255,255,0.7)] font-bold">
-              {formatReserve(ethReserve, false)}
-            </span>
-            <span className="text-[rgba(255,255,255,0.3)]">ETH</span>
-          </div>
+          <ETHIcon size={16} />
+          <span className="text-[rgba(255,255,255,0.7)] font-bold">
+            {formatReserve(ethReserve, false)}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-sm bg-[rgba(255,255,255,0.2)] shrink-0" />
-          <div className="flex flex-col items-center">
-            <span className="text-[rgba(255,255,255,0.7)] font-bold">
-              {formatReserve(usdcReserve, true)}
-            </span>
-            <span className="text-[rgba(255,255,255,0.3)]">USDC</span>
-          </div>
+          <USDCIcon size={16} />
+          <span className="text-[rgba(255,255,255,0.7)] font-bold">
+            {formatReserve(usdcReserve, true)}
+          </span>
         </div>
       </div>
     </div>

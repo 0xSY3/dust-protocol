@@ -10,7 +10,7 @@ import { techArticleJsonLd } from "@/lib/seo/jsonLd";
  * XSS-safe: all values below are hardcoded string literals defined in this file.
  * safeJsonLd() in jsonLd.ts escapes '<' as \u003c. No user input flows into this data.
  */
-const articleLd = techArticleJsonLd("Overview — Privacy Protocol for Ethereum", "Dust Protocol provides stealth addresses (ERC-5564), ZK privacy pools, private token swaps, and gasless claims. Non-custodial privacy for Ethereum.", "/docs/overview");
+const articleLd = techArticleJsonLd("Overview — Privacy Protocol for Ethereum", "Dust Protocol provides stealth addresses (ERC-5564), ZK-UTXO privacy pools with FFLONK proofs, private token swaps, compliance screening, and gasless claims. Non-custodial privacy for Ethereum.", "/docs/overview");
 
 const features = [
   {
@@ -21,9 +21,9 @@ const features = [
     color: "green",
   },
   {
-    badge: "ZK / Groth16",
+    badge: "ZK-UTXO / FFLONK",
     title: "Privacy Pool",
-    desc: "Deposit multiple stealth wallets into a shared pool. Withdraw to any address with a zero-knowledge proof — no on-chain link between deposit and withdrawal.",
+    desc: "Deposit arbitrary amounts into a global UTXO pool. Withdraw with a FFLONK zero-knowledge proof — no fixed denominations, no on-chain link between deposit and withdrawal. Split withdrawals break amount fingerprinting.",
     href: "/docs/privacy-pool",
     color: "green",
   },
@@ -33,6 +33,13 @@ const features = [
     desc: "Swap tokens without revealing which deposit you're spending. ZK proof is passed as hookData to a Uniswap V4 hook — verification and swap are atomic.",
     href: "/docs/privacy-swaps",
     color: "green",
+  },
+  {
+    badge: "Chainalysis / View Keys",
+    title: "Compliance & Disclosure",
+    desc: "Built-in deposit screening via Chainalysis oracle, 1-hour cooldown periods, and voluntary view keys for selective disclosure. Privacy with accountability.",
+    href: "/docs/compliance",
+    color: "amber",
   },
   {
     badge: "ERC-4337",
@@ -57,7 +64,7 @@ const features = [
   },
 ] as const;
 
-export const metadata = docsMetadata("Overview — Privacy Protocol for Ethereum", "Dust Protocol provides stealth addresses (ERC-5564), ZK privacy pools, private token swaps, and gasless claims. Non-custodial privacy for Ethereum.", "/docs/overview");
+export const metadata = docsMetadata("Overview — Privacy Protocol for Ethereum", "Dust Protocol provides stealth addresses (ERC-5564), ZK-UTXO privacy pools with FFLONK proofs, private token swaps, compliance screening, and gasless claims. Non-custodial privacy for Ethereum.", "/docs/overview");
 
 export default function OverviewPage() {
   /* articleLd contains only hardcoded string literals from this file, escaped by safeJsonLd */
@@ -94,6 +101,11 @@ export default function OverviewPage() {
           <strong className="text-white">Privacy Swaps</strong> layers go further: even the act of consolidating
           multiple stealth payments or swapping tokens leaves no traceable fingerprint, thanks to in-browser{" "}
           <strong className="text-white">zero-knowledge proofs</strong>.
+        </p>
+        <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed mt-4">
+          <strong className="text-white">Dust V2</strong> introduces a ZK-UTXO model with arbitrary-amount deposits,
+          FFLONK proofs (no trusted setup), split withdrawals for denomination privacy, and built-in compliance
+          screening — making it possible to prove legitimacy without sacrificing privacy.
         </p>
       </section>
 

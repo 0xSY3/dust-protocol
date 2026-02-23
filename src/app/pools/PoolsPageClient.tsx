@@ -573,6 +573,7 @@ export default function PoolsPageClient() {
   const [ethDepositCount, setEthDepositCount] = useState(0);
   const [usdcDepositCount, setUsdcDepositCount] = useState(0);
   const [countsLoading, setCountsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"swap" | "global">("swap");
 
   const fetchCounts = useCallback(async () => {
     setCountsLoading(true);
@@ -692,199 +693,216 @@ export default function PoolsPageClient() {
 
   return (
     <div className="min-h-screen p-4 md:p-8 relative">
-      <div className="max-w-[900px] mx-auto flex flex-col gap-8">
+      <div className="max-w-[900px] mx-auto flex flex-col gap-6">
         <div>
           <h1 className="text-[28px] font-bold text-white tracking-tight mb-1 font-mono">[Privacy Pools]</h1>
           <p className="text-sm text-[rgba(255,255,255,0.5)] font-mono">Manage your shielded balances and swap pool deposits</p>
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-[0.25em] font-mono">Global Pool</span>
-            <span className="px-1.5 py-0.5 rounded-sm bg-[rgba(0,255,65,0.15)] text-[9px] text-[#00FF41] font-mono font-bold">V2</span>
-          </div>
-          <div className="p-4 rounded-sm bg-[rgba(0,255,65,0.04)] border border-[rgba(0,255,65,0.12)]">
-            <p className="text-[13px] text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
-              Deposit any amount of ETH into a single global pool. Transfer privately between users with hidden amounts,
-              or withdraw to a fresh address with no link to the depositor. All operations use ZK proofs (FFLONK).
-            </p>
-          </div>
-          <div className="flex justify-center">
-            <V2SwapCard chainId={activeChainId} />
-          </div>
+        <div className="flex gap-6 border-b border-[rgba(255,255,255,0.08)] mb-2">
+          <button
+            className={`pb-3 text-sm font-bold font-mono transition-all cursor-pointer border-b-2 flex items-center gap-2 ${activeTab === "swap"
+                ? "border-[#00FF41] text-white"
+                : "border-transparent text-[rgba(255,255,255,0.5)] hover:text-[rgba(255,255,255,0.8)]"
+              }`}
+            onClick={() => setActiveTab("swap")}
+          >
+            Swap Pools <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-bold ${activeTab === "swap" ? "bg-[rgba(255,255,255,0.1)] text-[rgba(255,255,255,0.8)]" : "bg-[rgba(255,255,255,0.05)] text-[rgba(255,255,255,0.4)]"}`}>V1</span>
+          </button>
+          <button
+            className={`pb-3 text-sm font-bold font-mono transition-all cursor-pointer border-b-2 flex items-center gap-2 ${activeTab === "global"
+                ? "border-[#00FF41] text-white"
+                : "border-transparent text-[rgba(255,255,255,0.5)] hover:text-[rgba(255,255,255,0.8)]"
+              }`}
+            onClick={() => setActiveTab("global")}
+          >
+            Global Pool <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-bold ${activeTab === "global" ? "bg-[rgba(0,255,65,0.15)] text-[#00FF41]" : "bg-[rgba(255,255,255,0.05)] text-[rgba(255,255,255,0.4)]"}`}>V2</span>
+          </button>
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-[0.25em] font-mono">Swap Pools</span>
-              <span className="px-1.5 py-0.5 rounded-sm bg-[rgba(255,255,255,0.08)] text-[9px] text-[rgba(255,255,255,0.5)] font-mono font-bold">V1</span>
+        {activeTab === "global" && (
+          <div className="flex flex-col gap-4 animate-in fade-in duration-300">
+            <div className="p-3 rounded-sm bg-[rgba(0,255,65,0.04)] border border-[rgba(0,255,65,0.12)]">
+              <p className="text-[12px] text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
+                Deposit any amount of ETH into a single global pool. Transfer privately between users with hidden amounts,
+                or withdraw to a fresh address with no link to the depositor. All operations use ZK proofs (FFLONK).
+              </p>
             </div>
-            {swapSupported && (
-              <button
-                className="flex items-center gap-1.5 px-4 py-2 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] transition-all text-sm font-bold text-[#00FF41] font-mono tracking-wider shrink-0"
-                onClick={() => handleDeposit(pools[0])}
-              >
-                <PlusIcon size={16} color="#00FF41" />
-                New Deposit
-              </button>
-            )}
+            <div className="flex justify-center mt-1">
+              <V2SwapCard chainId={activeChainId} />
+            </div>
           </div>
-          <div className="p-4 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)]">
-            <p className="text-[13px] text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
-              Fixed-denomination pools for private token swaps via Uniswap V4 hooks. Deposits are hidden using
-              Poseidon commitments and withdrawals require ZK-SNARK proofs for sender-receiver unlinkability.
-            </p>
-          </div>
-        </div>
+        )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm p-4 text-center relative">
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
-            <p className="text-[9px] uppercase tracking-wider font-mono text-[rgba(255,255,255,0.5)] mb-1">Total Deposits</p>
-            <p className="text-[22px] font-mono font-bold text-white">
-              {countsLoading
-                ? <span className="inline-block w-4 h-4 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin align-middle" />
-                : totalDeposits}
-            </p>
-          </div>
-
-          <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm p-4 text-center relative">
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
-            <p className="text-[9px] uppercase tracking-wider font-mono text-[rgba(255,255,255,0.5)] mb-1">Active Pools</p>
-            <p className="text-[22px] font-mono font-bold text-white">{activePools}</p>
-          </div>
-
-          <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm p-4 text-center relative">
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
-            <p className="text-[9px] uppercase tracking-wider font-mono text-[rgba(255,255,255,0.5)] mb-1">Your Notes</p>
-            <p className="text-[22px] font-mono font-bold text-white">
-              {notesLoading
-                ? <span className="inline-block w-4 h-4 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin align-middle" />
-                : totalNotes}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <h2 className="text-[18px] font-bold text-white tracking-tight font-mono">[Available Swap Pools]</h2>
-
-          <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-3 px-4 py-2">
-            <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Pool</p>
-            <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Deposits</p>
-            <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Your Notes</p>
-            <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Status</p>
-            <div className="w-[90px]" />
-          </div>
-
-          {pools.map((pool) => (
-            <PoolRow
-              key={pool.id}
-              pool={pool}
-              depositCount={getPoolDepositCount(pool)}
-              isLoading={countsLoading}
-              notesCount={getPoolNotes(pool).length}
-              notesBalance={getPoolNotesBalance(pool)}
-              onDeposit={handleDeposit}
-              onViewStats={handleViewStats}
-            />
-          ))}
-
-          {!swapSupported && isConnected && (
-            <div className="p-4 rounded-sm bg-[rgba(245,158,11,0.08)] border border-[rgba(245,158,11,0.2)]">
-              <div className="flex flex-col gap-3">
-                <div className="flex items-start gap-2.5">
-                  <div className="mt-0.5"><AlertCircleIcon size={16} color="#f59e0b" /></div>
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    <p className="text-[13px] font-semibold text-amber-400 font-mono">
-                      Privacy Pools Only Available on Ethereum Sepolia
-                    </p>
-                    <p className="text-xs text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
-                      DustSwap is currently deployed on Ethereum Sepolia testnet. More chains coming soon!
-                    </p>
-                  </div>
-                </div>
+        {activeTab === "swap" && (
+          <div className="flex flex-col gap-5 animate-in fade-in duration-300">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div className="p-3 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] flex-1">
+                <p className="text-[12px] text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
+                  Fixed-denomination pools for private token swaps via Uniswap V4 hooks. Deposits are hidden using
+                  Poseidon commitments and withdrawals require ZK-SNARK proofs for sender-receiver unlinkability.
+                </p>
+              </div>
+              {swapSupported && (
                 <button
-                  className="w-full py-2.5 rounded-sm bg-[rgba(245,158,11,0.12)] border border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.18)] hover:border-[rgba(245,158,11,0.4)] text-[13px] font-semibold text-amber-400 cursor-pointer transition-all font-mono"
-                  onClick={() => switchChain?.({ chainId: 11155111 })}
+                  className="flex items-center gap-1.5 px-4 py-3 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] transition-all text-sm font-bold text-[#00FF41] font-mono tracking-wider shrink-0 cursor-pointer h-[calc(100%-2px)]"
+                  onClick={() => handleDeposit(pools[0])}
                 >
-                  Switch to Ethereum Sepolia
+                  <PlusIcon size={16} color="#00FF41" />
+                  New Deposit
                 </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm p-4 text-center relative">
+                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)]" />
+                <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)]" />
+                <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
+                <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
+                <p className="text-[9px] uppercase tracking-wider font-mono text-[rgba(255,255,255,0.5)] mb-1">Total Deposits</p>
+                <p className="text-[22px] font-mono font-bold text-white">
+                  {countsLoading
+                    ? <span className="inline-block w-4 h-4 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin align-middle" />
+                    : totalDeposits}
+                </p>
+              </div>
+
+              <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm p-4 text-center relative">
+                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)]" />
+                <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)]" />
+                <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
+                <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
+                <p className="text-[9px] uppercase tracking-wider font-mono text-[rgba(255,255,255,0.5)] mb-1">Active Pools</p>
+                <p className="text-[22px] font-mono font-bold text-white">{activePools}</p>
+              </div>
+
+              <div className="bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm backdrop-blur-sm p-4 text-center relative">
+                <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)]" />
+                <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)]" />
+                <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
+                <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
+                <p className="text-[9px] uppercase tracking-wider font-mono text-[rgba(255,255,255,0.5)] mb-1">Your Notes</p>
+                <p className="text-[22px] font-mono font-bold text-white">
+                  {notesLoading
+                    ? <span className="inline-block w-4 h-4 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin align-middle" />
+                    : totalNotes}
+                </p>
               </div>
             </div>
-          )}
-        </div>
 
-        {swapSupported && (
-          <div className="p-4 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)]">
-            <p className="text-[9px] uppercase tracking-wider font-mono text-[rgba(255,255,255,0.5)] mb-3">Contract Addresses</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {contracts.dustSwapPoolETH && (
-                <div>
-                  <p className="text-[11px] text-[rgba(255,255,255,0.4)] mb-1 font-mono">ETH Privacy Pool</p>
-                  <a
-                    href={`${explorerBase}/address/${contracts.dustSwapPoolETH}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 no-underline"
-                  >
-                    <span className="text-xs font-mono text-[#00FF41]">{shortenAddress(contracts.dustSwapPoolETH)}</span>
-                    <ExternalLinkIcon size={11} color="#00FF41" />
-                  </a>
-                </div>
-              )}
-              {contracts.dustSwapPoolUSDC && (
-                <div>
-                  <p className="text-[11px] text-[rgba(255,255,255,0.4)] mb-1 font-mono">USDC Privacy Pool</p>
-                  <a
-                    href={`${explorerBase}/address/${contracts.dustSwapPoolUSDC}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 no-underline"
-                  >
-                    <span className="text-xs font-mono text-[#00FF41]">{shortenAddress(contracts.dustSwapPoolUSDC)}</span>
-                    <ExternalLinkIcon size={11} color="#00FF41" />
-                  </a>
-                </div>
-              )}
-              {contracts.dustSwapHook && (
-                <div>
-                  <p className="text-[11px] text-[rgba(255,255,255,0.4)] mb-1 font-mono">DustSwap Hook</p>
-                  <a
-                    href={`${explorerBase}/address/${contracts.dustSwapHook}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 no-underline"
-                  >
-                    <span className="text-xs font-mono text-[#00FF41]">{shortenAddress(contracts.dustSwapHook)}</span>
-                    <ExternalLinkIcon size={11} color="#00FF41" />
-                  </a>
-                </div>
-              )}
-              {contracts.dustSwapVerifier && (
-                <div>
-                  <p className="text-[11px] text-[rgba(255,255,255,0.4)] mb-1 font-mono">ZK Verifier</p>
-                  <a
-                    href={`${explorerBase}/address/${contracts.dustSwapVerifier}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 no-underline"
-                  >
-                    <span className="text-xs font-mono text-[#00FF41]">{shortenAddress(contracts.dustSwapVerifier)}</span>
-                    <ExternalLinkIcon size={11} color="#00FF41" />
-                  </a>
+            <div className="flex flex-col gap-3">
+              <h2 className="text-[18px] font-bold text-white tracking-tight font-mono">[Available Swap Pools]</h2>
+
+              <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-3 px-4 py-2">
+                <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Pool</p>
+                <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Deposits</p>
+                <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Your Notes</p>
+                <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Status</p>
+                <div className="w-[90px]" />
+              </div>
+
+              {pools.map((pool) => (
+                <PoolRow
+                  key={pool.id}
+                  pool={pool}
+                  depositCount={getPoolDepositCount(pool)}
+                  isLoading={countsLoading}
+                  notesCount={getPoolNotes(pool).length}
+                  notesBalance={getPoolNotesBalance(pool)}
+                  onDeposit={handleDeposit}
+                  onViewStats={handleViewStats}
+                />
+              ))}
+
+              {!swapSupported && isConnected && (
+                <div className="p-4 rounded-sm bg-[rgba(245,158,11,0.08)] border border-[rgba(245,158,11,0.2)]">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-start gap-2.5">
+                      <div className="mt-0.5"><AlertCircleIcon size={16} color="#f59e0b" /></div>
+                      <div className="flex flex-col gap-1.5 flex-1">
+                        <p className="text-[13px] font-semibold text-amber-400 font-mono">
+                          Privacy Pools Only Available on Ethereum Sepolia
+                        </p>
+                        <p className="text-xs text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
+                          DustSwap is currently deployed on Ethereum Sepolia testnet. More chains coming soon!
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      className="w-full py-2.5 rounded-sm bg-[rgba(245,158,11,0.12)] border border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.18)] hover:border-[rgba(245,158,11,0.4)] text-[13px] font-semibold text-amber-400 cursor-pointer transition-all font-mono"
+                      onClick={() => switchChain?.({ chainId: 11155111 })}
+                    >
+                      Switch to Ethereum Sepolia
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
+
+            {swapSupported && (
+              <div className="p-4 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)]">
+                <p className="text-[9px] uppercase tracking-wider font-mono text-[rgba(255,255,255,0.5)] mb-3">Contract Addresses</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {contracts.dustSwapPoolETH && (
+                    <div>
+                      <p className="text-[11px] text-[rgba(255,255,255,0.4)] mb-1 font-mono">ETH Privacy Pool</p>
+                      <a
+                        href={`${explorerBase}/address/${contracts.dustSwapPoolETH}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 no-underline"
+                      >
+                        <span className="text-xs font-mono text-[#00FF41]">{shortenAddress(contracts.dustSwapPoolETH)}</span>
+                        <ExternalLinkIcon size={11} color="#00FF41" />
+                      </a>
+                    </div>
+                  )}
+                  {contracts.dustSwapPoolUSDC && (
+                    <div>
+                      <p className="text-[11px] text-[rgba(255,255,255,0.4)] mb-1 font-mono">USDC Privacy Pool</p>
+                      <a
+                        href={`${explorerBase}/address/${contracts.dustSwapPoolUSDC}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 no-underline"
+                      >
+                        <span className="text-xs font-mono text-[#00FF41]">{shortenAddress(contracts.dustSwapPoolUSDC)}</span>
+                        <ExternalLinkIcon size={11} color="#00FF41" />
+                      </a>
+                    </div>
+                  )}
+                  {contracts.dustSwapHook && (
+                    <div>
+                      <p className="text-[11px] text-[rgba(255,255,255,0.4)] mb-1 font-mono">DustSwap Hook</p>
+                      <a
+                        href={`${explorerBase}/address/${contracts.dustSwapHook}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 no-underline"
+                      >
+                        <span className="text-xs font-mono text-[#00FF41]">{shortenAddress(contracts.dustSwapHook)}</span>
+                        <ExternalLinkIcon size={11} color="#00FF41" />
+                      </a>
+                    </div>
+                  )}
+                  {contracts.dustSwapVerifier && (
+                    <div>
+                      <p className="text-[11px] text-[rgba(255,255,255,0.4)] mb-1 font-mono">ZK Verifier</p>
+                      <a
+                        href={`${explorerBase}/address/${contracts.dustSwapVerifier}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 no-underline"
+                      >
+                        <span className="text-xs font-mono text-[#00FF41]">{shortenAddress(contracts.dustSwapVerifier)}</span>
+                        <ExternalLinkIcon size={11} color="#00FF41" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

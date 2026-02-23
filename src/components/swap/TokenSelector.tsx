@@ -2,7 +2,7 @@
 
 import React from "react";
 import { SUPPORTED_TOKENS, type SwapToken } from "@/lib/swap/constants";
-import { XIcon } from "@/components/stealth/icons";
+import { XIcon, TokenIcon } from "@/components/stealth/icons";
 
 const AVAILABLE_TOKENS = Object.values(SUPPORTED_TOKENS);
 
@@ -85,11 +85,7 @@ export function TokenSelector({
                 ].join(" ")}
               >
                 {/* Token icon */}
-                <div className="w-10 h-10 rounded-full bg-[#0D0F17] flex items-center justify-center flex-shrink-0">
-                  <span className="text-[14px] font-bold text-[rgba(255,255,255,0.92)] font-mono">
-                    {token.symbol.charAt(0)}
-                  </span>
-                </div>
+                <TokenIcon symbol={token.symbol} size={40} />
 
                 {/* Token info */}
                 <div className="flex-1">

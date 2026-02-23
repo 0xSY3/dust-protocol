@@ -2,6 +2,7 @@
 
 import React from "react";
 import type { SwapToken } from "@/lib/swap/constants";
+import { TokenIcon } from "@/components/stealth/icons";
 
 interface TokenInputProps {
   label: string;
@@ -76,11 +77,7 @@ export function TokenInput({
         >
           {token ? (
             <>
-              <div className="w-6 h-6 rounded-full bg-[#0D0F17] flex items-center justify-center overflow-hidden">
-                <span className="text-[10px] font-bold text-[rgba(255,255,255,0.92)]">
-                  {token.symbol.slice(0, 2)}
-                </span>
-              </div>
+              <TokenIcon symbol={token.symbol} size={24} />
               <span className="font-semibold text-[rgba(255,255,255,0.92)] whitespace-nowrap text-[14px] font-mono">
                 {token.symbol}
               </span>

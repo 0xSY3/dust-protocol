@@ -4,7 +4,7 @@ import { DocsBadge } from "@/components/docs/DocsBadge";
 import { KeyManagement } from "@/components/docs/visuals/KeyManagement";
 import { docsMetadata } from "@/lib/seo/metadata";
 
-export const metadata = docsMetadata("Key Management — Stealth Key Derivation & Security", "How Dust derives stealth keys using PBKDF2 with 100K iterations. Keys stay in browser memory, never persisted to localStorage or sent to servers.", "/docs/key-management");
+export const metadata = docsMetadata("Key Management — Stealth Key Derivation & Security", "How Dust derives stealth keys using PBKDF2 with 100K iterations — including V2 BN254 keys, view keys for selective disclosure, and AES-256-GCM note encryption. Keys stay in browser memory, never persisted to localStorage or sent to servers.", "/docs/key-management");
 
 export default function KeyManagementPage() {
   return (
@@ -75,6 +75,87 @@ viewKey          =  ikm[32:64] (mod secp256k1 order)`}
         </div>
       </section>
 
+      {/* V2 Keys */}
+      <section className="mb-10">
+        <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-3 uppercase">V2 Key Derivation (Privacy Pool)</h2>
+        <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed mb-4">
+          DustPool V2 uses a separate key derivation for its ZK-UTXO model. V2 keys operate on the
+          <strong> BN254 curve</strong> (required for FFLONK proofs) rather than secp256k1.
+        </p>
+
+        <div className="font-mono text-xs leading-relaxed text-[rgba(255,255,255,0.5)] bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm p-5 overflow-x-auto whitespace-pre mb-6">
+          {`walletSignature  =  sign("Dust Protocol stealth keys", wallet)
+salt             =  "dust-stealth-v2"
+ikm              =  PBKDF2-SHA512(
+                      password = walletSignature + PIN,
+                      salt     = salt,
+                      iters    = 100_000,
+                      dkLen    = 64 bytes
+                    )
+spendingSeed     =  ikm[0:32]
+viewingSeed      =  ikm[32:64]
+spendingKey      =  SHA-256(spendingSeed) mod BN254_ORDER
+nullifierKey     =  SHA-256(viewingSeed) mod BN254_ORDER
+ownerPubKey      =  Poseidon(spendingKey)`}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="p-4 border border-[rgba(0,255,65,0.12)] rounded-sm">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[12px] font-mono font-semibold text-white">Spending Key</p>
+              <DocsBadge variant="green">HIGH SENSITIVITY</DocsBadge>
+            </div>
+            <p className="text-xs text-[rgba(255,255,255,0.55)] leading-relaxed">
+              Derives the <code>ownerPubKey</code> (via Poseidon hash) that appears in UTXO commitments.
+              Required to spend notes. The <code>ownerPubKey</code> is public; the spending key is secret.
+            </p>
+          </div>
+          <div className="p-4 border border-[rgba(255,255,255,0.07)] rounded-sm">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[12px] font-mono font-semibold text-white">Nullifier Key</p>
+              <DocsBadge variant="amber">MEDIUM SENSITIVITY</DocsBadge>
+            </div>
+            <p className="text-xs text-[rgba(255,255,255,0.55)] leading-relaxed">
+              Used to compute nullifiers: <code>N = Poseidon(nullifierKey, leafIndex)</code>. Knowing
+              this key allows an auditor to track which notes have been spent — used in view keys for
+              voluntary disclosure.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* View Keys */}
+      <section className="mb-10">
+        <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-3 uppercase">View Keys & Selective Disclosure</h2>
+        <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed mb-4">
+          A <strong>view key</strong> allows a third party (auditor, tax authority, compliance officer) to verify
+          your transaction history without gaining spending authority. It contains the <code>ownerPubKey</code>
+          and <code>nullifierKey</code> — enough to verify commitments and track spent notes, but not enough
+          to move funds.
+        </p>
+
+        <div className="font-mono text-xs leading-relaxed text-[rgba(255,255,255,0.5)] bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm p-5 overflow-x-auto whitespace-pre mb-6">
+          {`ViewKey = {
+  ownerPubKey:   Poseidon(spendingKey)    // public — in commitments
+  nullifierKey:  SHA-256(viewingSeed) mod BN254_ORDER
+}
+
+Serialized as:  dvk1:<hex(ownerPubKey)><hex(nullifierKey)>
+
+Verification:
+  For each note (amount, asset, chainId, blinding):
+    recompute C = Poseidon(ownerPubKey, amount, asset, chainId, blinding)
+    check C == on-chain commitment  ✓`}
+        </div>
+
+        <DocsCallout type="warning" title="View key security">
+          A view key holder can see all your deposits, transfers, and spending patterns. They can compute
+          nullifiers (track which notes are spent). They <strong>cannot</strong> spend your funds — the
+          spending key is not included. Share view keys only with parties you trust to see your full
+          transaction history.
+        </DocsCallout>
+      </section>
+
       {/* Storage */}
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-3 uppercase">What Is Stored Locally</h2>
@@ -96,6 +177,8 @@ viewKey          =  ikm[32:64] (mod secp256k1 order)`}
                 ["DustSwap deposit notes (nullifier + secret)", "localStorage", "HIGH — losing this = losing funds"],
                 ["Payment link definitions", "localStorage", "Low"],
                 ["Claim addresses (HD-derived)", "localStorage", "Low — derivable from keys"],
+                ["V2 deposit notes (encrypted)", "IndexedDB", "HIGH — AES-256-GCM encrypted, key from spendingKey"],
+                ["V2 note encryption key", "Derived on-demand", "Never stored — SHA-256(spendingKey bytes)"],
               ].map(([item, where, sens]) => (
                 <tr key={item} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
                   <td className="py-2.5 pr-6 text-[rgba(255,255,255,0.7)]">{item}</td>
@@ -139,6 +222,11 @@ viewKey          =  ikm[32:64] (mod secp256k1 order)`}
               outcome: "They see deposit notes and cached scan data. They cannot derive stealth keys from localStorage alone (keys are never stored — only re-derived on demand). Deposit notes are bearer instruments — treat localStorage like a physical notepad.",
               severity: "info",
             },
+            {
+              scenario: "I want to share my transaction history with an auditor",
+              outcome: "Generate a view key from Settings → Disclosure. The view key contains your ownerPubKey and nullifierKey — enough for the auditor to verify all your notes and spending, but not enough to move funds. The auditor can independently verify commitments using Poseidon hash checks.",
+              severity: "info",
+            },
           ].map(({ scenario, outcome, severity }) => (
             <div key={scenario} className="border border-[rgba(255,255,255,0.06)] rounded-sm overflow-hidden">
               <div className="px-4 py-2.5 bg-[rgba(255,255,255,0.02)]">
@@ -161,6 +249,8 @@ viewKey          =  ikm[32:64] (mod secp256k1 order)`}
             "Do not share the private view key — it allows others to see all your incoming payments.",
             "The spend key is never stored — it is re-derived each session. This is a feature, not a bug.",
             "Settings → Danger Zone lets you clear all keys and start fresh if your PIN is compromised.",
+            "V2 deposit notes are encrypted with AES-256-GCM in IndexedDB — even browser access doesn't expose note data without your keys.",
+            "View keys allow selective disclosure. Share them only with trusted parties — they reveal your full transaction graph.",
           ].map((tip, i) => (
             <li key={i} className="flex gap-3 text-sm text-[rgba(255,255,255,0.6)]">
               <span className="shrink-0 text-[#00FF41] font-mono text-xs mt-1">→</span>

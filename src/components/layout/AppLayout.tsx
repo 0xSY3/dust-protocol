@@ -7,7 +7,7 @@ import { Navbar } from "./Navbar";
 import { PinGate } from "@/components/auth/PinGate";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isConnected, isOnboarded, isHydrated, address, hasPin,
+  const { isConnected, isOnboarded, isNamesSettled, isHydrated, address, hasPin,
           stealthKeys, autoRestoreFailed } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -33,8 +33,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     if (!isHydrated) return;
     if (!isConnected) { router.replace("/"); return; }
     if (!address) return;
-    if (!isOnboarded) { router.replace("/onboarding"); return; }
-  }, [isConnected, isOnboarded, isHydrated, address, pathname, router]);
+    if (!isOnboarded && isNamesSettled) { router.replace("/onboarding"); return; }
+  }, [isConnected, isOnboarded, isNamesSettled, isHydrated, address, pathname, router]);
 
   if (pathname === "/" || pathname === "/onboarding" || pathname.startsWith("/pay/")) {
     return <>{children}</>;

@@ -10,9 +10,9 @@ import { techArticleJsonLd } from "@/lib/seo/jsonLd";
  * XSS-safe: all values below are hardcoded string literals defined in this file.
  * safeJsonLd() in jsonLd.ts escapes '<' as \u003c. No user input flows into this data.
  */
-const articleLd = techArticleJsonLd("Privacy Swaps — Anonymous Token Exchange via Uniswap V4", "Swap tokens without leaving a traceable on-chain fingerprint. ZK proof verification and the Uniswap V4 swap execute atomically in one transaction.", "/docs/privacy-swaps");
+const articleLd = techArticleJsonLd("Privacy Swaps — Security-Hardened Anonymous Token Exchange via Uniswap V4", "Swap tokens without leaving a traceable on-chain fingerprint. Chain ID binding, Poseidon recipient binding, and relayer fee range checks harden the ZK proof. Verification and the Uniswap V4 swap execute atomically in one transaction.", "/docs/privacy-swaps");
 
-export const metadata = docsMetadata("Privacy Swaps — Anonymous Token Exchange via Uniswap V4", "Swap tokens without leaving a traceable on-chain fingerprint. ZK proof verification and the Uniswap V4 swap execute atomically in one transaction.", "/docs/privacy-swaps");
+export const metadata = docsMetadata("Privacy Swaps — Security-Hardened Anonymous Token Exchange via Uniswap V4", "Swap tokens without leaving a traceable on-chain fingerprint. Chain ID binding, Poseidon recipient binding, and relayer fee range checks harden the ZK proof. Verification and the Uniswap V4 swap execute atomically in one transaction.", "/docs/privacy-swaps");
 
 export default function PrivacySwapsPage() {
   return (
@@ -81,16 +81,19 @@ export default function PrivacySwapsPage() {
           {
             title: "Generate a PrivateSwap Groth16 proof (in-browser)",
             children: <>The browser runs <strong>snarkjs</strong> with the <code>PrivateSwap.circom</code>
-              circuit. Public inputs: <code>root, nullifierHash, recipient, minBlockNumber</code>.
-              Private inputs: <code>nullifier, secret, merkleProof[]</code>. The proof asserts that
-              you know a valid commitment in the tree without revealing which leaf it is.</>,
+              circuit (~12,974 constraints). Public inputs: <code>root, nullifierHash, recipient, relayer,
+              swapAmountOut, minBlockNumber, chainId, relayerFee</code>.
+              Private inputs: <code>nullifier, secret, merkleProof[]</code>. The proof binds the recipient,
+              relayer, swap output, and chain ID together via
+              <code> Poseidon(recipient, relayer, swapAmountOut, chainId)</code> — preventing front-running
+              and cross-chain replay attacks.</>,
           },
           {
             title: "Atomic swap via Uniswap V4 hook",
             children: <>A relayer submits the swap through <code>DustSwapRouter</code>, passing the ZK proof
               as <code>hookData</code> to Uniswap V4.
-              <strong> beforeSwap hook</strong>: proof verified on-chain, nullifier marked spent, block
-              timing enforced.
+              <strong> beforeSwap hook</strong>: chain ID verified (<code>pubSignals[6] == block.chainid</code>),
+              proof verified on-chain via <code>DustSwapVerifier</code>, nullifier marked spent, block timing enforced.
               <strong> afterSwap hook</strong>: output tokens taken from the V4 PoolManager and transferred
               directly to the <code>recipient</code> stealth address.
               Everything is atomic — there is no intermediate transaction that could reveal the link.</>,
@@ -109,13 +112,15 @@ export default function PrivacySwapsPage() {
   ...(50+ blocks later)...
 
   └─ generates ZK proof ──► DustSwapRouter.swap(proof as hookData)
-                                  └─ Uniswap V4 PoolManager
-                                       ├─ beforeSwap ─► DustSwapHook.verify(proof)
-                                       │                   DustSwapPoolETH.releaseForSwap()
-                                       │                   mark nullifier spent
-                                       ├─ swap executes (ETH → USDC or USDC → ETH)
-                                       └─ afterSwap ──► DustSwapHook routes output
-                                                         to stealth recipient address`}
+       (8 public signals:         └─ Uniswap V4 PoolManager
+        root, nullHash,                ├─ beforeSwap ─► DustSwapHook
+        recipient, relayer,            │   ├─ verify chainId == block.chainid
+        swapAmountOut,                 │   ├─ verify SNARK proof
+        minBlock, chainId,             │   ├─ mark nullifier spent
+        relayerFee)                    │   └─ DustSwapPool.releaseForSwap()
+                                       ├─ swap executes (ETH ↔ USDC)
+                                       └─ afterSwap ──► route output
+                                                         to stealth recipient`}
         </div>
       </section>
 
@@ -144,6 +149,18 @@ export default function PrivacySwapsPage() {
               label: "Gas optimization: 51% reduction",
               desc: "O(1) root lookup, hardcoded Poseidon zero hashes, and optimized storage packing save ~247,000 gas per swap.",
             },
+            {
+              label: "Chain ID binding",
+              desc: "The chain ID is a public signal in the proof. A proof generated on Ethereum Sepolia cannot be replayed on Thanos Sepolia or any other chain.",
+            },
+            {
+              label: "Relayer fee range check",
+              desc: "The relayer fee is range-checked to 16 bits inside the circuit, preventing field-wrap bypass attacks where an attacker could set an astronomically high fee.",
+            },
+            {
+              label: "Recipient binding via Poseidon",
+              desc: "The proof binds recipient, relayer, swap output, and chain ID together with Poseidon(recipient, relayer, swapAmountOut, chainId) — preventing front-running.",
+            },
           ].map(({ label, desc }) => (
             <div key={label} className="flex gap-4 p-3 border border-[rgba(255,255,255,0.05)] rounded-sm">
               <div className="shrink-0 w-1 rounded-full bg-[rgba(0,255,65,0.3)]" />
@@ -170,6 +187,8 @@ export default function PrivacySwapsPage() {
           <DocsBadge variant="muted">BN254</DocsBadge>
           <DocsBadge variant="muted">Fixed Denominations</DocsBadge>
           <DocsBadge variant="muted">50-block delay</DocsBadge>
+          <DocsBadge variant="amber">Chain ID Binding</DocsBadge>
+          <DocsBadge variant="muted">Poseidon Binding</DocsBadge>
         </div>
       </section>
     </DocsPage>

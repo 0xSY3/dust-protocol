@@ -241,7 +241,9 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     || graphReturnedEmpty;
   useEffect(() => {
     if (needsLegacyDiscovery && isConnected && isConfigured) loadOwnedNames();
-    else if (needsLegacyDiscovery && (!isConnected || !isConfigured)) setLegacyNamesSettled(true);
+    else if (needsLegacyDiscovery && isConnected && !isConfigured) setLegacyNamesSettled(true);
+    // When !isConnected (Privy still hydrating), do NOT settle — wait for address to resolve.
+    // Line 96 already handles the address=undefined case via setLegacyNamesSettled(!address).
   }, [needsLegacyDiscovery, isConnected, isConfigured, loadOwnedNames]);
 
   // For graph mode, settled = not loading (disabled query also returns loading=false immediately)

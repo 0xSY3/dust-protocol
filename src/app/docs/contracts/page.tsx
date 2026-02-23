@@ -96,6 +96,27 @@ const sepoliaContracts = [
     explorer: "https://sepolia.etherscan.io/address/0xDC839820cc24f312f10945939C4aCa41887FC78F",
   },
   {
+    name: "DustPoolV2",
+    address: "0x03D52fd442965cD6791Ce5AFab78C60671f9558A",
+    role: "V2 ZK-UTXO privacy pool. Arbitrary-amount deposits, FFLONK proof verification, split withdrawals, Chainalysis compliance screening, 1-hour deposit cooldown.",
+    standard: "ZK-UTXO / FFLONK",
+    explorer: "https://sepolia.etherscan.io/address/0x03D52fd442965cD6791Ce5AFab78C60671f9558A",
+  },
+  {
+    name: "DustPoolV2 Verifier (FFLONK)",
+    address: "0xd4B52Fd4CDFCCA41E6F88f1a1AfA9A0B715290e7",
+    role: "On-chain FFLONK proof verifier for DustPoolV2 transaction circuit (2-in-2-out, 9 public signals).",
+    standard: "FFLONK",
+    explorer: "https://sepolia.etherscan.io/address/0xd4B52Fd4CDFCCA41E6F88f1a1AfA9A0B715290e7",
+  },
+  {
+    name: "DustPoolV2 Split Verifier (FFLONK)",
+    address: "0x2c53Ea8983dCA7b2d4cA1aa4ECfBc6e513e0Fc6E",
+    role: "On-chain FFLONK proof verifier for DustPoolV2 split circuit (2-in-8-out, 15 public signals). Used for denomination privacy.",
+    standard: "FFLONK",
+    explorer: "https://sepolia.etherscan.io/address/0x2c53Ea8983dCA7b2d4cA1aa4ECfBc6e513e0Fc6E",
+  },
+  {
     name: "Uniswap V4 PoolManager",
     address: "0x93805603e0167574dFe2F50ABdA8f42C85002FD8",
     role: "Core Uniswap V4 contract. Manages liquidity pools and executes swaps that pass through DustSwapHook.",
@@ -131,6 +152,21 @@ const thanosContracts = [
     name: "DustPool",
     address: "0x16b8c82e3480b1c5B8dbDf38aD61a828a281e2c3",
     explorer: "https://explorer.thanos-sepolia.tokamak.network/address/0x16b8c82e3480b1c5B8dbDf38aD61a828a281e2c3",
+  },
+  {
+    name: "DustPoolV2",
+    address: "0x283800e6394DF6ad17aC53D8d48CD8C0c048B7Ad",
+    explorer: "https://explorer.thanos-sepolia.tokamak.network/address/0x283800e6394DF6ad17aC53D8d48CD8C0c048B7Ad",
+  },
+  {
+    name: "DustPoolV2 Verifier (FFLONK)",
+    address: "0x51B2936AF26Df0f087C18E5B478Ae2bda8AD5325",
+    explorer: "https://explorer.thanos-sepolia.tokamak.network/address/0x51B2936AF26Df0f087C18E5B478Ae2bda8AD5325",
+  },
+  {
+    name: "DustPoolV2 Split Verifier (FFLONK)",
+    address: "0x4031D4559ba1D5878caa8Acc627555748D528AE4",
+    explorer: "https://explorer.thanos-sepolia.tokamak.network/address/0x4031D4559ba1D5878caa8Acc627555748D528AE4",
   },
   {
     name: "EntryPoint",
@@ -178,7 +214,7 @@ export default function ContractsPage() {
                     {"standard" in c && (
                       <DocsBadge variant={
                         c.standard.includes("ERC-4337") ? "amber" :
-                        c.standard.includes("ZK") || c.standard.includes("Groth16") ? "green" :
+                        c.standard.includes("ZK") || c.standard.includes("Groth16") || c.standard.includes("FFLONK") ? "green" :
                         c.standard.includes("Uniswap") ? "blue" :
                         c.standard.includes("EIP-7702") ? "amber" : "muted"
                       }>{c.standard}</DocsBadge>
@@ -211,8 +247,8 @@ export default function ContractsPage() {
           <DocsBadge variant="muted">Tokamak Network</DocsBadge>
         </div>
         <p className="text-xs text-[rgba(255,255,255,0.4)] leading-relaxed mb-4">
-          Thanos Sepolia has core stealth transfer and pool contracts. DustSwap (privacy swaps + Uniswap V4) is
-          currently deployed on Ethereum Sepolia only.
+          Thanos Sepolia has core stealth transfer, V1 pool, and V2 ZK-UTXO pool contracts. DustSwap (privacy swaps + Uniswap V4) is
+          deployed on Ethereum Sepolia only.
         </p>
 
         <div className="space-y-2">
@@ -249,6 +285,10 @@ export default function ContractsPage() {
             { name: "DustPool.sol", path: "contracts/dustpool/src/DustPool.sol", desc: "Privacy pool core contract" },
             { name: "DustSwapHook.sol", path: "contracts/dustswap/src/DustSwapHook.sol", desc: "Uniswap V4 beforeSwap/afterSwap hook" },
             { name: "DustSwapRouter.sol", path: "contracts/dustswap/src/DustSwapRouter.sol", desc: "Privacy swap entry point" },
+            { name: "DustPoolV2.sol", path: "contracts/dustpool/src/DustPoolV2.sol", desc: "V2 ZK-UTXO privacy pool (FFLONK, split withdrawals, compliance)" },
+            { name: "DustV2Transaction.circom", path: "contracts/dustpool/circuits/v2/DustV2Transaction.circom", desc: "2-in-2-out transaction circuit (12,400 constraints)" },
+            { name: "DustV2Split.circom", path: "contracts/dustpool/circuits/v2/DustV2Split.circom", desc: "2-in-8-out split circuit (32,074 constraints)" },
+            { name: "ChainalysisScreener.sol", path: "contracts/dustpool/src/ChainalysisScreener.sol", desc: "Compliance oracle wrapper for deposit screening" },
           ].map(({ name, path, desc }) => (
             <div key={name} className="flex items-center gap-4 px-3 py-2.5 border border-[rgba(255,255,255,0.04)] rounded-sm hover:border-[rgba(255,255,255,0.08)] transition-colors">
               <code className="text-[11px] font-mono text-[#00FF41] shrink-0">{name}</code>

@@ -11,9 +11,9 @@ import { techArticleJsonLd } from "@/lib/seo/jsonLd";
  * safeJsonLd() in jsonLd.ts escapes any '<' characters as \u003c to prevent injection.
  * No user input flows into this JSON-LD — only compile-time constants.
  */
-const articleLd = techArticleJsonLd("Privacy Pool — ZK Proof Withdrawals", "Consolidate stealth payments without creating traceable on-chain links. Deposit to a shared Merkle tree, withdraw with a zero-knowledge proof.", "/docs/privacy-pool");
+const articleLd = techArticleJsonLd("Privacy Pool — ZK Proof Withdrawals", "ZK-UTXO privacy pool with FFLONK proofs, arbitrary-amount deposits, split withdrawals for denomination privacy, and built-in compliance screening.", "/docs/privacy-pool");
 
-export const metadata = docsMetadata("Privacy Pool — ZK Proof Withdrawals", "Consolidate stealth payments without creating traceable on-chain links. Deposit to a shared Merkle tree, withdraw with a zero-knowledge proof.", "/docs/privacy-pool");
+export const metadata = docsMetadata("Privacy Pool — ZK Proof Withdrawals", "ZK-UTXO privacy pool with FFLONK proofs, arbitrary-amount deposits, split withdrawals for denomination privacy, and built-in compliance screening.", "/docs/privacy-pool");
 
 export default function PrivacyPoolPage() {
   return (
@@ -23,7 +23,7 @@ export default function PrivacyPoolPage() {
     <DocsPage
       currentHref="/docs/privacy-pool"
       title="Privacy Pool"
-      subtitle="Consolidate multiple stealth payments into a single address without creating a traceable on-chain link between deposits and withdrawals."
+      subtitle="A ZK-UTXO privacy pool — deposit any amount, withdraw with a FFLONK proof. Split withdrawals prevent amount fingerprinting. No fixed denominations required."
       badge="CORE FEATURE"
     >
 
@@ -36,10 +36,11 @@ export default function PrivacyPoolPage() {
           transactions from 10 different stealth addresses — and immediately knows those wallets belong to you.
         </p>
         <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed">
-          The Privacy Pool (<code className="text-xs bg-[rgba(255,255,255,0.06)] px-1.5 rounded-sm">DustPool</code>)
-          solves this.  You deposit from multiple stealth wallets, mix them with other users' deposits in a shared
-          Merkle tree, then withdraw to any address using a zero-knowledge proof. The proof only reveals that
-          <em> someone</em> in the pool has a valid commitment — not <em>which</em> one is yours.
+          <strong className="text-white">DustPool V2</strong> solves this with a ZK-UTXO model. You deposit any amount — ETH or
+          ERC-20 tokens — into a shared pool. Each deposit creates a UTXO-style note with a Poseidon commitment.
+          To withdraw, you generate a <strong>FFLONK proof</strong> (no trusted setup) that proves you own valid notes
+          without revealing which ones. The 2-in-2-out circuit consumes input notes and creates change notes,
+          just like Bitcoin&apos;s UTXO model but with full privacy.
         </p>
       </section>
 
@@ -53,39 +54,39 @@ export default function PrivacyPoolPage() {
 
         <DocsStepList steps={[
           {
-            title: "Generate a commitment",
-            children: <>Before depositing, your browser generates two random secrets: a <code>nullifier</code> and
-              a <code>secret</code>. It computes a Poseidon commitment:
-              <code> C = Poseidon(Poseidon(nullifier, secret), amount)</code>.
-              Only you know the nullifier and secret. The commitment <code>C</code> is what goes on-chain.</>,
+            title: "Deposit and create a UTXO note",
+            children: <>Your browser generates a random blinding factor and computes a Poseidon commitment:
+              <code> C = Poseidon(ownerPubKey, amount, asset, chainId, blinding)</code>.
+              Call <code>DustPoolV2.deposit(commitment)</code> or <code>depositERC20(token, amount, commitment)</code>.
+              The commitment is added to the relayer&apos;s off-chain Merkle tree. Your <strong>note</strong> (amount, blinding,
+              asset, commitment) is encrypted with AES-256-GCM and stored in IndexedDB — not plaintext localStorage.</>,
           },
           {
-            title: "Deposit ETH + commitment",
-            children: <>Your stealth wallet calls <code>DustPool.deposit(commitment)</code> with the exact ETH amount.
-              The commitment is inserted as a leaf in an on-chain <strong>Poseidon Merkle tree</strong> (depth 20,
-              ~1 million capacity). The Merkle root updates atomically with the deposit.</>,
+            title: "Notes accumulate (UTXO model)",
+            children: <>Each deposit creates an independent note. Unlike V1&apos;s fixed-amount mixer, you can deposit
+              any amount at any time. Notes are like Bitcoin UTXOs — they have a specific value and are consumed
+              whole when spent. The &ldquo;change&rdquo; from a partial withdrawal becomes a new output note.</>,
           },
           {
-            title: "Wait for more deposits (anonymity set grows)",
-            children: <>The longer you wait, the more other users deposit into the same tree — increasing the
-              anonymity set. The pool only reveals <em>which root</em> was used, not which of the ~1M possible
-              leaves is the one being withdrawn.</>,
+            title: "Generate a FFLONK proof (in-browser)",
+            children: <>The browser runs the <strong>2-in-2-out transaction circuit</strong> (~12,400 constraints) to produce
+              a FFLONK proof. Two input notes are consumed, two output notes are created (one for the withdrawal amount,
+              one for change). Public signals: <code>merkleRoot, null0, null1, outC0, outC1, pubAmount, pubAsset,
+              recipient, chainId</code>. The FFLONK system requires <strong>no trusted setup</strong> ceremony.</>,
           },
           {
-            title: "Generate a Groth16 ZK proof (in-browser)",
-            children: <>When you're ready to withdraw, the browser runs{" "}
-              <strong>snarkjs</strong> with the WASM circuit and <code>.zkey</code> proving key to generate a
-              Groth16 proof. This takes ~1–2 seconds on modern hardware. The proof has four public inputs:
-              <code> root</code>, <code>nullifierHash</code>, <code>recipient</code>, <code>amount</code>.
-              The nullifier and secret remain private inputs and are never sent anywhere.</>,
+            title: "Submit to relayer for on-chain verification",
+            children: <>The proof is sent to the relayer (same-origin Next.js API at <code>/api/v2/withdraw</code>).
+              The relayer screens the recipient against the Chainalysis sanctions oracle, then submits to
+              <code> DustPoolV2.withdraw()</code>. The contract verifies the FFLONK proof, checks nullifier freshness,
+              validates chainId binding, confirms solvency, marks nullifiers spent, and transfers funds.</>,
           },
           {
-            title: "Submit proof — contract verifies and pays out",
-            children: <>The proof is sent to <code>DustPool.withdraw(proof, root, nullifierHash, recipient, amount)</code>.
-              The contract: (1) verifies the Groth16 proof on-chain, (2) checks the <code>root</code> exists
-              in its root history, (3) checks <code>nullifierHash</code> has not been spent before, (4) marks
-              the nullifier spent, (5) transfers <code>amount</code> ETH to <code>recipient</code>. No logs
-              connect any deposit leaf to this withdrawal.</>,
+            title: "Split withdrawals for denomination privacy (optional)",
+            children: <>To prevent amount fingerprinting, use the <strong>2-in-8-out split circuit</strong> (~32,074
+              constraints). The denomination engine automatically breaks your withdrawal into common ETH chunks
+              (10, 5, 3, 2, 1, 0.5, 0.3, etc.). Each chunk is submitted as a separate transaction with randomized
+              timing — an observer sees only standard-looking amounts with no pattern.</>,
           },
         ]} />
       </section>
@@ -103,14 +104,18 @@ export default function PrivacyPoolPage() {
             </thead>
             <tbody className="divide-y divide-[rgba(255,255,255,0.04)]">
               {[
-                ["Proof system", "Groth16 (BN254 curve)"],
+                ["Proof system", "FFLONK (no trusted setup, BN254 curve)"],
                 ["Hash function", "Poseidon (ZK-friendly, ~5 constraints per hash)"],
-                ["Circuit size", "~5,900 constraints"],
-                ["Merkle tree depth", "20 (2²⁰ ≈ 1,048,576 leaves)"],
+                ["Transaction circuit", "2-in-2-out, ~12,400 constraints, 9 public signals"],
+                ["Split circuit", "2-in-8-out, ~32,074 constraints, 15 public signals"],
+                ["Merkle tree depth", "20 (2\u00B2\u2070 \u2248 1,048,576 leaves)"],
+                ["Merkle tree location", "Off-chain, relayer-maintained (verified via root history)"],
                 ["Proving environment", "In-browser via snarkjs + WASM"],
-                ["Proof generation time", "~1–2 seconds"],
-                ["Gas for verification", "~250,000 gas"],
-                ["Double-spend prevention", "nullifierHash stored on-chain after first withdrawal"],
+                ["Proof generation time", "~2\u20133 seconds (transaction), ~4\u20135 seconds (split)"],
+                ["Gas for verification", "~220,000 gas (FFLONK, 22% cheaper than Groth16)"],
+                ["Double-spend prevention", "Nullifier = Poseidon(nullifierKey, leafIndex), stored on-chain"],
+                ["Commitment structure", "Poseidon(ownerPubKey, amount, asset, chainId, blinding)"],
+                ["Note encryption", "AES-256-GCM via Web Crypto API, key = SHA-256(spendingKey)"],
               ].map(([k, v]) => (
                 <tr key={k} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
                   <td className="py-2.5 pr-6 text-[rgba(255,255,255,0.5)]">{k}</td>
@@ -145,27 +150,35 @@ export default function PrivacyPoolPage() {
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-3 uppercase">Security Notes</h2>
         <div className="space-y-3 text-sm text-[rgba(255,255,255,0.6)] leading-relaxed">
           <p>
-            <strong className="text-white">Keep your deposit note safe.</strong> The nullifier and secret are
-            stored in your browser's localStorage. If you clear browser data, you lose the note and cannot
-            generate a withdrawal proof. Export and back up your notes from the Wallet page.
+            <strong className="text-white">Notes are encrypted in IndexedDB.</strong> V2 encrypts deposit notes with
+            AES-256-GCM (key derived from your spending key). Even if someone accesses your browser storage,
+            they cannot read note data without your stealth keys. Export and back up notes from the Settings page.
           </p>
           <p>
-            <strong className="text-white">Fixed denominations are recommended</strong> to prevent
-            amount-based correlation. If all withdrawals look identical in size, amount cannot be used to
-            link deposit to withdrawal.
+            <strong className="text-white">Compliance screening is built-in.</strong> The Chainalysis oracle screens
+            every depositor address. A 1-hour cooldown after deposit restricts withdrawals to the original
+            depositor&apos;s address — giving compliance systems time to flag suspicious activity.
           </p>
           <p>
-            <strong className="text-white">The proving key is public.</strong> Anyone can verify the proofs
-            on-chain. The security comes from the hardness of the discrete log problem — the nullifier and
-            secret cannot be extracted from the commitment.
+            <strong className="text-white">Denomination privacy via split withdrawals.</strong> Instead of fixed
+            denominations, the split circuit breaks withdrawals into common amounts automatically. This prevents
+            amount-based correlation while supporting arbitrary deposit sizes.
+          </p>
+          <p>
+            <strong className="text-white">Chain ID binding prevents cross-chain replay.</strong> Every proof includes
+            the chain ID as a public signal. A proof generated for Ethereum Sepolia cannot be replayed on Thanos
+            Sepolia or any other chain.
           </p>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <DocsBadge variant="green">Groth16</DocsBadge>
+          <DocsBadge variant="green">FFLONK</DocsBadge>
           <DocsBadge variant="green">Poseidon Hash</DocsBadge>
+          <DocsBadge variant="green">ZK-UTXO</DocsBadge>
           <DocsBadge variant="muted">BN254</DocsBadge>
           <DocsBadge variant="muted">snarkjs</DocsBadge>
           <DocsBadge variant="muted">Merkle Depth 20</DocsBadge>
+          <DocsBadge variant="amber">Chainalysis</DocsBadge>
+          <DocsBadge variant="amber">AES-256-GCM</DocsBadge>
         </div>
       </section>
     </DocsPage>

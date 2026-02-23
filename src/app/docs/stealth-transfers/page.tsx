@@ -140,6 +140,7 @@ export default function StealthTransfersPage() {
             { label: "viewKey", desc: "Used only for scanning. Allows detecting incoming payments without spending authority. The public part (viewKey × G) is on-chain." },
             { label: "Ephemeral key r", desc: "Generated fresh per payment by the sender. Discarded after the announcement. Creates unlinkability." },
             { label: "Announcements", desc: "Published on-chain but contain no decryptable private information. Only viewKey holders can match them to stealth addresses." },
+            { label: "V2 Keys (BN254)", desc: "DustPool V2 uses separate keys on the BN254 curve for FFLONK proofs. The spending key and nullifier key are derived from the same wallet signature + PIN but reduced modulo the BN254 field order." },
           ].map(({ label, desc }) => (
             <div key={label} className="flex gap-4 p-3 border border-[rgba(255,255,255,0.05)] rounded-sm">
               <code className="shrink-0 text-[11px] text-[#00FF41] mt-0.5">{label}</code>
@@ -148,6 +149,12 @@ export default function StealthTransfersPage() {
           ))}
         </div>
       </section>
+
+      <DocsCallout type="tip" title="Works with DustPool V2">
+        Stealth transfers are the first step in the Dust privacy pipeline. After claiming stealth payments,
+        deposit them into <strong>DustPool V2</strong> to break the fan-in correlation. V2 supports arbitrary
+        amounts — no need to split claims into fixed denominations before depositing.
+      </DocsCallout>
 
       {/* Standards */}
       <section>
@@ -158,6 +165,8 @@ export default function StealthTransfersPage() {
           <DocsBadge variant="amber">ERC-4337</DocsBadge>
           <DocsBadge variant="muted">secp256k1 ECDH</DocsBadge>
           <DocsBadge variant="muted">PBKDF2-SHA512</DocsBadge>
+          <DocsBadge variant="green">BN254 (V2)</DocsBadge>
+          <DocsBadge variant="muted">Poseidon (V2)</DocsBadge>
         </div>
         <p className="mt-3 text-xs text-[rgba(255,255,255,0.35)] leading-relaxed">
           <Link href="/docs/contracts" className="text-[rgba(0,255,65,0.7)] hover:text-[#00FF41]">View contract addresses →</Link>
