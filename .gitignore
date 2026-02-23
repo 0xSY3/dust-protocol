@@ -52,6 +52,18 @@ contracts/dustpool/build/
 contracts/dustpool/lib/
 contracts/dustpool/node_modules/
 
+# DustSwap cache (broadcast artifacts)
+contracts/dustswap/cache/
+
+# Internal docs, plans, and submissions
+docs/*
+!docs/CONTRACTS.md
+plan.txt
+Track-B-Submission-*.md
+
+# E2E test scaffolding (not ready for CI)
+e2e/
+
 # Misc
 *.log
 *.tsbuildinfo

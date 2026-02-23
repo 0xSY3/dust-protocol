@@ -1,87 +1,98 @@
 # Dust Protocol
 
-Dust is a private finance protocol on EVM chains. It has two main primitives: **stealth transfers** and **privacy swaps**.
+Dust is a private finance protocol on EVM chains. It has three main primitives: **stealth transfers**, **privacy pools**, and **privacy swaps**.
 
 Stealth transfers let you send ETH or tokens to anyone without creating an on-chain link between sender and recipient. Every payment goes to a one-time address derived through ECDH — nobody watching the chain can associate it with the recipient's identity. `.dust` names sit on top so people can share a readable name instead of an address, and the whole mechanism works with any wallet without requiring the sender to run stealth-aware software.
 
-Privacy swaps let you trade ETH ↔ USDC without on-chain traceability. You deposit into a ZK pool, generate a Groth16 proof in-browser that proves you own a deposit without revealing which one, and the swap executes through a Uniswap V4 hook that verifies the proof on-chain. Output lands at a stealth address with no linkage to whoever deposited. This is not a wrapped privacy layer on top of a DEX — the ZK verification is built directly into the swap hook via `beforeSwap` / `afterSwap` callbacks, so the proof verification and the swap are atomic.
+DustPool V2 is a ZK-UTXO privacy pool with arbitrary-amount deposits and withdrawals. It uses a 2-in-2-out UTXO model with hidden amounts (Pedersen commitments), FFLONK proofs (no trusted setup, 22% cheaper than Groth16 with 8+ public signals), and an off-chain global Merkle tree maintained by a relayer. A 2-in-8-out split circuit provides denomination privacy by breaking withdrawals into common-sized chunks, defeating amount-based correlation. On top of this, an exclusion compliance system uses ZK proofs against a Sparse Merkle Tree of flagged commitments — users prove their commitment is NOT on the sanctions list without revealing which commitment they hold. Deposit screening via a Chainalysis oracle integration and a post-deposit cooldown period complete the compliance stack.
 
-Both primitives share a common ZK backend: Poseidon hashing (BN254 curve), Groth16 proof system, Merkle trees with depth 20 (capacity ~1M leaves), browser-side proof generation via snarkjs. Stealth key derivation uses ECDH on secp256k1 per ERC-5564. Claims are gasless via ERC-4337 — the stealth private key signs locally, the server relays via DustPaymaster, the key never leaves the browser.
+Privacy swaps let you trade ETH ↔ USDC without on-chain traceability. You deposit into a ZK pool, generate a proof in-browser that proves you own a deposit without revealing which one, and the swap executes through a Uniswap V4 hook that verifies the proof on-chain. Output lands at a stealth address with no linkage to whoever deposited.
 
 ---
 
-## What It Does
+## Features
 
 ### Stealth Transfers
+- **ECDH stealth addresses** (ERC-5564 / ERC-6538) on secp256k1
+- **`.dust` names** — human-readable payment endpoints with sub-address support
+- **Gasless claims** via ERC-4337 (DustPaymaster), CREATE2 wallets, or EIP-7702 delegation
+- **PIN-based key derivation** — wallet signature + 6-digit PIN through PBKDF2 (100K iterations)
+- **Private keys in memory only** — React refs, never persisted to localStorage or sent to any server
 
-When someone wants to receive privately, they register a `.dust` name on-chain pointing to their stealth meta-address — a pair of public keys (`spendKey`, `viewKey`) derived from their wallet signature and a PIN. When a sender visits the pay page for `alice.dust`, the page generates a fresh one-time stealth address by picking a random `r`, computing `sharedSecret = r * viewKey`, and deriving the stealth address from `spendKey + sharedSecret * G`. It announces this on-chain before the sender pays anything. The sender sends to a normal-looking address using any wallet. The recipient's scanner detects the announcement, recomputes the shared secret from their view key, derives the stealth private key, and claims the funds.
+### DustPool V2 — ZK-UTXO Privacy Pool
+- **Arbitrary amounts** — no fixed denominations for deposits/withdrawals
+- **2-in-2-out UTXO circuit** — 12,420 R1CS constraints, FFLONK proof system
+- **2-in-8-out split circuit** — 32,074 R1CS constraints, breaks withdrawals into common denomination chunks for amount privacy
+- **Denomination engine** — auto-splits ETH withdrawals into chunks from a standard set (10, 5, 3, 2, 1, 0.5, ... down to 0.01 ETH)
+- **Batch deposits** — up to 8 commitments per transaction
+- **Batch withdrawals** — relayer shuffles execution order with timing jitter to prevent FIFO correlation
+- **Off-chain Merkle tree** (depth 20, ~1M capacity) maintained by relayer with checkpoint persistence
+- **IndexedDB note encryption** — AES-256-GCM via Web Crypto API, key derived from spending key
 
-The claim is gasless. Each stealth address is an ERC-4337 smart account (not yet deployed at creation time). The scanner builds a UserOperation, DustPaymaster signs it to sponsor gas, the client signs the `userOpHash` locally, and the server submits it to the EntryPoint which deploys the account and drains the funds atomically in one transaction. The stealth private key never touches the server.
+### Compliance & Sanctions Screening
+- **Deposit screening** — configurable compliance oracle (Chainalysis on mainnet, configurable oracle on testnet)
+- **Post-deposit cooldown** — 1-hour standby period after deposit (Unshield-Only Standby pattern)
+- **ZK exclusion proofs** — proves a commitment is NOT in the sanctions exclusion set without revealing the commitment
+  - DustV2Compliance circuit: 13,543 R1CS constraints, FFLONK proof, 2 public signals (exclusionRoot, nullifier)
+  - Sparse Merkle Tree (20 levels) of flagged commitments, maintained off-chain by relayer
+  - Pre-call compliance pattern: `verifyComplianceProof()` sets flag, `withdraw()`/`withdrawSplit()` consumes it
+  - BN254 field element guards on all public signals to prevent field overflow attacks
+- **View keys & selective disclosure** — signed disclosure statements with CSV/PDF export for auditors
 
-Sub-addresses (`sub.alice.dust`) are also supported, letting users segment their payment streams without exposing a link between them.
+### Privacy Swaps (DustSwap)
+- **Uniswap V4 hook** — ZK proof verification in `beforeSwap` / `afterSwap` callbacks
+- **Atomic swap + proof verification** — no intermediate step between proof and swap execution
+- **Separate pools** — ETH and USDC with fixed denominations
+- **Chain ID binding** — cross-chain replay prevention via public signal
+- **Relayer fee range check** — prevents field wrap bypass attacks
 
-### Privacy Swaps
-
-The problem privacy swaps solve: even if you receive funds privately via stealth addresses, the moment you swap those funds on a DEX you create an on-chain fingerprint. The input wallet, output wallet, token amounts, and timing are all public.
-
-DustSwap breaks this. You deposit ETH or USDC into `DustSwapPool` with a Poseidon commitment (`commitment = Poseidon(Poseidon(nullifier, secret), amount)`). This deposit note is inserted into an on-chain Poseidon Merkle tree. Later, in-browser, you generate a Groth16 proof that proves you know a valid Merkle path (nullifier + secret + path) without revealing which leaf. This proof is passed as `hookData` to the Uniswap V4 swap router. The `DustSwapHook` runs `beforeSwap`, verifies the proof against the on-chain tree root, marks the `nullifierHash = Poseidon(nullifier, nullifier)` as spent (double-spend prevention), and routes the swap output to a stealth address you specify. There is no transaction that links your deposit to your withdrawal.
-
-Two separate pools exist: `DustSwapPoolETH` and `DustSwapPoolUSDC`, with fixed denominations to prevent amount-based correlation.
-
-### DustPool (Privacy Pool for Transfers)
-
-Separate from DustSwap, DustPool solves the on-chain linkage problem when consolidating multiple stealth wallets. If you receive 10 payments to 10 stealth addresses and claim them all to the same destination, that destination gets linked to all 10 inputs. DustPool lets you deposit from each stealth wallet into the pool as separate commitments, then withdraw everything to a fresh address with a single ZK proof. The withdraw proof proves you own a set of deposits without revealing which ones. Nullifiers prevent double-spend.
-
-The circuit (`DustPoolWithdraw.circom`) is Groth16 on BN254, ~5,900 constraints, generates in ~1–2 seconds in-browser.
+### Security Hardening
+- **Pausable** — owner can pause all deposits/withdrawals
+- **Ownable2Step** — two-step ownership transfer prevents accidental loss
+- **Chain ID as public signal** — all circuits include `block.chainid` to prevent cross-chain replay
+- **Solvency tracking** — `totalDeposited` per asset, prevents pool drain beyond deposits
+- **Duplicate commitment protection** — each commitment can only be deposited once
+- **Null nullifier guard** — prevents permanent slot poisoning via `nullifier0 == bytes32(0)`
+- **Persistent rate limiting** — relayer cooldowns survive restarts via `/tmp` persistence
+- **Cross-chain nullifier guard** — prevents same nullifier submission across chains
 
 ---
 
-## How It Works — Technical Detail
+## How It Works
 
 ### Stealth Key Derivation
 
 ```
 wallet_signature = sign("Dust Protocol stealth key", walletAddress)
-entropy = PBKDF2(wallet_signature + PIN, salt, 100000 iterations, SHA-512)
+entropy = PBKDF2(wallet_signature + PIN, salt_v2, 100000 iterations, SHA-512)
 spendKey = entropy[0:32]   // secp256k1 scalar
 viewKey  = entropy[32:64]  // secp256k1 scalar
 metaAddress = (spendKey * G, viewKey * G)  // registered on ERC-6538
 ```
 
-Both keys are required (signature + PIN). Keys are stored in a React ref, never serialized to localStorage or sent to any server.
-
-### Stealth Address Generation (Sender Side)
-
-```
-r = random scalar
-R = r * G
-sharedSecret = r * recipientViewPub
-stealthAddress = derive(recipientSpendPub, sharedSecret)
-announce(R, stealthAddress)  // ERC-5564 announcement on-chain
-```
-
-### Stealth Address Recovery (Recipient Side)
-
-```
-for each announcement (R, stealthAddress):
-    sharedSecret = viewKey * R   // same as r * viewPub by ECDH
-    candidate = derive(spendPub, sharedSecret)
-    if candidate == stealthAddress:
-        stealthPrivKey = spendKey + hash(sharedSecret)   // spendable
-```
-
-### ZK Proof Flow (DustPool / DustSwap)
+### DustPool V2 — UTXO Model
 
 **Deposit:**
-- Browser generates `nullifier` and `secret` (random scalars)
-- `commitment = Poseidon(Poseidon(nullifier, secret), amount)`
-- Commitment submitted on-chain, inserted into Poseidon Merkle tree (depth 20)
+- Browser generates `spendingKey`, `nullifierKey` from wallet signature + PIN
+- `commitment = Poseidon(amount, asset, spendingKey, nullifierKey, randomBlinding)`
+- Commitment queued on-chain, relayer inserts into off-chain Merkle tree
 
-**Withdraw / Swap:**
-- Browser fetches Merkle path for the commitment
-- Generates Groth16 proof of: `commitment ∈ tree ∧ I know (nullifier, secret) ∧ nullifierHash = Poseidon(nullifier, nullifier)`
-- Public inputs: `root`, `nullifierHash`, `recipient`, `amount`
-- Contract verifies proof, checks root is historical (prevents front-running), marks nullifier spent, releases funds
+**Withdraw (2-in-2-out):**
+- Browser fetches Merkle proof from relayer
+- Generates FFLONK proof: proves ownership of 2 input UTXOs, creates 2 output UTXOs
+- 9 public signals: `[merkleRoot, nullifier0, nullifier1, outCommitment0, outCommitment1, publicAmount, publicAsset, recipient, chainId]`
+- Relayer submits on-chain — contract verifies proof, marks nullifiers spent, transfers funds
+
+**Split Withdraw (2-in-8-out):**
+- Same as above but creates up to 8 output commitments
+- 15 public signals: `[merkleRoot, null0, null1, outCommitment[8], publicAmount, publicAsset, recipient, chainId]`
+- Denomination engine auto-selects optimal split for maximum anonymity set overlap
+
+**Compliance Flow:**
+- Relayer maintains Sparse Merkle Tree of flagged (sanctioned) commitments
+- Before withdraw, relayer calls `verifyComplianceProof(exclusionRoot, nullifier, proof)` per nullifier
+- Circuit proves: (1) prover knows nullifier preimage, (2) commitment is NOT in exclusion set
+- Contract sets `complianceVerified[nullifier] = true`, consumed by subsequent `withdraw()`/`withdrawSplit()`
 
 ### ERC-4337 Claim Flow
 
@@ -94,10 +105,18 @@ for each announcement (R, stealthAddress):
 6. EntryPoint deploys StealthAccount (CREATE2) and drains funds — one tx
 ```
 
-The scanner supports three account types:
-- **ERC-4337 smart accounts** → gasless via DustPaymaster
-- **CREATE2 wallets** → gas sponsored via `/api/sponsor-claim`
-- **Legacy EOA** → direct claim if balance > 0.0001 ETH
+---
+
+## Supported Networks
+
+| Network | Chain ID | Currency | Explorer |
+|---------|----------|----------|---------|
+| Ethereum Sepolia | `11155111` | ETH | [sepolia.etherscan.io](https://sepolia.etherscan.io) |
+| Thanos Sepolia | `111551119090` | TON | [explorer.thanos-sepolia.dustamak.network](https://explorer.thanos-sepolia.dustamak.network) |
+
+`.dust` name registry is canonical on Ethereum Sepolia. DustSwap (privacy swaps) is currently on Ethereum Sepolia only.
+
+Contract addresses: [`docs/CONTRACTS.md`](docs/CONTRACTS.md)
 
 ---
 
@@ -123,33 +142,18 @@ NEXT_PUBLIC_SUBGRAPH_URL_SEPOLIA=https://api.studio.thegraph.com/query/<id>/dust
 NEXT_PUBLIC_USE_GRAPH=true
 ```
 
----
+### Running Tests
 
-## Supported Networks
+```bash
+# Solidity (Foundry) — 126 tests
+cd contracts/dustpool && forge test
 
-| Network | Chain ID | Currency | Explorer |
-|---------|----------|----------|---------|
-| Ethereum Sepolia | `11155111` | ETH | [sepolia.etherscan.io](https://sepolia.etherscan.io) |
-| Thanos Sepolia | `111551119090` | TON | [explorer.thanos-sepolia.dustamak.network](https://explorer.thanos-sepolia.dustamak.network) |
+# TypeScript — 301+ tests
+npx vitest run
 
-`.dust` name registry is canonical on Ethereum Sepolia. DustSwap (privacy swaps) is currently on Ethereum Sepolia only.
-
-Contract addresses: [`docs/CONTRACTS.md`](docs/CONTRACTS.md)
-
----
-
-## Security Model
-
-| Layer | Mechanism |
-|-------|-----------|
-| Stealth address generation | ECDH on secp256k1 — only the recipient can derive the private key |
-| Key derivation | PBKDF2 (SHA-512, 100k iterations) over wallet signature + PIN — both required |
-| Key isolation | Keys in React ref, never serialized, never sent to server |
-| Gasless claim | Client signs userOpHash locally, server relays — key never leaves browser |
-| ZK pool privacy | Groth16 proof — withdrawal / swap output is cryptographically unlinkable to deposit |
-| Double-spend prevention | `nullifierHash = Poseidon(nullifier, nullifier)` stored on-chain, reuse rejected by contract |
-| Replay protection | EIP-712 domain includes `chainId` |
-| Amount correlation | Fixed denominations in DustSwap pools prevent amount-based deanonymization |
+# Type check
+npx tsc --noEmit
+```
 
 ---
 
@@ -166,54 +170,83 @@ src/
 │   ├── activities/           # Transaction history
 │   ├── links/                # Payment link management
 │   ├── settings/             # Account settings
-│   ├── pay/[name]/           # Public pay page (no-opt-in payments)
+│   ├── pay/[name]/           # Public pay page
 │   └── api/
+│       ├── v2/               # V2 relayer API routes
+│       │   ├── withdraw/     # ZK withdrawal relay
+│       │   ├── split-withdraw/ # Split withdrawal relay
+│       │   ├── batch-withdraw/ # Batch withdrawal (shuffled + jittered)
+│       │   ├── transfer/     # Internal pool transfer
+│       │   ├── compliance/   # Exclusion compliance witness + proof
+│       │   ├── tree/         # Merkle tree root + proof queries
+│       │   ├── deposit/      # Deposit status
+│       │   └── health/       # Relayer health check
 │       ├── bundle/           # ERC-4337 UserOp build + submit
-│       ├── resolve/[name]    # Stealth address generation for .dust names
-│       ├── pool-deposit/     # Stealth wallet → DustPool deposit
-│       ├── pool-withdraw/    # ZK-verified pool withdrawal
-│       └── sponsor-*/        # Gas sponsorship for legacy claim types
+│       ├── resolve/[name]    # Stealth address generation
+│       └── sponsor-*/        # Gas sponsorship endpoints
 ├── components/
 │   ├── layout/               # Navbar
 │   ├── dashboard/            # Balance cards, withdraw modal
+│   ├── dustpool/             # V2 deposit/withdraw modals
 │   ├── onboarding/           # OnboardingWizard
-│   └── swap/                 # SwapInterface, PoolStats, PoolComposition
-├── config/
-│   └── chains.ts             # Chain registry (RPC, contracts, creation codes)
+│   └── swap/                 # SwapInterface, PoolStats
 ├── hooks/
 │   ├── stealth/              # useStealthScanner, useUnifiedBalance
-│   ├── swap/                 # useDustSwap, usePoolQuote, usePoolStats
-│   └── useDustPool.ts        # Pool deposit tracking + ZK withdrawal
+│   ├── dustpool/v2/          # useV2Deposit, useV2Withdraw, useV2Compliance, useV2Disclosure
+│   └── swap/                 # useDustSwap, usePoolQuote
 ├── lib/
 │   ├── stealth/              # Core ECDH cryptography
-│   ├── dustpool/             # Poseidon, Merkle tree, snarkjs proof gen
+│   ├── dustpool/v2/          # V2 contracts, relayer client, exclusion tree, compliance, disclosure
 │   └── swap/zk/              # Privacy swap proof generation
 └── contexts/
-    └── AuthContext.tsx       # Wallet, stealth keys, PIN auth, active chain
+    └── AuthContext.tsx        # Wallet, stealth keys, PIN auth
 
 contracts/
 ├── wallet/                   # StealthWallet + StealthAccount (48 tests)
-├── dustpool/                 # DustPool + MerkleTree + Groth16Verifier (10 tests)
-│   └── circuits/             # DustPoolWithdraw.circom
+├── dustpool/                 # DustPoolV2 + FFLONK verifiers (126 tests)
+│   ├── src/
+│   │   ├── DustPoolV2.sol           # Main privacy pool contract
+│   │   ├── FFLONKVerifier.sol       # Transaction proof verifier (2-in-2-out, 9 signals)
+│   │   ├── FFLONKSplitVerifier.sol  # Split proof verifier (2-in-8-out, 15 signals)
+│   │   ├── FFLONKComplianceVerifier.sol  # Exclusion proof verifier (2 signals)
+│   │   ├── ChainalysisScreener.sol  # Mainnet sanctions oracle wrapper
+│   │   └── TestnetComplianceOracle.sol   # Configurable oracle for testnets
+│   └── circuits/v2/
+│       ├── DustV2Transaction.circom  # 2-in-2-out UTXO circuit (12,420 constraints)
+│       ├── DustV2Split.circom        # 2-in-8-out split circuit (32,074 constraints)
+│       └── DustV2Compliance.circom   # ZK exclusion proof circuit (13,543 constraints)
 └── dustswap/                 # DustSwapHook + DustSwapPool + PrivateSwap circuit
-    └── circuits/             # PrivateSwap.circom
-
-public/zk/                    # DustPool browser ZK assets (WASM + zkey)
-public/circuits/              # DustSwap browser ZK assets (WASM + zkey)
-subgraph/                     # The Graph subgraph (name + announcement indexing)
-relayer/                      # Standalone relayer service (TypeScript, Docker)
 ```
+
+---
+
+## Security Model
+
+| Layer | Mechanism |
+|-------|-----------|
+| Stealth address generation | ECDH on secp256k1 — only the recipient can derive the private key |
+| Key derivation | PBKDF2 (SHA-512, 100k iterations) over wallet signature + PIN — both required |
+| Key isolation | Keys in React ref, never serialized, never sent to server |
+| Gasless claim | Client signs userOpHash locally, server relays — key never leaves browser |
+| ZK pool privacy | FFLONK proof — withdrawal is cryptographically unlinkable to deposit |
+| Denomination privacy | 2-in-8-out split into common chunks — defeats amount fingerprinting |
+| Sanctions compliance | ZK exclusion proof against SMT of flagged commitments — no commitment reveal |
+| Deposit screening | Chainalysis oracle integration with 1-hour post-deposit cooldown |
+| Double-spend prevention | Nullifier stored on-chain, reuse rejected by contract |
+| Cross-chain replay | Chain ID as public signal in all circuits + on-chain `block.chainid` check |
+| Pool solvency | Per-asset deposit tracking, withdraw cannot exceed total deposits |
+| Note encryption | AES-256-GCM (Web Crypto API) for IndexedDB note storage |
 
 ---
 
 ## Tech Stack
 
 - **Frontend**: Next.js 14, React 18, Tailwind CSS
-- **Blockchain**: wagmi, viem, ethers.js v5, elliptic
-- **ZK**: circom, snarkjs (Groth16 on BN254), circomlibjs (Poseidon)
-- **Contracts**: Foundry, Solidity 0.8.x, poseidon-solidity, Uniswap V4
+- **Blockchain**: wagmi v2, viem v2, ethers.js v5
+- **ZK**: circom, snarkjs (FFLONK + Groth16 on BN254), circomlibjs (Poseidon, SMT)
+- **Contracts**: Foundry, Solidity 0.8.20, Uniswap V4
 - **Account Abstraction**: ERC-4337, EIP-7702
-- **Auth**: Privy (social logins + embedded wallets), wagmi connectors (MetaMask, WalletConnect) — *planned migration to Lit Protocol PKPs for fully decentralized, non-custodial MPC-based authentication*
+- **Auth**: Privy (social logins + embedded wallets), wagmi connectors (MetaMask, WalletConnect)
 - **Indexing**: The Graph
 - **Standards**: ERC-5564, ERC-6538, ERC-4337
 
