@@ -165,6 +165,125 @@ export const DUST_SWAP_ROUTER_ABI = [
   },
 ] as const
 
+// ─── DustSwapAdapterV2 ABI (standalone V2 adapter, no Uniswap V4 dependency) ─
+
+export const DUST_SWAP_ADAPTER_V2_ABI = [
+  {
+    inputs: [
+      { name: 'proof', type: 'bytes' },
+      { name: 'merkleRoot', type: 'bytes32' },
+      { name: 'nullifier0', type: 'bytes32' },
+      { name: 'nullifier1', type: 'bytes32' },
+      { name: 'outCommitment0', type: 'bytes32' },
+      { name: 'outCommitment1', type: 'bytes32' },
+      { name: 'publicAmount', type: 'uint256' },
+      { name: 'publicAsset', type: 'uint256' },
+      { name: 'tokenIn', type: 'address' },
+      {
+        name: 'poolKey',
+        type: 'tuple',
+        components: [
+          { name: 'currency0', type: 'address' },
+          { name: 'currency1', type: 'address' },
+          { name: 'fee', type: 'uint24' },
+          { name: 'tickSpacing', type: 'int24' },
+          { name: 'hooks', type: 'address' },
+        ],
+      },
+      { name: 'zeroForOne', type: 'bool' },
+      { name: 'minAmountOut', type: 'uint256' },
+      { name: 'ownerPubKey', type: 'uint256' },
+      { name: 'blinding', type: 'uint256' },
+      { name: 'tokenOut', type: 'address' },
+      { name: 'relayer', type: 'address' },
+      { name: 'relayerFeeBps', type: 'uint256' },
+    ],
+    name: 'executeSwap',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'nullifier', type: 'bytes32' },
+      { indexed: true, name: 'outputCommitment', type: 'bytes32' },
+      { indexed: false, name: 'tokenIn', type: 'address' },
+      { indexed: false, name: 'tokenOut', type: 'address' },
+      { indexed: false, name: 'outputAmount', type: 'uint256' },
+      { indexed: false, name: 'relayerFeeBps', type: 'uint256' },
+    ],
+    name: 'PrivateSwapExecuted',
+    type: 'event',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'relayer', type: 'address' },
+      { indexed: false, name: 'allowed', type: 'bool' },
+    ],
+    name: 'RelayerUpdated',
+    type: 'event',
+  },
+  {
+    inputs: [
+      { name: 'relayer', type: 'address' },
+      { name: 'allowed', type: 'bool' },
+    ],
+    name: 'setRelayer',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: '', type: 'address' }],
+    name: 'authorizedRelayers',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  { inputs: [], name: 'NotRelayer', type: 'error' },
+  { inputs: [], name: 'SlippageExceeded', type: 'error' },
+  { inputs: [], name: 'RelayerFeeTooHigh', type: 'error' },
+  { inputs: [], name: 'ZeroMinAmount', type: 'error' },
+  { inputs: [], name: 'SwapFailed', type: 'error' },
+  { inputs: [], name: 'TransferFailed', type: 'error' },
+  { inputs: [], name: 'PoolPaused', type: 'error' },
+] as const
+
+/**
+ * Get contract config for DustSwapAdapterV2 on a given chain
+ */
+export function getDustSwapAdapterV2Config(chainId?: number) {
+  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID)
+  const adapterAddress = config.contracts.dustSwapAdapterV2
+  if (!adapterAddress) {
+    return null
+  }
+  return {
+    address: adapterAddress as Address,
+    abi: DUST_SWAP_ADAPTER_V2_ABI,
+  }
+}
+
+/**
+ * Get the vanilla (no-hook) pool key for a given chain from chain config
+ */
+export function getVanillaPoolKey(chainId?: number): PoolKey | null {
+  const config = getChainConfig(chainId ?? DEFAULT_CHAIN_ID)
+  const key = config.contracts.dustSwapVanillaPoolKey
+  if (!key) {
+    return null
+  }
+  return {
+    currency0: key.currency0 as Address,
+    currency1: key.currency1 as Address,
+    fee: key.fee,
+    tickSpacing: key.tickSpacing,
+    hooks: key.hooks as Address,
+  }
+}
+
 // ─── PoolHelper ABI (legacy — PoolSwapTest, kept for reference) ──────────────
 
 export const POOL_HELPER_ABI = [

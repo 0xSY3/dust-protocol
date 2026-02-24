@@ -9,6 +9,7 @@ optimizer_runs = 200
 via_ir = true
 libraries = [
   "poseidon-solidity/PoseidonT3.sol:PoseidonT3:0x203a488c06e9add25d4b51f7ede8e56bcc4b1a1c",
+  "poseidon-solidity/PoseidonT6.sol:PoseidonT6:0x666333F371685334CdD69bdDdaFBABc87CE7c7Db",
 ]
 remappings = [
   "forge-std/=lib/forge-std/src/",

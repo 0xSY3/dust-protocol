@@ -207,6 +207,24 @@ export async function buildWithdrawInputs(
   }
 }
 
+// ── Swap ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Build proof inputs for a V2 private swap.
+ * Identical to withdraw inputs except recipient = DustSwapAdapterV2 address.
+ */
+export async function buildSwapInputs(
+  inputNote: NoteCommitmentV2,
+  amount: bigint,
+  adapterAddress: string,
+  keys: V2Keys,
+  merkleProof: { pathElements: bigint[]; pathIndices: number[] },
+  chainId: number,
+  changeNote?: NoteV2
+): Promise<ProofInputs> {
+  return buildWithdrawInputs(inputNote, amount, adapterAddress, keys, merkleProof, chainId, changeNote)
+}
+
 // ── Transfer ─────────────────────────────────────────────────────────────────
 
 /**

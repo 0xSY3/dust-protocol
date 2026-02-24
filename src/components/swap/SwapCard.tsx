@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { type Address, formatUnits } from "viem";
+import { type Address, formatUnits, parseUnits } from "viem";
 import { useSwitchChain } from "wagmi";
 import { ChevronDownIcon } from "lucide-react";
 import { SUPPORTED_TOKENS, RELAYER_FEE_BPS, DEFAULT_SLIPPAGE_MULTIPLIER, type SwapToken, isSwapSupported } from "@/lib/swap/constants";
-import { DEFAULT_CHAIN_ID } from "@/config/chains";
+import { DEFAULT_CHAIN_ID, getChainConfig } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSwapNotes, useDustSwap, useSwapMerkleTree, useDustSwapPool, useSwapQuote } from "@/hooks/swap";
 import { checkRelayerHealth, getRelayerInfo, type RelayerInfo } from "@/lib/swap/relayer";
@@ -14,6 +14,8 @@ import { SwapExecuteModal, type SwapStep } from "./SwapExecuteModal";
 import { DepositModal } from "./DepositModal";
 import { AlertCircleIcon, TokenIcon } from "@/components/stealth/icons";
 import { type StoredSwapNote } from "@/lib/swap/storage/swap-notes";
+import { useV2Swap, type SwapStatus as V2SwapStatus } from "@/hooks/swap/v2/useV2Swap";
+import { useV2Keys } from "@/hooks/dustpool/v2";
 
 function formatNoteAmount(amount: bigint, tokenSymbol: string): string {
   const decimals = tokenSymbol.toUpperCase() === 'USDC' ? 6 : 18;
@@ -55,6 +57,33 @@ function getDustSwapStepMessage(hookState: string): string {
     case "submitting": return "Submitting to relayer...";
     case "confirming": return "Waiting for confirmation...";
     case "success": return "Swap complete!";
+    case "error": return "Swap failed";
+    default: return "Preparing swap...";
+  }
+}
+
+/** Map V2 swap hook states → SwapExecuteModal step */
+function mapV2StatusToStep(status: V2SwapStatus): SwapStep {
+  switch (status) {
+    case "selecting-note": return "preparing";
+    case "generating-proof": return "computing-proof";
+    case "submitting":
+    case "confirming":
+    case "saving-note": return "submitting";
+    case "done": return "success";
+    case "error": return "error";
+    default: return "preparing";
+  }
+}
+
+function getV2StepMessage(status: V2SwapStatus): string {
+  switch (status) {
+    case "selecting-note": return "Selecting optimal note...";
+    case "generating-proof": return "Computing ZK proof...";
+    case "submitting": return "Submitting to relayer...";
+    case "confirming": return "Waiting for confirmation...";
+    case "saving-note": return "Saving output note...";
+    case "done": return "Swap complete!";
     case "error": return "Swap failed";
     default: return "Preparing swap...";
   }
@@ -113,12 +142,23 @@ export function SwapCard() {
     chainId: activeChainId,
   });
 
+  // V2 swap integration — use V2 adapter when available on chain
+  const isV2 = !!getChainConfig(activeChainId)?.contracts?.dustSwapAdapterV2;
+  const { keysRef: v2KeysRef, hasKeys: hasV2Keys } = useV2Keys();
+  const {
+    swap: v2Swap,
+    isPending: isV2SwapPending,
+    status: v2SwapStatus,
+    txHash: v2TxHash,
+    error: v2SwapError,
+    clearError: clearV2Error,
+  } = useV2Swap(v2KeysRef, activeChainId);
+  const useV2Path = isV2 && hasV2Keys;
+
   // UI state
-  const [showSettings, setShowSettings] = useState(false);
   const [tokenModalOpen, setTokenModalOpen] = useState(false);
   const [selectingFor, setSelectingFor] = useState<"from" | "to">("from");
   const [showDepositModal, setShowDepositModal] = useState(false);
-  const [arrowRotation, setArrowRotation] = useState(0);
 
   // Swap UI state
   const [showSwapModal, setShowSwapModal] = useState(false);
@@ -170,33 +210,29 @@ export function SwapCard() {
     ? (parseFloat(toAmount) * DEFAULT_SLIPPAGE_MULTIPLIER).toFixed(toToken.decimals > 6 ? 6 : 2)
     : "0";
 
-  // Map dustSwap hook state to component state
-  const swapState: SwapState = dustSwapState === "idle" ? "idle" : mapDustSwapStateToStep(dustSwapState);
-  const isSwapping = isDustSwapLoading;
-  const swapError = dustSwapError;
-  const txHash = dustSwapTxHash;
-  const swapStep = getDustSwapStepMessage(dustSwapState);
-
-  // Calculate total notes balance
-  const totalNotesBalance = availableNotes.reduce((acc, note) => {
-    return acc + Number(note.amount) / Math.pow(10, fromToken.decimals);
-  }, 0);
+  // Unified swap state — pick whichever backend (V1 or V2) is active
+  const isV2SwapActive = v2SwapStatus !== 'idle';
+  const isV1SwapActive = dustSwapState !== 'idle';
+  const swapState: SwapState = isV2SwapActive
+    ? mapV2StatusToStep(v2SwapStatus)
+    : isV1SwapActive
+      ? mapDustSwapStateToStep(dustSwapState)
+      : "idle";
+  const isSwapping = isV2SwapPending || isDustSwapLoading;
+  const swapError = isV2SwapActive ? v2SwapError : dustSwapError;
+  const txHash = isV2SwapActive ? v2TxHash : dustSwapTxHash;
+  const swapStep = isV2SwapActive ? getV2StepMessage(v2SwapStatus) : getDustSwapStepMessage(dustSwapState);
 
   // Derive selected note object from index (for NoteSelector compatibility)
   const selectedNote: StoredSwapNote | null = availableNotes[selectedNoteIndex] ?? null;
 
-  const canSwap =
-    isConnected &&
-    fromAmount &&
-    parseFloat(fromAmount) > 0 &&
-    toAmount &&
-    parseFloat(toAmount) > 0 &&
-    dustSwapState === "idle" &&
-    !poolLoading &&
-    !treeError &&
-    !isQuoting &&
-    availableNotes.length > 0 &&
-    !!selectedClaimAddress;
+  const canSwap = useV2Path
+    ? (isConnected && fromAmount && parseFloat(fromAmount) > 0 &&
+       quotedAmountOut > 0n && v2SwapStatus === 'idle' && !isQuoting)
+    : (isConnected && fromAmount && parseFloat(fromAmount) > 0 &&
+       toAmount && parseFloat(toAmount) > 0 &&
+       dustSwapState === "idle" && !poolLoading && !treeError &&
+       !isQuoting && availableNotes.length > 0 && !!selectedClaimAddress);
 
   // ── Effects ─────────────────────────────────────────────────────────────────
 
@@ -212,12 +248,12 @@ export function SwapCard() {
   // Sync toAmount from quoter result
   useEffect(() => {
     if (quotedAmountOut > 0n) {
-      const amount = Number(quotedAmountOut) / Math.pow(10, toToken.decimals);
-      setToAmount(amount.toFixed(toToken.decimals > 6 ? 6 : 2));
-    } else if (!fromAmount || parseFloat(fromAmount) <= 0) {
+      const formatted = formatUnits(quotedAmountOut, toToken.decimals);
+      setToAmount(parseFloat(formatted).toFixed(toToken.decimals > 6 ? 6 : 2));
+    } else {
       setToAmount("");
     }
-  }, [quotedAmountOut, toToken.decimals, fromAmount]);
+  }, [quotedAmountOut, toToken.decimals]);
 
   // Reset selected note index when from-token changes
   useEffect(() => {
@@ -243,16 +279,16 @@ export function SwapCard() {
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
-  // Show swap modal when swap is in progress
+  // Show swap modal when swap is in progress (V1 or V2)
   useEffect(() => {
-    if (isDustSwapLoading || dustSwapState === "success" || dustSwapState === "error") {
+    if (isDustSwapLoading || dustSwapState === "success" || dustSwapState === "error" ||
+        isV2SwapPending || v2SwapStatus === "done" || v2SwapStatus === "error") {
       setShowSwapModal(true);
     }
-  }, [isDustSwapLoading, dustSwapState]);
+  }, [isDustSwapLoading, dustSwapState, isV2SwapPending, v2SwapStatus]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
   const handleFlipTokens = () => {
-    setArrowRotation((prev) => prev + 180);
     const tempToken = fromToken;
     setFromToken(toToken);
     setToToken(tempToken);
@@ -284,17 +320,16 @@ export function SwapCard() {
 
   const resetSwapState = useCallback(() => {
     resetDustSwap();
+    clearV2Error();
     setCompletedStealthAddress(null);
     setShowSwapModal(false);
-  }, [resetDustSwap]);
+  }, [resetDustSwap, clearV2Error]);
 
   const handleDeposit = useCallback(
     async (amount: string) => {
       if (!depositToPool) return null;
 
-      const amountWei = BigInt(
-        Math.floor(parseFloat(amount) * Math.pow(10, fromToken.decimals))
-      );
+      const amountWei = parseUnits(amount, fromToken.decimals);
 
       const result = await depositToPool(
         fromToken.address as Address,
@@ -312,39 +347,46 @@ export function SwapCard() {
   const handleSwap = useCallback(async () => {
     if (!canSwap) return;
 
-    const selectedNoteObj = availableNotes[selectedNoteIndex];
-    if (!selectedNoteObj || selectedNoteObj.id === undefined) return;
-
-    const recipient = selectedClaimAddress?.address;
-    if (!recipient) return;
-
     setShowSwapModal(true);
     setCompletedStealthAddress(null);
 
-    const minAmountOut = BigInt(
-      Math.floor(parseFloat(toAmount) * Math.pow(10, toToken.decimals) * DEFAULT_SLIPPAGE_MULTIPLIER)
-    );
+    // Bigint-only slippage: 0.5% = 50 bps
+    const slippageBps = 50n;
+    const minAmountOut = quotedAmountOut * (10000n - slippageBps) / 10000n;
 
-    const result = await executeSwap({
-      fromToken: fromToken.address as Address,
-      toToken: toToken.address as Address,
-      minAmountOut,
-      recipient: recipient as Address,
-      depositNoteId: selectedNoteObj.id,
-    });
+    if (useV2Path) {
+      // V2: hook manages note selection, proof generation, and relayer submission
+      const amountIn = parseUnits(fromAmount, fromToken.decimals);
+      await v2Swap(
+        amountIn,
+        fromToken.address as Address,
+        toToken.address as Address,
+        minAmountOut,
+        30,
+      );
+    } else {
+      // V1 fallback
+      const selectedNoteObj = availableNotes[selectedNoteIndex];
+      if (!selectedNoteObj || selectedNoteObj.id === undefined) return;
 
-    if (result) {
-      setCompletedStealthAddress(result.stealthAddress);
+      const recipient = selectedClaimAddress?.address;
+      if (!recipient) return;
+
+      const result = await executeSwap({
+        fromToken: fromToken.address as Address,
+        toToken: toToken.address as Address,
+        minAmountOut,
+        recipient: recipient as Address,
+        depositNoteId: selectedNoteObj.id,
+      });
+
+      if (result) {
+        setCompletedStealthAddress(result.stealthAddress);
+      }
     }
   }, [
-    canSwap,
-    availableNotes,
-    selectedNoteIndex,
-    selectedClaimAddress,
-    toAmount,
-    toToken,
-    fromToken,
-    executeSwap,
+    canSwap, useV2Path, fromAmount, fromToken, toToken, quotedAmountOut,
+    v2Swap, availableNotes, selectedNoteIndex, selectedClaimAddress, executeSwap,
   ]);
 
   // Button content
@@ -645,7 +687,7 @@ export function SwapCard() {
 
             {/* ── SWAP DIRECTION ARROW ──────────────────────────────────── */}
             <div className="flex justify-center items-center pt-4 pb-2.5 relative z-10">
-              <div className="p-2 rounded-sm bg-[#06080F] border border-[rgba(0,255,65,0.2)] cursor-default">
+              <div className="p-2 rounded-sm bg-[#06080F] border border-[rgba(0,255,65,0.2)] cursor-pointer hover:bg-[rgba(0,255,65,0.06)] transition-colors" onClick={handleFlipTokens}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00FF41" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <polyline points="19 12 12 19 5 12" />
