@@ -75,12 +75,13 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
   // Graph→RPC fallback: if Graph is enabled but errored, fall back to legacy RPC path
   const useGraphData = graphEnabled && !graphFailed && !(needsWalletLookup && graphWalletFailed);
 
-  // Detect when graph succeeded but returned NOTHING — this happens when:
-  //   - Subgraph has no ERC-6538 data for this wallet (registration failed silently)
-  //   - Names exist but are all deployer-owned (user's wallet is not the owner)
-  // In this case, we must still run the legacy pipeline (API fallback, RPC scan).
-  const graphReturnedEmpty = graphEnabled && !userMetaAddress &&
-    !graphWalletLoading && !graphWalletFailed && graphOwnedNames.length === 0;
+  // Detect when graph succeeded but returned NOTHING — triggers legacy fallback.
+  // Covers both cleared-cache (no metaAddress) and derived-keys scenarios where
+  // the subgraph has no ERC-6538 data or names for this wallet/metaAddress.
+  const graphReturnedEmpty = graphEnabled
+    && !graphLoading && !graphWalletLoading
+    && !graphFailed && !graphWalletFailed
+    && graphOwnedNames.length === 0;
 
   // Unified ownedNames: prefer Graph when it has data, fall back to legacy/discovery
   const ownedNames = graphOwnedNames.length > 0 ? graphOwnedNames : legacyOwnedNames;
@@ -135,10 +136,9 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
   const registeringNameRef = useRef(false);
 
   const loadOwnedNames = useCallback(async () => {
-    // If graph is enabled and we already have a metaAddress, just refetch the graph query.
-    // But if metaAddress is null (cleared cache / new browser), fall through to the full
-    // discovery pipeline even in graph mode — the graph query is disabled with no metaAddress.
-    if (graphEnabled && !graphFailed && userMetaAddressRef.current) {
+    // If graph is enabled, has a metaAddress, AND graph already found names — just refetch.
+    // Otherwise fall through to the legacy discovery pipeline (API + RPC scan).
+    if (graphEnabled && !graphFailed && userMetaAddressRef.current && graphOwnedNames.length > 0) {
       refetchGraphNames();
       return;
     }

@@ -27,26 +27,32 @@ const NAME_REGISTRY_ABI = [
 
 const DEPLOYER = process.env.SPONSOR_ADDRESS ?? '0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496';
 
-// The Graph subgraph URL (same as client-side)
-const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL
-  || 'https://api.studio.thegraph.com/query/1741961/dust-protocol-sepolia/v0.0.2';
+// Chain-specific subgraph URLs (matches client-side src/lib/graph/client.ts)
+const SUBGRAPH_URLS: Record<number, string | undefined> = {
+  111551119090: process.env.NEXT_PUBLIC_SUBGRAPH_URL_THANOS || undefined,
+  11155111: process.env.NEXT_PUBLIC_SUBGRAPH_URL_SEPOLIA
+    || 'https://api.studio.thegraph.com/query/1741961/dust-protocol-sepolia/v0.0.2',
+};
 
-/** Query the subgraph for names matching a metaAddress */
+/** Query all chain subgraphs for names matching a metaAddress */
 async function querySubgraphNamesByMeta(metaAddress: string): Promise<{ name: string; metaAddress: string } | null> {
-  try {
-    const res = await fetch(SUBGRAPH_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `query($meta: String!) { names(where: { metaAddress: $meta }, first: 1) { name metaAddress } }`,
-        variables: { meta: metaAddress.toLowerCase() },
-      }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const names = data?.data?.names;
-    if (names?.length > 0) return names[0];
-  } catch { /* silent */ }
+  const urls = Object.values(SUBGRAPH_URLS).filter(Boolean) as string[];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `query($meta: String!) { names(where: { metaAddress: $meta }, first: 1) { name metaAddress } }`,
+          variables: { meta: metaAddress.toLowerCase() },
+        }),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const names = data?.data?.names;
+      if (names?.length > 0) return names[0];
+    } catch { continue; }
+  }
   return null;
 }
 
@@ -181,7 +187,7 @@ export async function GET(req: Request) {
     }
 
     // Strategy 4: Direct RPC — check deployer-owned names on all chains
-    // (slower but works even if subgraph and tree have issues)
+    // Always runs as last resort (catches cases where ERC-6538 was never registered)
     if (historicalMetas.size > 0) {
       for (const chain of chains) {
         if (!chain.contracts.nameRegistry) continue;
