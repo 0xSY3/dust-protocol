@@ -12,7 +12,8 @@ import { useNamesOwnedBy, useNamesByMetaAddress, useNamesByWallet } from '@/hook
 import { isGraphAvailable } from '@/lib/graph/client';
 import type { OwnedName } from '@/lib/design/types';
 
-const USE_GRAPH = process.env.NEXT_PUBLIC_USE_GRAPH === 'true';
+// Enabled by default — set NEXT_PUBLIC_USE_GRAPH=false to explicitly disable
+const USE_GRAPH = process.env.NEXT_PUBLIC_USE_GRAPH !== 'false';
 
 export function useStealthName(userMetaAddress?: string | null, chainId?: number) {
   const { address, isConnected } = useAccount();

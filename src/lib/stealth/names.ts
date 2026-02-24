@@ -252,7 +252,7 @@ export async function isNameAvailable(_provider: ethers.providers.Provider | nul
     const effectiveChainId = chainId ?? DEFAULT_CHAIN_ID;
 
     // Try Graph first if enabled
-    if (process.env.NEXT_PUBLIC_USE_GRAPH === 'true') {
+    if (process.env.NEXT_PUBLIC_USE_GRAPH !== 'false') {
       const { isGraphAvailable, checkNameAvailabilityGraph } = await import('@/lib/graph/client');
       if (isGraphAvailable(effectiveChainId)) {
         const graphResult = await checkNameAvailabilityGraph(stripNameSuffix(name), effectiveChainId);
