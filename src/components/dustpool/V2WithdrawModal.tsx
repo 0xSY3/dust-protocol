@@ -11,6 +11,7 @@ import {
   AlertCircleIcon,
   XIcon,
   InfoIcon,
+  ETHIcon,
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
 import { errorToUserMessage } from "@/lib/dustpool/v2/errors";
@@ -209,8 +210,8 @@ export function V2WithdrawModal({
                     <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono mb-1">
                       Shielded Balance
                     </p>
-                    <p className="text-2xl font-extrabold text-white font-mono">
-                      {formattedMax} <span className="text-base font-semibold text-[rgba(255,255,255,0.5)]">ETH</span>
+                    <p className="text-2xl font-extrabold text-white font-mono flex items-baseline gap-2">
+                      {formattedMax} <span className="text-base font-semibold text-[rgba(255,255,255,0.5)] flex items-center gap-1"><ETHIcon size={16} />ETH</span>
                     </p>
                     <p className="text-xs text-[rgba(255,255,255,0.4)] font-mono mt-1">
                       {unspentNotes.length} unspent note{unspentNotes.length !== 1 ? "s" : ""}
@@ -254,15 +255,15 @@ export function V2WithdrawModal({
                       </p>
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">Input note</span>
-                        <span className="text-[11px] font-semibold text-white font-mono">
-                          {parseFloat(formatEther(consumedNote.note.amount)).toFixed(6)} ETH
+                        <span className="text-[11px] font-semibold text-white font-mono flex items-center gap-1">
+                          {parseFloat(formatEther(consumedNote.note.amount)).toFixed(6)} <ETHIcon size={12} /> ETH
                         </span>
                       </div>
                       {changeAmount !== null && changeAmount > 0n && (
                         <div className="flex justify-between items-center">
                           <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">Change returned</span>
-                          <span className="text-[11px] font-semibold text-[#00FF41] font-mono">
-                            {parseFloat(formatEther(changeAmount)).toFixed(6)} ETH
+                          <span className="text-[11px] font-semibold text-[#00FF41] font-mono flex items-center gap-1">
+                            {parseFloat(formatEther(changeAmount)).toFixed(6)} <ETHIcon size={12} /> ETH
                           </span>
                         </div>
                       )}
@@ -279,9 +280,9 @@ export function V2WithdrawModal({
                         {formattedChunkValues.map((val, i) => (
                           <span
                             key={i}
-                            className="px-2 py-0.5 rounded-sm bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.15)] text-[10px] font-mono text-[#00FF41]"
+                            className="px-2 py-0.5 rounded-sm bg-[rgba(0,255,65,0.08)] border border-[rgba(0,255,65,0.15)] text-[10px] font-mono text-[#00FF41] inline-flex items-center gap-1"
                           >
-                            {val} ETH
+                            <ETHIcon size={10} />{val} ETH
                           </span>
                         ))}
                       </div>

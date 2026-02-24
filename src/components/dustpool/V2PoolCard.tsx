@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { useAccount, useChainId } from "wagmi";
 import { formatEther } from "viem";
 import { useV2Balance, useV2Keys } from "@/hooks/dustpool/v2";
-import { ShieldIcon, LockIcon } from "@/components/stealth/icons";
+import { ShieldIcon, LockIcon, ETHIcon } from "@/components/stealth/icons";
 import { V2DepositModal } from "./V2DepositModal";
 import { V2WithdrawModal } from "./V2WithdrawModal";
 import { V2TransferModal } from "./V2TransferModal";
@@ -98,7 +98,10 @@ export function V2PoolCard({ chainId: chainIdOverride }: V2PoolCardProps) {
           <span className="text-2xl font-bold text-white font-mono tracking-tight">
             {isLoading ? "-.----" : displayBalance}
           </span>
-          <span className="text-sm text-[rgba(255,255,255,0.4)] font-mono">ETH</span>
+          <div className="flex items-center gap-1.5">
+            <ETHIcon size={16} />
+            <span className="text-sm text-[rgba(255,255,255,0.4)] font-mono">ETH</span>
+          </div>
           {unspentCount > 0 && (
             <span className="text-[10px] text-[#00FF41] font-mono">
               {unspentCount} note{unspentCount !== 1 ? "s" : ""}

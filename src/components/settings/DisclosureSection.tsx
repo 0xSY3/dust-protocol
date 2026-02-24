@@ -10,6 +10,7 @@ import {
   DownloadIcon,
   FileTextIcon,
   InfoIcon,
+  ETHIcon,
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
 import { formatEther } from "viem";
@@ -151,20 +152,20 @@ export function DisclosureSection({ keysRef, chainId }: DisclosureSectionProps) 
               </div>
               <div className="px-3 py-2.5 bg-[rgba(255,255,255,0.03)] rounded-sm">
                 <p className="text-[10px] text-[rgba(255,255,255,0.4)] font-mono uppercase tracking-wider">Total</p>
-                <p className="text-sm text-white font-mono font-semibold mt-0.5">
-                  {totalAmount !== null ? `${parseFloat(formatEther(totalAmount)).toFixed(4)} ETH` : "-"}
+                <p className="text-sm text-white font-mono font-semibold mt-0.5 flex items-center gap-1">
+                  {totalAmount !== null ? <><ETHIcon size={14} />{parseFloat(formatEther(totalAmount)).toFixed(4)} ETH</> : "-"}
                 </p>
               </div>
               <div className="px-3 py-2.5 bg-[rgba(255,255,255,0.03)] rounded-sm">
                 <p className="text-[10px] text-[rgba(255,255,255,0.4)] font-mono uppercase tracking-wider">Spent</p>
-                <p className="text-sm text-[rgba(255,255,255,0.6)] font-mono font-semibold mt-0.5">
-                  {totalSpent !== null ? `${parseFloat(formatEther(totalSpent)).toFixed(4)} ETH` : "-"}
+                <p className="text-sm text-[rgba(255,255,255,0.6)] font-mono font-semibold mt-0.5 flex items-center gap-1">
+                  {totalSpent !== null ? <><ETHIcon size={14} />{parseFloat(formatEther(totalSpent)).toFixed(4)} ETH</> : "-"}
                 </p>
               </div>
               <div className="px-3 py-2.5 bg-[rgba(255,255,255,0.03)] rounded-sm">
                 <p className="text-[10px] text-[rgba(255,255,255,0.4)] font-mono uppercase tracking-wider">Unspent</p>
-                <p className="text-sm text-[#00FF41] font-mono font-semibold mt-0.5">
-                  {totalUnspent !== null ? `${parseFloat(formatEther(totalUnspent)).toFixed(4)} ETH` : "-"}
+                <p className="text-sm text-[#00FF41] font-mono font-semibold mt-0.5 flex items-center gap-1">
+                  {totalUnspent !== null ? <><ETHIcon size={14} />{parseFloat(formatEther(totalUnspent)).toFixed(4)} ETH</> : "-"}
                 </p>
               </div>
             </div>

@@ -10,6 +10,7 @@ import {
   ShieldCheckIcon,
   AlertCircleIcon,
   XIcon,
+  ETHIcon,
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
 import { errorToUserMessage } from "@/lib/dustpool/v2/errors";
@@ -182,8 +183,9 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
                       </label>
                       <button
                         onClick={handleMaxClick}
-                        className="text-[10px] text-[#00FF41] font-mono hover:underline"
+                        className="flex items-center gap-1 text-[10px] text-[#00FF41] font-mono hover:underline"
                       >
+                        <ETHIcon size={12} />
                         MAX: {walletBalanceFormatted} ETH
                       </button>
                     </div>

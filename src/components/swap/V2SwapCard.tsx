@@ -13,6 +13,7 @@ import {
   ShieldIcon,
   LockIcon,
   AlertCircleIcon,
+  ETHIcon,
 } from "@/components/stealth/icons";
 
 interface V2SwapCardProps {
@@ -142,7 +143,10 @@ export function V2SwapCard({ chainId }: V2SwapCardProps) {
                       <span className="text-3xl font-bold text-white font-mono tracking-tight">
                         {isLoading ? "-.----" : displayBalance}
                       </span>
-                      <span className="text-sm text-[rgba(255,255,255,0.4)] font-mono">ETH</span>
+                      <div className="flex items-center gap-1.5">
+                        <ETHIcon size={16} />
+                        <span className="text-sm text-[rgba(255,255,255,0.4)] font-mono">ETH</span>
+                      </div>
                     </div>
                   </div>
 

@@ -706,6 +706,7 @@ export const TokenIcon = ({ symbol, size = 24 }: { symbol: string; size?: number
   const upper = symbol.toUpperCase();
   if (upper === 'ETH' || upper === 'WETH') return <ETHIcon size={size} />;
   if (upper === 'USDC') return <USDCIcon size={size} />;
+  if (upper === 'TON' || upper === 'WTON') return <TONIcon size={size} />;
   return (
     <div
       style={{ width: size, height: size }}

@@ -9,6 +9,7 @@ import {
   AlertCircleIcon,
   XIcon,
   SendIcon,
+  ETHIcon,
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
 import { errorToUserMessage } from "@/lib/dustpool/v2/errors";
@@ -142,8 +143,8 @@ export function V2TransferModal({
                       <label className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
                         Transfer Amount (ETH)
                       </label>
-                      <span className="text-[10px] text-[rgba(255,255,255,0.4)] font-mono">
-                        Available: {formattedMax} ETH
+                      <span className="text-[10px] text-[rgba(255,255,255,0.4)] font-mono flex items-center gap-1">
+                        Available: {formattedMax} <ETHIcon size={12} /> ETH
                       </span>
                     </div>
                     <input

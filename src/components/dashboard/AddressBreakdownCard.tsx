@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { getChainConfig } from "@/config/chains";
 import { getExplorerBase } from "@/lib/design/tokens";
-import { WalletIcon, ChevronDownIcon, ChevronUpIcon } from "@/components/stealth/icons";
+import { WalletIcon, ChevronDownIcon, ChevronUpIcon, TokenIcon } from "@/components/stealth/icons";
 import type { StealthPayment } from "@/lib/design/types";
 
 interface AddressBreakdownCardProps {
@@ -113,8 +113,8 @@ export function AddressBreakdownCard({ claimAddresses, unclaimedPayments }: Addr
                         {truncateAddress(addr.address)}
                       </a>
                     </div>
-                    <span className="text-xs font-medium text-[#00FF41] font-mono">
-                      {parseFloat(addr.balance || "0").toFixed(4)} {symbol}
+                    <span className="text-xs font-medium text-[#00FF41] font-mono flex items-center gap-1">
+                      {parseFloat(addr.balance || "0").toFixed(4)} <TokenIcon symbol={symbol} size={12} /> {symbol}
                     </span>
                   </div>
                 ))}
@@ -156,8 +156,8 @@ export function AddressBreakdownCard({ claimAddresses, unclaimedPayments }: Addr
                         </span>
                       )}
                     </div>
-                    <span className="text-xs font-medium text-[#00FF41] font-mono">
-                      {parseFloat(p.balance || "0").toFixed(4)} {symbol}
+                    <span className="text-xs font-medium text-[#00FF41] font-mono flex items-center gap-1">
+                      {parseFloat(p.balance || "0").toFixed(4)} <TokenIcon symbol={symbol} size={12} /> {symbol}
                     </span>
                   </div>
                 ))}

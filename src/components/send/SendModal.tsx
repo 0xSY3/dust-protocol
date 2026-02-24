@@ -11,7 +11,7 @@ import { ethers } from "ethers";
 import { getExplorerBase } from "@/lib/design/tokens";
 import {
   SendIcon, CheckCircleIcon, AlertCircleIcon, LockIcon,
-  ArrowUpRightIcon, XIcon,
+  ArrowUpRightIcon, XIcon, ETHIcon,
 } from "@/components/stealth/icons";
 
 interface SendModalProps {
@@ -222,7 +222,8 @@ export function SendModal({ isOpen, onClose }: SendModalProps) {
                       }}
                       className="w-full p-3 pr-16 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-2xl font-bold focus:outline-none focus:border-[#00FF41] focus:bg-[rgba(0,255,65,0.02)] transition-all placeholder-[rgba(255,255,255,0.2)]"
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[rgba(255,255,255,0.5)] font-mono">
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[rgba(255,255,255,0.5)] font-mono flex items-center gap-1">
+                      <ETHIcon size={14} />
                       {chainConfig.nativeCurrency.symbol}
                     </div>
                   </div>

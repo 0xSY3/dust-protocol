@@ -24,6 +24,7 @@ import {
   PlusIcon,
   XIcon,
   RefreshIcon,
+  TokenIcon,
 } from "@/components/stealth/icons";
 
 const CoinsIcon = () => (
@@ -226,9 +227,7 @@ function PoolRow({
           <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[2fr_1fr_1fr_1fr_auto] gap-3 items-center">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-sm bg-[rgba(255,255,255,0.06)] flex items-center justify-center shrink-0">
-                <span className="text-[13px] font-bold text-white font-mono">
-                  {pool.token.symbol === "ETH" ? "E" : "$"}
-                </span>
+                <TokenIcon symbol={pool.token.symbol} size={22} />
               </div>
               <div>
                 <div className="flex items-center gap-1.5">

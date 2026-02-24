@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { StealthPayment, ClaimAddress, OutgoingPayment } from "@/lib/design/types";
 import {
   ArrowDownLeftIcon, CheckCircleIcon, AlertCircleIcon,
-  RefreshIcon, ZapIcon, ArrowUpRightIcon, FileTextIcon, SendIcon,
+  RefreshIcon, ZapIcon, ArrowUpRightIcon, FileTextIcon, SendIcon, TokenIcon,
 } from "@/components/stealth/icons";
 
 type Filter = "all" | "incoming" | "outgoing";
@@ -307,8 +307,8 @@ function IncomingRow({ item, payments, expandedTx, setExpandedTx, handleClaim, c
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-[15px] font-semibold text-[#00FF41] font-mono">
-            +{displayAmount.toFixed(4)} {symbol}
+          <span className="text-[15px] font-semibold text-[#00FF41] font-mono flex items-center gap-1">
+            +{displayAmount.toFixed(4)} <TokenIcon symbol={symbol} size={14} /> {symbol}
           </span>
         </div>
       </div>
@@ -386,8 +386,8 @@ function OutgoingRow({ item, expandedTx, setExpandedTx }: {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-[15px] font-semibold text-[#EF4444] font-mono">
-            -{displayAmount.toFixed(4)} {symbol}
+          <span className="text-[15px] font-semibold text-[#EF4444] font-mono flex items-center gap-1">
+            -{displayAmount.toFixed(4)} <TokenIcon symbol={symbol} size={14} /> {symbol}
           </span>
         </div>
       </div>

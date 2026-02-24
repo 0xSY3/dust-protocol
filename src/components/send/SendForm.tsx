@@ -11,7 +11,7 @@ import { useAccount } from "wagmi";
 import { getChainProvider } from "@/lib/providers";
 import { AlertCircleIcon as AlertIcon } from "@/components/stealth/icons";
 import {
-  CheckCircleIcon, AlertCircleIcon, LockIcon, ArrowUpRightIcon,
+  CheckCircleIcon, AlertCircleIcon, LockIcon, ArrowUpRightIcon, TokenIcon,
 } from "@/components/stealth/icons";
 import { getExplorerBase } from "@/lib/design/tokens";
 
@@ -187,7 +187,7 @@ export function SendForm() {
                     }}
                     onClick={() => setSelectedToken(NATIVE_TOKEN_ADDRESS)}
                   >
-                    {symbol}{nativeBalance !== null && <span className="text-[11px] ml-1 opacity-70">{nativeBalance}</span>}
+                    <span className="flex items-center gap-1.5"><TokenIcon symbol={symbol} size={16} />{symbol}</span>{nativeBalance !== null && <span className="text-[11px] ml-1 opacity-70">{nativeBalance}</span>}
                   </button>
                   {tokens.map((t: TokenConfig) => {
                     const isActive = selectedToken === t.address;
@@ -203,7 +203,7 @@ export function SendForm() {
                         }}
                         onClick={() => setSelectedToken(t.address)}
                       >
-                        {t.symbol}{bal !== undefined && <span className="text-[11px] ml-1 opacity-70">{bal}</span>}
+                        <span className="flex items-center gap-1.5"><TokenIcon symbol={t.symbol} size={16} />{t.symbol}</span>{bal !== undefined && <span className="text-[11px] ml-1 opacity-70">{bal}</span>}
                       </button>
                     );
                   })}
