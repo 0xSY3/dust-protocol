@@ -12,7 +12,8 @@ import { useV2Swap, type SwapStatus } from "@/hooks/swap/v2/useV2Swap";
 import { useSwapQuote } from "@/hooks/swap";
 import { computeAssetId } from "@/lib/dustpool/v2/commitment";
 import { getExplorerBase } from "@/lib/design/tokens";
-import { AlertCircleIcon, LockIcon, TokenIcon } from "@/components/stealth/icons";
+import { AlertCircleIcon, LockIcon, TokenIcon, ShieldIcon } from "@/components/stealth/icons";
+import { V2DepositModal } from "@/components/dustpool/V2DepositModal";
 
 const SLIPPAGE_OPTIONS = [
   { label: "0.1%", bps: 10 },
@@ -66,6 +67,7 @@ export function SwapV2Card() {
 
   // Token dropdown
   const [showFromTokenDropdown, setShowFromTokenDropdown] = useState(false);
+  const [showDepositModal, setShowDepositModal] = useState(false);
 
   // V2 Swap hook
   const { swap, isPending, status, txHash, error: swapError, outputNote, clearError } = useV2Swap(keysRef, activeChainId);
@@ -284,6 +286,15 @@ export function SwapV2Card() {
                 V2
               </span>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowDepositModal(true)}
+                disabled={!hasKeys}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(0,255,65,0.06)] hover:border-[rgba(0,255,65,0.25)] transition-all text-[11px] font-mono text-[rgba(255,255,255,0.6)] hover:text-[#00FF41] disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <span className="text-[13px] leading-none">+</span>
+                <span className="tracking-wider">Deposit</span>
+              </button>
             <button
               onClick={() => setShowSlippageSettings(!showSlippageSettings)}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(0,255,65,0.06)] hover:border-[rgba(0,255,65,0.25)] transition-all text-[10px] font-mono text-[rgba(255,255,255,0.5)] hover:text-[#00FF41]"
@@ -293,6 +304,7 @@ export function SwapV2Card() {
               </svg>
               <span>{(slippageBps / 100).toFixed(1)}%</span>
             </button>
+            </div>
           </div>
 
           {/* Slippage Settings */}
@@ -700,7 +712,13 @@ export function SwapV2Card() {
               <div className="flex items-center gap-2">
                 <AlertCircleIcon size={12} color="rgb(239,68,68)" />
                 <span className="text-[10px] text-[rgba(239,68,68,0.8)] font-mono">
-                  Insufficient shielded {fromToken.symbol} balance. Deposit to V2 pool first.
+                  Insufficient shielded {fromToken.symbol} balance.{" "}
+                  <button
+                    className="text-[#00FF41] underline font-bold hover:opacity-80 transition-opacity"
+                    onClick={() => setShowDepositModal(true)}
+                  >
+                    Deposit now
+                  </button>
                 </span>
               </div>
             </div>
@@ -735,6 +753,16 @@ export function SwapV2Card() {
           </button>
         </div>
       </div>
+
+      <V2DepositModal
+        isOpen={showDepositModal}
+        onClose={() => {
+          setShowDepositModal(false);
+          refreshBalances();
+        }}
+        keysRef={keysRef}
+        chainId={activeChainId}
+      />
     </div>
   );
 }

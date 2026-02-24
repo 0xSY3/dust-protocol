@@ -11,11 +11,12 @@ import {
   getSwapContracts,
   isSwapSupported,
   getPoolForToken,
-  DEPOSIT_DENOMINATIONS,
   type SwapToken,
 } from "@/lib/swap/constants";
 import { useDustSwapPool } from "@/hooks/swap";
 import { useSwapNotes } from "@/hooks/swap";
+import { useV2Keys } from "@/hooks/dustpool/v2";
+import { V2DepositModal } from "@/components/dustpool/V2DepositModal";
 import {
   ShieldIcon,
   ShieldCheckIcon,
@@ -565,6 +566,7 @@ export default function PoolsPageClient() {
 
   const { deposit, state: depositState, error: depositError, reset: resetDeposit, getDepositCount, currentNote } = useDustSwapPool(activeChainId);
   const { unspentNotes, loading: notesLoading } = useSwapNotes();
+  const { keysRef: v2KeysRef } = useV2Keys();
 
   const [selectedPool, setSelectedPool] = useState<PoolInfo | null>(null);
   const [isDepositOpen, setIsDepositOpen] = useState(false);
@@ -905,15 +907,11 @@ export default function PoolsPageClient() {
         )}
       </div>
 
-      <PoolDepositModal
+      <V2DepositModal
         isOpen={isDepositOpen}
-        onClose={() => setIsDepositOpen(false)}
-        pool={selectedPool}
-        onDeposit={handleExecuteDeposit}
-        depositState={depositState}
-        depositError={depositError}
-        onReset={resetDeposit}
-        depositNote={currentNote}
+        onClose={() => { setIsDepositOpen(false); fetchCounts(); }}
+        keysRef={v2KeysRef}
+        chainId={activeChainId}
       />
 
       <PoolStatsModal

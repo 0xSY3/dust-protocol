@@ -7,11 +7,11 @@ import { ChevronDownIcon } from "lucide-react";
 import { SUPPORTED_TOKENS, RELAYER_FEE_BPS, DEFAULT_SLIPPAGE_MULTIPLIER, type SwapToken, isSwapSupported } from "@/lib/swap/constants";
 import { DEFAULT_CHAIN_ID, getChainConfig } from "@/config/chains";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSwapNotes, useDustSwap, useSwapMerkleTree, useDustSwapPool, useSwapQuote } from "@/hooks/swap";
+import { useSwapNotes, useDustSwap, useSwapMerkleTree, useSwapQuote } from "@/hooks/swap";
 import { checkRelayerHealth, getRelayerInfo, type RelayerInfo } from "@/lib/swap/relayer";
 import { TokenSelector } from "./TokenSelector";
 import { SwapExecuteModal, type SwapStep } from "./SwapExecuteModal";
-import { DepositModal } from "./DepositModal";
+import { V2DepositModal } from "@/components/dustpool/V2DepositModal";
 import { AlertCircleIcon, TokenIcon } from "@/components/stealth/icons";
 import { type StoredSwapNote } from "@/lib/swap/storage/swap-notes";
 import { useV2Swap, type SwapStatus as V2SwapStatus } from "@/hooks/swap/v2/useV2Swap";
@@ -128,8 +128,6 @@ export function SwapCard() {
     poolType,
     merkleTree: { getProof, syncTree, getRoot, isSyncing: treeSyncing },
   });
-  const { deposit: depositToPool } = useDustSwapPool(activeChainId);
-
   // Price quote from Uniswap V4 quoter
   const {
     amountOut: quotedAmountOut,
@@ -324,25 +322,6 @@ export function SwapCard() {
     setCompletedStealthAddress(null);
     setShowSwapModal(false);
   }, [resetDustSwap, clearV2Error]);
-
-  const handleDeposit = useCallback(
-    async (amount: string) => {
-      if (!depositToPool) return null;
-
-      const amountWei = parseUnits(amount, fromToken.decimals);
-
-      const result = await depositToPool(
-        fromToken.address as Address,
-        fromToken.symbol,
-        amountWei
-      );
-
-      if (!result) return null;
-
-      return result;
-    },
-    [depositToPool, fromToken]
-  );
 
   const handleSwap = useCallback(async () => {
     if (!canSwap) return;
@@ -859,11 +838,11 @@ export function SwapCard() {
       />
 
       {/* Deposit Modal */}
-      <DepositModal
+      <V2DepositModal
         isOpen={showDepositModal}
         onClose={() => setShowDepositModal(false)}
-        token={fromToken}
-        onDeposit={handleDeposit}
+        keysRef={v2KeysRef}
+        chainId={activeChainId}
       />
 
       {/* Swap Execute Modal */}
