@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { formatUnits, type Address, zeroAddress } from "viem";
+import { formatUnits, parseUnits, type Address, zeroAddress } from "viem";
 import { ChevronDownIcon } from "lucide-react";
 import { SUPPORTED_TOKENS, type SwapToken, isSwapSupported, RELAYER_FEE_BPS, getUSDCAddress } from "@/lib/swap/constants";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
@@ -124,7 +124,7 @@ export function SwapV2Card() {
   const parsedAmount = parseFloat(amountStr);
   const amountValid = !isNaN(parsedAmount) && parsedAmount > 0;
   const amountInWei = amountValid
-    ? BigInt(Math.floor(parsedAmount * Math.pow(10, fromToken.decimals)))
+    ? parseUnits(amountStr, fromToken.decimals)
     : 0n;
 
   const toAmountFormatted = useMemo(() => {

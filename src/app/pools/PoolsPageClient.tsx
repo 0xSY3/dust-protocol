@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { type Address } from "viem";
+import { parseUnits, type Address } from "viem";
 import { useAccount, useSwitchChain, useChainId } from "wagmi";
 import { useAuth } from "@/contexts/AuthContext";
 import { getExplorerBase } from "@/lib/design/tokens";
@@ -573,7 +573,7 @@ export default function PoolsPageClient() {
   const [ethDepositCount, setEthDepositCount] = useState(0);
   const [usdcDepositCount, setUsdcDepositCount] = useState(0);
   const [countsLoading, setCountsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"swap" | "global">("swap");
+  const [activeTab, setActiveTab] = useState<"swap" | "global">("global");
 
   const fetchCounts = useCallback(async () => {
     setCountsLoading(true);
@@ -662,9 +662,7 @@ export default function PoolsPageClient() {
       }
 
       const decimals = selectedPool.token.decimals;
-      const amountBigInt = BigInt(
-        Math.floor(parseFloat(amount) * Math.pow(10, decimals))
-      );
+      const amountBigInt = parseUnits(amount, decimals);
 
       console.log('[PoolsPage] Calling deposit with:', {
         tokenAddress: selectedPool.token.address,
