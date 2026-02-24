@@ -2,7 +2,6 @@ import { DocsPage } from "@/components/docs/DocsPage";
 import { DocsCallout } from "@/components/docs/DocsCallout";
 import { DocsStepList } from "@/components/docs/DocsStepList";
 import { DocsBadge } from "@/components/docs/DocsBadge";
-import { AtomicSwapHook } from "@/components/docs/visuals/AtomicSwapHook";
 import { docsMetadata } from "@/lib/seo/metadata";
 import { techArticleJsonLd } from "@/lib/seo/jsonLd";
 
@@ -10,9 +9,9 @@ import { techArticleJsonLd } from "@/lib/seo/jsonLd";
  * XSS-safe: all values below are hardcoded string literals defined in this file.
  * safeJsonLd() in jsonLd.ts escapes '<' as \u003c. No user input flows into this data.
  */
-const articleLd = techArticleJsonLd("Privacy Swaps — Security-Hardened Anonymous Token Exchange via Uniswap V4", "Swap tokens without leaving a traceable on-chain fingerprint. Chain ID binding, Poseidon recipient binding, and relayer fee range checks harden the ZK proof. Verification and the Uniswap V4 swap execute atomically in one transaction.", "/docs/privacy-swaps");
+const articleLd = techArticleJsonLd("Privacy Swaps — Atomic Private Token Exchange via DustSwapAdapterV2", "Swap any amount of tokens privately. DustSwapAdapterV2 withdraws from DustPoolV2, swaps on a vanilla Uniswap V4 pool, and re-deposits the output — all in one atomic transaction via relayer.", "/docs/privacy-swaps");
 
-export const metadata = docsMetadata("Privacy Swaps — Security-Hardened Anonymous Token Exchange via Uniswap V4", "Swap tokens without leaving a traceable on-chain fingerprint. Chain ID binding, Poseidon recipient binding, and relayer fee range checks harden the ZK proof. Verification and the Uniswap V4 swap execute atomically in one transaction.", "/docs/privacy-swaps");
+export const metadata = docsMetadata("Privacy Swaps — Atomic Private Token Exchange via DustSwapAdapterV2", "Swap any amount of tokens privately. DustSwapAdapterV2 withdraws from DustPoolV2, swaps on a vanilla Uniswap V4 pool, and re-deposits the output — all in one atomic transaction via relayer.", "/docs/privacy-swaps");
 
 export default function PrivacySwapsPage() {
   return (
@@ -22,144 +21,161 @@ export default function PrivacySwapsPage() {
     <DocsPage
       currentHref="/docs/privacy-swaps"
       title="Privacy Swaps"
-      subtitle="Swap tokens without leaving a traceable on-chain fingerprint. ZK proof verification and the swap are atomic — a single transaction."
+      subtitle="Swap any amount of tokens privately. The adapter withdraws from DustPoolV2, swaps on a vanilla Uniswap V4 pool, and re-deposits the output as a new UTXO note — all in one atomic transaction."
       badge="CORE FEATURE"
     >
 
-      {/* The problem */}
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-3 uppercase">DEX Fingerprinting</h2>
         <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed mb-4">
           Even after privately receiving ETH through stealth transfers, swapping reveals a pattern. The amount
-          you deposit to a DEX and the timing form a unique fingerprint. An on-chain analyst can cluster
+          you send to a DEX and the timing form a unique fingerprint. An on-chain analyst can cluster
           multiple stealth wallets as belonging to the same user just by watching who swaps similar amounts
           at similar times.
         </p>
         <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed">
-          Privacy Swaps (<code className="text-xs bg-[rgba(255,255,255,0.06)] px-1.5 rounded-sm">DustSwap</code>)
-          solve this with <strong>fixed denominations</strong> and a Uniswap V4 hook that validates a
-          ZK proof atomically inside the swap transaction — so the on-chain record never links a specific
-          deposit to a specific swap output.
+          Privacy Swaps V2 (<code className="text-xs bg-[rgba(255,255,255,0.06)] px-1.5 rounded-sm">DustSwapAdapterV2</code>)
+          solve this with an <strong>adapter pattern</strong>. The adapter contract atomically withdraws from DustPoolV2
+          (proving UTXO ownership via ZK proof), executes a swap on a standard Uniswap V4 pool with no custom hooks,
+          and re-deposits the swap output back into DustPoolV2 as a new UTXO note. The on-chain record never
+          links a specific depositor to a specific swap output.
         </p>
       </section>
 
-      {/* How it works */}
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-4 uppercase">How Privacy Swaps Work</h2>
 
-        <div className="mb-8">
-          <AtomicSwapHook />
-        </div>
-
         <DocsStepList steps={[
           {
-            title: "Choose a fixed-denomination pool",
-            children: <>DustSwap offers two pools with fixed deposit amounts:
-              <strong> DustSwapPoolETH</strong> (fixed ETH denomination) and{" "}
-              <strong>DustSwapPoolUSDC</strong> (fixed USDC denomination). Fixed denominations prevent
-              amount-based correlation — every deposit and withdrawal looks identical in size.</>,
+            title: "Prove ownership of UTXO notes in DustPoolV2",
+            children: <>Your browser generates a <strong>FFLONK proof</strong> using the standard DustV2Transaction
+              circuit (~12,400 constraints). The proof demonstrates you own valid notes in the pool without revealing
+              which ones. Public signals: <code>merkleRoot, null0, null1, outC0, outC1, pubAmount, pubAsset,
+              recipient, chainId</code>. The <code>recipient</code> is set to the adapter contract address, not
+              a user wallet — the adapter receives the withdrawn funds to execute the swap.</>,
           },
           {
-            title: "Deposit and receive a swap note",
-            children: <>Your browser generates a Poseidon commitment <code>C = Poseidon(nullifier, secret)</code>
-              and calls <code>DustSwapPoolETH.deposit(commitment)</code>. The commitment is inserted into
-              an on-chain Merkle tree. Your <strong>swap note</strong> (nullifier + secret + commitment)
-              is stored locally in your browser — treat it like a bearer instrument.</>,
+            title: "Choose swap parameters",
+            children: <>Select the token pair (e.g., ETH to USDC), the amount to swap, and a minimum output amount
+              for slippage protection. Unlike V1&apos;s fixed denominations, you can swap <strong>any arbitrary
+              amount</strong>. The adapter will use a vanilla Uniswap V4 pool — no custom hooks or special pool
+              contracts needed.</>,
           },
           {
-            title: "Wait at least 50 blocks",
-            children: <>The <code>DustSwapHook</code> enforces a <code>minWaitBlocks = 50</code> delay between
-              deposit and swap. This prevents timing correlation — an observer cannot match a swap to a
-              deposit that happened in the same block or immediately before.</>,
+            title: "Submit to relayer",
+            children: <>The proof and swap parameters are sent to the relayer (same-origin Next.js API at{" "}
+              <code>/api/v2/swap</code>). The relayer validates the proof format, verifies the chain ID matches,
+              confirms the proof recipient is the adapter contract, and checks nullifier freshness. It then submits
+              the transaction to <code>DustSwapAdapterV2.executeSwap()</code>.</>,
           },
           {
-            title: "Specify a stealth recipient address",
-            children: <>Before proving, choose a <strong>fresh stealth address</strong> where you want the
-              swap output to land. This address is encoded as a public input in the ZK proof — the contract
-              will route output tokens directly there. It can be any address you control privately.</>,
+            title: "Atomic execution: withdraw \u2192 swap \u2192 re-deposit",
+            children: <>The adapter contract performs three operations in a single transaction:
+              <strong> (1)</strong> calls <code>DustPoolV2.withdraw()</code> with the ZK proof to release funds,
+              <strong> (2)</strong> swaps the withdrawn tokens on the vanilla Uniswap V4 pool via the V4 PoolManager,
+              <strong> (3)</strong> computes a Poseidon commitment for the swap output and deposits it back into
+              DustPoolV2. If any step fails, the entire transaction reverts — there is no intermediate state.</>,
           },
           {
-            title: "Generate a PrivateSwap Groth16 proof (in-browser)",
-            children: <>The browser runs <strong>snarkjs</strong> with the <code>PrivateSwap.circom</code>
-              circuit (~12,974 constraints). Public inputs: <code>root, nullifierHash, recipient, relayer,
-              swapAmountOut, minBlockNumber, chainId, relayerFee</code>.
-              Private inputs: <code>nullifier, secret, merkleProof[]</code>. The proof binds the recipient,
-              relayer, swap output, and chain ID together via
-              <code> Poseidon(recipient, relayer, swapAmountOut, chainId)</code> — preventing front-running
-              and cross-chain replay attacks.</>,
-          },
-          {
-            title: "Atomic swap via Uniswap V4 hook",
-            children: <>A relayer submits the swap through <code>DustSwapRouter</code>, passing the ZK proof
-              as <code>hookData</code> to Uniswap V4.
-              <strong> beforeSwap hook</strong>: chain ID verified (<code>pubSignals[6] == block.chainid</code>),
-              proof verified on-chain via <code>DustSwapVerifier</code>, nullifier marked spent, block timing enforced.
-              <strong> afterSwap hook</strong>: output tokens taken from the V4 PoolManager and transferred
-              directly to the <code>recipient</code> stealth address.
-              Everything is atomic — there is no intermediate transaction that could reveal the link.</>,
+            title: "Receive new UTXO note",
+            children: <>The swap output is a fresh UTXO note in DustPoolV2 with a new Poseidon commitment. Your
+              browser stores this note (encrypted with AES-256-GCM in IndexedDB). You can later withdraw, transfer,
+              or swap this note again — it is indistinguishable from any other note in the pool.</>,
           },
         ]} />
       </section>
 
-      {/* Architecture diagram (text) */}
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-4 uppercase">Architecture</h2>
         <div className="font-mono text-xs leading-relaxed text-[rgba(255,255,255,0.5)] bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm p-5 overflow-x-auto whitespace-pre">
           {`User browser
-  └─ generates commitment ──► DustSwapPoolETH.deposit()
-                                  └─ inserts leaf into Merkle tree
-
-  ...(50+ blocks later)...
-
-  └─ generates ZK proof ──► DustSwapRouter.swap(proof as hookData)
-       (8 public signals:         └─ Uniswap V4 PoolManager
-        root, nullHash,                ├─ beforeSwap ─► DustSwapHook
-        recipient, relayer,            │   ├─ verify chainId == block.chainid
-        swapAmountOut,                 │   ├─ verify SNARK proof
-        minBlock, chainId,             │   ├─ mark nullifier spent
-        relayerFee)                    │   └─ DustSwapPool.releaseForSwap()
-                                       ├─ swap executes (ETH ↔ USDC)
-                                       └─ afterSwap ──► route output
-                                                         to stealth recipient`}
+  \u2514\u2500 generates FFLONK proof \u2500\u2500\u25BA Relayer (/api/v2/swap)
+       (9 public signals:            \u2514\u2500 validates proof + chainId
+        merkleRoot, null0,           \u2514\u2500 DustSwapAdapterV2.executeSwap()
+        null1, outC0, outC1,              \u2502
+        pubAmount, pubAsset,              \u251C\u2500 (1) DustPoolV2.withdraw(proof)
+        recipient=adapter,                \u2502     \u2514\u2500 verifies FFLONK proof
+        chainId)                          \u2502     \u2514\u2500 marks nullifiers spent
+                                          \u2502     \u2514\u2500 releases funds to adapter
+                                          \u2502
+                                          \u251C\u2500 (2) Uniswap V4 PoolManager.swap()
+                                          \u2502     \u2514\u2500 vanilla pool (no hooks)
+                                          \u2502     \u2514\u2500 ETH \u2194 USDC at market rate
+                                          \u2502
+                                          \u2514\u2500 (3) DustPoolV2.deposit(newCommitment)
+                                                \u2514\u2500 Poseidon commitment for output
+                                                \u2514\u2500 new UTXO note in pool`}
         </div>
       </section>
 
-      {/* Key properties */}
+      <section className="mb-10">
+        <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-4 uppercase">V2 vs V1 Architecture</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs font-mono border-collapse">
+            <thead>
+              <tr className="border-b border-[rgba(255,255,255,0.06)]">
+                <th className="text-left py-2 pr-6 text-[rgba(255,255,255,0.3)] font-normal tracking-wider uppercase text-[10px]">Property</th>
+                <th className="text-left py-2 pr-6 text-[rgba(255,255,255,0.3)] font-normal tracking-wider uppercase text-[10px]">V1</th>
+                <th className="text-left py-2 text-[rgba(255,255,255,0.3)] font-normal tracking-wider uppercase text-[10px]">V2</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[rgba(255,255,255,0.04)]">
+              {[
+                ["Swap amounts", "Fixed denominations only", "Arbitrary amounts"],
+                ["Pool type", "Custom DustSwapPool contracts", "Vanilla Uniswap V4 pool"],
+                ["Hook", "DustSwapHook (beforeSwap/afterSwap)", "No hooks \u2014 standalone adapter"],
+                ["Proof system", "Groth16 (PrivateSwap.circom)", "FFLONK (reuses DustV2Transaction)"],
+                ["Deposit step", "Separate deposit into DustSwapPool", "Uses existing DustPoolV2 notes"],
+                ["Output", "Tokens to stealth address", "New UTXO note in DustPoolV2"],
+                ["Contracts", "DustSwapPool + DustSwapHook + DustSwapRouter", "DustSwapAdapterV2 (single contract)"],
+                ["Wait period", "50-block minimum wait", "None required"],
+              ].map(([k, v1, v2]) => (
+                <tr key={k} className="hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+                  <td className="py-2.5 pr-6 text-[rgba(255,255,255,0.5)]">{k}</td>
+                  <td className="py-2.5 pr-6 text-[rgba(255,255,255,0.35)]">{v1}</td>
+                  <td className="py-2.5 text-white">{v2}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section className="mb-10">
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-4 uppercase">Key Properties</h2>
         <div className="space-y-3">
           {[
             {
-              label: "Fixed denominations",
-              desc: "All deposits in a pool are the same size. An observer cannot use amount to link deposit to output.",
+              label: "Arbitrary amounts",
+              desc: "No fixed denominations. Swap any amount from your DustPoolV2 notes. The UTXO model handles change automatically via the 2-in-2-out circuit.",
             },
             {
-              label: "Atomic proof + swap",
-              desc: "ZK verification and the Uniswap V4 swap happen in one transaction. There is no two-step process that creates a timing link.",
+              label: "Atomic three-step execution",
+              desc: "Withdraw, swap, and re-deposit happen in a single transaction. There is no intermediate state where funds are exposed or linkable.",
             },
             {
-              label: "Output to stealth address",
-              desc: "Swap output tokens go directly to a recipient address encoded in the proof — not to your main wallet.",
+              label: "Vanilla Uniswap V4 pool",
+              desc: "Swaps execute on a standard Uniswap V4 pool with no custom hooks. This means better liquidity, no hook-specific attack surface, and compatibility with any V4 pool.",
             },
             {
-              label: "50-block minimum wait",
-              desc: "Enforced by the hook. Prevents temporal correlation between deposit and swap.",
+              label: "Reuses DustV2Transaction circuit",
+              desc: "No separate swap-specific circuit. The adapter reuses the same FFLONK proof from DustPoolV2 withdrawals, reducing proving complexity and audit surface.",
             },
             {
-              label: "Gas optimization: 51% reduction",
-              desc: "O(1) root lookup, hardcoded Poseidon zero hashes, and optimized storage packing save ~247,000 gas per swap.",
+              label: "Output stays in the pool",
+              desc: "Swap output is re-deposited as a new UTXO note in DustPoolV2. Funds never touch an external address during the swap, maximizing privacy.",
+            },
+            {
+              label: "Slippage protection",
+              desc: "The adapter enforces a minimum output amount (minAmountOut). If the Uniswap V4 swap returns less than this threshold, the entire transaction reverts.",
             },
             {
               label: "Chain ID binding",
-              desc: "The chain ID is a public signal in the proof. A proof generated on Ethereum Sepolia cannot be replayed on Thanos Sepolia or any other chain.",
+              desc: "The chain ID is a public signal in the FFLONK proof. A proof generated on Ethereum Sepolia cannot be replayed on Thanos Sepolia or any other chain.",
             },
             {
-              label: "Relayer fee range check",
-              desc: "The relayer fee is range-checked to 16 bits inside the circuit, preventing field-wrap bypass attacks where an attacker could set an astronomically high fee.",
-            },
-            {
-              label: "Recipient binding via Poseidon",
-              desc: "The proof binds recipient, relayer, swap output, and chain ID together with Poseidon(recipient, relayer, swapAmountOut, chainId) — preventing front-running.",
+              label: "Relayer-based submission",
+              desc: "A same-origin relayer submits the transaction, paying gas on behalf of the user. The relayer fee is capped at 500 bps and validated before submission.",
             },
           ].map(({ label, desc }) => (
             <div key={label} className="flex gap-4 p-3 border border-[rgba(255,255,255,0.05)] rounded-sm">
@@ -173,22 +189,26 @@ export default function PrivacySwapsPage() {
         </div>
       </section>
 
-      <DocsCallout type="warning" title="Swap notes are local">
-        Your swap deposit note (nullifier + secret) is stored only in your browser. If you clear localStorage
-        or switch devices, you lose the ability to generate a withdrawal proof. Use the <strong>Wallet</strong>{" "}
-        page to export and back up your notes.
+      <DocsCallout type="warning" title="UTXO notes are local">
+        Your deposit notes are encrypted and stored in IndexedDB. If you clear browser data or switch devices,
+        you lose the ability to generate withdrawal proofs. Export and back up your notes from the Settings page.
+      </DocsCallout>
+
+      <DocsCallout type="info" title="Gas cost">
+        A privacy swap costs approximately 580,000 to 900,000 gas — covering FFLONK proof verification,
+        the Uniswap V4 swap, Poseidon commitment computation, and the re-deposit into DustPoolV2.
       </DocsCallout>
 
       <section className="mt-8">
         <div className="flex flex-wrap gap-2">
-          <DocsBadge variant="green">Uniswap V4 Hooks</DocsBadge>
-          <DocsBadge variant="green">Groth16</DocsBadge>
-          <DocsBadge variant="green">PrivateSwap.circom</DocsBadge>
+          <DocsBadge variant="green">FFLONK</DocsBadge>
+          <DocsBadge variant="green">DustV2Transaction</DocsBadge>
+          <DocsBadge variant="green">Uniswap V4</DocsBadge>
           <DocsBadge variant="muted">BN254</DocsBadge>
-          <DocsBadge variant="muted">Fixed Denominations</DocsBadge>
-          <DocsBadge variant="muted">50-block delay</DocsBadge>
+          <DocsBadge variant="muted">Adapter Pattern</DocsBadge>
+          <DocsBadge variant="muted">Arbitrary Amounts</DocsBadge>
           <DocsBadge variant="amber">Chain ID Binding</DocsBadge>
-          <DocsBadge variant="muted">Poseidon Binding</DocsBadge>
+          <DocsBadge variant="amber">Slippage Protection</DocsBadge>
         </div>
       </section>
     </DocsPage>

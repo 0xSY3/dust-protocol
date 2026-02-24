@@ -17,7 +17,7 @@ const howToData = howToJsonLd(
     { name: "Receive a stealth payment", text: "The sender looks up your .dust name, derives a one-time stealth address via ECDH, and sends ETH directly to it." },
     { name: "Claim gas-free via ERC-4337", text: "Click Claim. Your stealth key signs a UserOperation locally. The DustPaymaster sponsors gas. A StealthAccount is deployed and drains atomically." },
     { name: "Consolidate in Privacy Pool V2", text: "Deposit any amount to DustPoolV2 with a Poseidon UTXO commitment. Withdraw with a FFLONK proof to break the on-chain link. Use split withdrawals for denomination privacy." },
-    { name: "Swap tokens privately", text: "Deposit to DustSwapPool, wait 50 blocks, generate a ZK proof, and submit an atomic swap via Uniswap V4 hook." },
+    { name: "Swap tokens privately", text: "Withdraw from DustPoolV2 with a FFLONK proof, swap atomically on a vanilla Uniswap V4 pool via DustSwapAdapterV2, and deposit the output back into DustPoolV2." },
     { name: "Compliance & disclosure", text: "Deposits are screened via Chainalysis oracle. Generate voluntary disclosure reports using view keys for tax or audit purposes — without revealing spending authority." },
   ],
 );
@@ -191,23 +191,23 @@ export default function HowItWorksPage() {
         <p className="text-xs text-[rgba(255,255,255,0.35)] font-mono mb-5">Optional — swap tokens without a traceable on-chain signature</p>
         <DocsStepList steps={[
           {
-            title: "Deposit to DustSwapPool",
-            children: <>Deposit a fixed-denomination amount of ETH or USDC to the <code>DustSwapPoolETH</code> or
-              <code> DustSwapPoolUSDC</code> contract and receive a locally-stored deposit note containing your
-              nullifier and secret.</>,
+            title: "Generate a FFLONK proof for withdrawal",
+            children: <>The browser generates a FFLONK proof against your DustPoolV2 UTXO notes — the same
+              2-in-2-out transaction circuit used for regular withdrawals. The proof targets
+              <code> DustSwapAdapterV2</code> as the recipient, binding the withdrawal to the swap adapter contract.</>,
           },
           {
-            title: "Generate a PrivateSwap ZK proof",
-            children: <>The browser generates a Groth16 proof (<code>PrivateSwap.circom</code>) that proves Merkle
-              membership in the swap pool. The proof encodes <code>recipient</code> — a stealth address where output
-              tokens should land. A 50-block minimum wait enforces temporal privacy.</>,
+            title: "Atomic withdraw-swap-deposit via DustSwapAdapterV2",
+            children: <>The relayer submits the swap to <code>DustSwapAdapterV2</code>, which executes three steps
+              atomically: (1) withdraws from <code>DustPoolV2</code> using your FFLONK proof, (2) swaps on a
+              vanilla Uniswap V4 pool (no custom hook), (3) deposits the output tokens back into
+              <code> DustPoolV2</code> with an on-chain Poseidon commitment. All three steps succeed or revert together.</>,
           },
           {
-            title: "Atomic proof-verified swap via Uniswap V4",
-            children: <>The relayer submits the swap through <code>DustSwapRouter</code>. The Uniswap V4
-              <code> DustSwapHook</code>'s <code>beforeSwap</code> verifies the proof and marks the nullifier spent.
-              The <code>afterSwap</code> callback routes the output tokens directly to the stealth recipient address.
-              Proof verification and the token swap are a single atomic transaction.</>,
+            title: "Receive new UTXO notes",
+            children: <>After the swap completes, you hold new DustPoolV2 UTXO notes denominated in the output token.
+              The swap leaves no traceable link between input and output — the adapter contract is the only
+              visible on-chain participant. Your new notes can be withdrawn or used in further transfers normally.</>,
           },
         ]} />
       </section>
@@ -229,10 +229,10 @@ export default function HowItWorksPage() {
                 ["ERC-6538", "Stealth meta-address registry"],
                 ["ERC-4337", "Account abstraction — gasless stealth claims"],
                 ["EIP-7702", "EOA-as-smart-account support"],
-                ["Groth16 / snarkjs", "In-browser ZK proof generation (pool & swaps)"],
+                ["Groth16 / snarkjs", "In-browser ZK proof generation (V1 pool)"],
                 ["FFLONK", "ZK proof system for DustPool V2 — no trusted setup, 22% cheaper than Groth16"],
                 ["Poseidon hash", "ZK-friendly hash in commitments and Merkle trees"],
-                ["Uniswap V4 hooks", "Atomic ZK-verified private swaps"],
+                ["Uniswap V4", "Vanilla liquidity pools for DustSwapAdapterV2 private swaps"],
                 ["Chainalysis Oracle", "On-chain sanctions screening for deposits"],
                 ["View Keys", "Selective disclosure for compliance and auditing"],
               ].map(([std, role]) => (

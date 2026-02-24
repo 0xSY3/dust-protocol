@@ -61,39 +61,11 @@ const sepoliaContracts = [
     explorer: "https://sepolia.etherscan.io/address/0x17f52f01ffcB6d3C376b2b789314808981cebb16",
   },
   {
-    name: "DustSwapPoolETH",
-    address: "0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799",
-    role: "Fixed-denomination ETH deposit pool for privacy swaps. Commits go into Merkle tree.",
-    standard: "Custom ZK",
-    explorer: "https://sepolia.etherscan.io/address/0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799",
-  },
-  {
-    name: "DustSwapPoolUSDC",
-    address: "0x1791D13995FfA9e00a9A2C07A9ad1251a668A669",
-    role: "Fixed-denomination USDC deposit pool for privacy swaps.",
-    standard: "Custom ZK",
-    explorer: "https://sepolia.etherscan.io/address/0x1791D13995FfA9e00a9A2C07A9ad1251a668A669",
-  },
-  {
-    name: "DustSwapHook",
-    address: "0xCb2e9147B96e385c2c00A11D92026eb16eB400c4",
-    role: "Uniswap V4 hook. beforeSwap: validates ZK proof + chainId, marks nullifier spent. afterSwap: routes output to stealth address.",
-    standard: "Uniswap V4",
-    explorer: "https://sepolia.etherscan.io/address/0xCb2e9147B96e385c2c00A11D92026eb16eB400c4",
-  },
-  {
-    name: "DustSwapVerifier",
-    address: "0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F",
-    role: "On-chain Groth16 verifier for DustSwap PrivateSwap circuit proofs.",
-    standard: "Groth16",
-    explorer: "https://sepolia.etherscan.io/address/0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F",
-  },
-  {
-    name: "DustSwapRouter",
-    address: "0xDC839820cc24f312f10945939C4aCa41887FC78F",
-    role: "Entry point for privacy swap execution. Submits swaps to Uniswap V4 PoolManager with ZK hookData.",
-    standard: "Custom",
-    explorer: "https://sepolia.etherscan.io/address/0xDC839820cc24f312f10945939C4aCa41887FC78F",
+    name: "DustSwapAdapterV2",
+    address: "0xe2bE4d7b5C1952B3DDB210499800A45aa0DD097C",
+    role: "V2 privacy swap adapter. Atomic: withdraws from DustPoolV2 via FFLONK proof, swaps on a vanilla Uniswap V4 pool, commits output back to DustPoolV2 via on-chain Poseidon.",
+    standard: "ZK-UTXO / Uniswap V4",
+    explorer: "https://sepolia.etherscan.io/address/0xe2bE4d7b5C1952B3DDB210499800A45aa0DD097C",
   },
   {
     name: "DustPoolV2",
@@ -119,7 +91,7 @@ const sepoliaContracts = [
   {
     name: "Uniswap V4 PoolManager",
     address: "0x93805603e0167574dFe2F50ABdA8f42C85002FD8",
-    role: "Core Uniswap V4 contract. Manages liquidity pools and executes swaps that pass through DustSwapHook.",
+    role: "Core Uniswap V4 contract. Manages liquidity pools used by DustSwapAdapterV2 for private swaps.",
     standard: "Uniswap V4",
     explorer: "https://sepolia.etherscan.io/address/0x93805603e0167574dFe2F50ABdA8f42C85002FD8",
   },
@@ -247,7 +219,7 @@ export default function ContractsPage() {
           <DocsBadge variant="muted">Tokamak Network</DocsBadge>
         </div>
         <p className="text-xs text-[rgba(255,255,255,0.4)] leading-relaxed mb-4">
-          Thanos Sepolia has core stealth transfer, V1 pool, and V2 ZK-UTXO pool contracts. DustSwap (privacy swaps + Uniswap V4) is
+          Thanos Sepolia has core stealth transfer, V1 pool, and V2 ZK-UTXO pool contracts. DustSwapAdapterV2 (privacy swaps via DustPoolV2 + Uniswap V4) is
           deployed on Ethereum Sepolia only.
         </p>
 
@@ -283,8 +255,7 @@ export default function ContractsPage() {
             { name: "StealthNameRegistry.sol", path: "contracts/StealthNameRegistry.sol", desc: ".dust name registry" },
             { name: "StealthRelayer.sol", path: "contracts/StealthRelayer.sol", desc: "EIP-712 signed withdrawal relayer (0.5% fee)" },
             { name: "DustPool.sol", path: "contracts/dustpool/src/DustPool.sol", desc: "Privacy pool core contract" },
-            { name: "DustSwapHook.sol", path: "contracts/dustswap/src/DustSwapHook.sol", desc: "Uniswap V4 beforeSwap/afterSwap hook" },
-            { name: "DustSwapRouter.sol", path: "contracts/dustswap/src/DustSwapRouter.sol", desc: "Privacy swap entry point" },
+            { name: "DustSwapAdapterV2.sol", path: "contracts/dustswap/src/DustSwapAdapterV2.sol", desc: "V2 atomic privacy swap adapter (DustPoolV2 + vanilla V4 pool)" },
             { name: "DustPoolV2.sol", path: "contracts/dustpool/src/DustPoolV2.sol", desc: "V2 ZK-UTXO privacy pool (FFLONK, split withdrawals, compliance)" },
             { name: "DustV2Transaction.circom", path: "contracts/dustpool/circuits/v2/DustV2Transaction.circom", desc: "2-in-2-out transaction circuit (12,400 constraints)" },
             { name: "DustV2Split.circom", path: "contracts/dustpool/circuits/v2/DustV2Split.circom", desc: "2-in-8-out split circuit (32,074 constraints)" },
