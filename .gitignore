@@ -77,3 +77,4 @@ public/circuits/v2/DustV2Transaction.zkey
 public/circuits/v2-split/DustV2Split.zkey
 public/circuits/v2-compliance/DustV2Compliance.zkey
 .wrangler/
+.worktrees/
