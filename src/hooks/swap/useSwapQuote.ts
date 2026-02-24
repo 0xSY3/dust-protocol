@@ -5,10 +5,11 @@ import { usePublicClient } from 'wagmi'
 import { type Address } from 'viem'
 import {
   QUOTER_ABI,
-  getDustSwapPoolKey,
+  getVanillaPoolKey,
   getSwapDirection,
 } from '@/lib/swap/contracts'
-import { getSwapContracts, SUPPORTED_TOKENS } from '@/lib/swap/constants'
+import { SUPPORTED_TOKENS } from '@/lib/swap/constants'
+import { getChainConfig } from '@/config/chains'
 
 interface UseSwapQuoteParams {
   fromToken: Address
@@ -50,8 +51,8 @@ export function useSwapQuote({
         return
       }
 
-      const contracts = getSwapContracts(chainId)
-      const quoterAddress = contracts.uniswapV4Quoter as Address | null
+      const config = getChainConfig(chainId)
+      const quoterAddress = config.contracts.uniswapV4Quoter as Address | null
       if (!quoterAddress) {
         setError('Quoter not deployed on this chain')
         setIsLoading(false)
@@ -59,7 +60,12 @@ export function useSwapQuote({
       }
 
       try {
-        const poolKey = getDustSwapPoolKey(chainId)
+        const poolKey = getVanillaPoolKey(chainId)
+        if (!poolKey) {
+          setError('Vanilla pool not configured on this chain')
+          setIsLoading(false)
+          return
+        }
         const { zeroForOne, sqrtPriceLimitX96 } = getSwapDirection(fromToken, toToken, poolKey)
 
         const parsedAmount = parseFloat(amount)
