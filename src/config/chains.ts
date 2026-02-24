@@ -18,16 +18,9 @@ export interface ChainContracts {
   subAccount7702: string | null;
   nameRegistryMerkle: string | null;
   nameVerifier: string | null;
-  // DustSwap privacy swap contracts (Ethereum Sepolia only for Phase 1)
-  dustSwapPoolETH: string | null;
-  dustSwapPoolUSDC: string | null;
-  dustSwapHook: string | null;
-  dustSwapVerifier: string | null;
-  dustSwapRouter: string | null;  // Production router (replaces PoolSwapTest)
   uniswapV4PoolManager: string | null;
   uniswapV4StateView: string | null;
   uniswapV4Quoter: string | null;
-  uniswapV4SwapRouter: string | null;
   // DustPool V2 (ZK-UTXO)
   dustPoolV2: string | null;
   dustPoolV2Verifier: string | null;
@@ -62,7 +55,6 @@ export interface ChainConfig {
   creationCodes: ChainCreationCodes;
   deploymentBlock: number;
   dustPoolDeploymentBlock: number | null;
-  dustSwapDeploymentBlock: number | null;
   supportsEIP7702: boolean;
   canonicalForNaming: boolean;
   testnet: boolean;
@@ -102,15 +94,9 @@ const THANOS_SEPOLIA_CONFIG: ChainConfig = {
     subAccount7702: null,
     nameRegistryMerkle: null,
     nameVerifier: '0x0000000000000000000000000000000000000000', // placeholder — deploy pending
-    dustSwapPoolETH: null,
-    dustSwapPoolUSDC: null,
-    dustSwapHook: null,
-    dustSwapVerifier: null,
-    dustSwapRouter: null,
     uniswapV4PoolManager: null,
     uniswapV4StateView: null,
     uniswapV4Quoter: null,
-    uniswapV4SwapRouter: null,
     dustPoolV2: '0x130eEBe65DC1B3f9639308C253F3F9e4F0bbDC29',
     dustPoolV2Verifier: '0x3a8D53179862a2a7Ede73F42c021056B06364dda',
     dustPoolV2SplitVerifier: '0xbcb3FDB42C2bAEA700B840e25e32da25f2C78Ef7',
@@ -125,7 +111,6 @@ const THANOS_SEPOLIA_CONFIG: ChainConfig = {
   },
   deploymentBlock: 6272527,
   dustPoolDeploymentBlock: 6372598,
-  dustSwapDeploymentBlock: null,
   supportsEIP7702: false,
   canonicalForNaming: false,
   testnet: true,
@@ -177,16 +162,9 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
     subAccount7702: '0xdf34D138d1E0beC7127c32E9Aa1273E8B4DE7dFF', // OZ ReentrancyGuard fixed version
     nameRegistryMerkle: '0x0000000000000000000000000000000000000000', // placeholder — deploy pending
     nameVerifier: null,
-    // DustSwap V4 contracts — deployed 2026-02-22 with chainId signal + relayerFee range check
-    dustSwapPoolETH: '0xE30Cd101AA3d58A5124E8fF8Dda825F1bA5f8799',
-    dustSwapPoolUSDC: '0x1791D13995FfA9e00a9A2C07A9ad1251a668A669',
-    dustSwapHook: '0xCb2e9147B96e385c2c00A11D92026eb16eB400c4', // CREATE2 deployed, flags 0xC4
-    dustSwapVerifier: '0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F', // Groth16 with Poseidon(recipient, relayer, swapAmountOut, chainId) binding
-    dustSwapRouter: '0xDC839820cc24f312f10945939C4aCa41887FC78F',
     uniswapV4PoolManager: '0x93805603e0167574dFe2F50ABdA8f42C85002FD8',
     uniswapV4StateView: '0x9C1CF9F4C496b7Df66d4EaBbff127Db6Af3c1C14',
     uniswapV4Quoter: '0xc3b43472250ab15dD91DB8900ce10f77fbDd22DB',
-    uniswapV4SwapRouter: '0x25eC587b262F30E4e8AE13643255a5f0F9E049aD', // PoolSwapTest (legacy, kept for reference)
     dustPoolV2: '0x3cbf3459e7E0E9Fd2fd86a28c426CED2a60f023f',
     dustPoolV2Verifier: '0xd0f5aB15Ef3C882EB4341D38A3183Cc1FDcCFD8a',
     dustPoolV2SplitVerifier: '0x472CBA068f19738eB514B7f0b846a63E7E502120',
@@ -208,7 +186,6 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
   },
   deploymentBlock: 10251347,
   dustPoolDeploymentBlock: 10259728,
-  dustSwapDeploymentBlock: 10268660, // DustSwap contracts deployed 2026-02-16
   supportsEIP7702: true,
   canonicalForNaming: true,
   testnet: true,

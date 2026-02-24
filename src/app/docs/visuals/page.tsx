@@ -5,7 +5,6 @@ import { motion } from 'framer-motion'
 import { PrivacyFlow } from '@/components/docs/visuals/PrivacyFlow'
 import { ECDHKeyDerivation } from '@/components/docs/visuals/ECDHKeyDerivation'
 import { MerkleTreeMixer } from '@/components/docs/visuals/MerkleTreeMixer'
-import { AtomicSwapHook } from '@/components/docs/visuals/AtomicSwapHook'
 import { KeyManagement } from '@/components/docs/visuals/KeyManagement'
 import { EndToEndTimeline } from '@/components/docs/visuals/EndToEndTimeline'
 import { PaymentLinkCard } from '@/components/docs/visuals/PaymentLinkCard'
@@ -15,7 +14,6 @@ type ScreenId =
     | 'overview'
     | 'stealth'
     | 'pool'
-    | 'swaps'
     | 'keys'
     | 'lifecycle'
     | 'links'
@@ -36,10 +34,6 @@ const NAV_ITEMS: {
         {
             id: 'pool',
             label: 'PRIVACY POOL',
-        },
-        {
-            id: 'swaps',
-            label: 'PRIV SWAPS',
         },
         {
             id: 'keys',
@@ -70,8 +64,6 @@ export default function DocsVisualsPage() {
                 return <ECDHKeyDerivation />
             case 'pool':
                 return <MerkleTreeMixer />
-            case 'swaps':
-                return <AtomicSwapHook />
             case 'keys':
                 return <KeyManagement />
             case 'lifecycle':

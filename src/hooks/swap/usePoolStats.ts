@@ -5,10 +5,10 @@ import { usePublicClient, useChainId } from 'wagmi'
 import { type Address } from 'viem'
 import {
   STATE_VIEW_ABI,
-  getDustSwapPoolKey,
+  getVanillaPoolKey,
   computePoolId,
 } from '@/lib/swap/contracts'
-import { getSwapContracts } from '@/lib/swap/constants'
+import { getChainConfig } from '@/config/chains'
 
 const Q96 = BigInt(2) ** BigInt(96)
 const Q192 = Q96 * Q96
@@ -105,8 +105,8 @@ export function usePoolStats(chainIdParam?: number): PoolStatsData {
       return
     }
 
-    const contracts = getSwapContracts(chainId)
-    const stateViewAddress = contracts.uniswapV4StateView as Address | null
+    const config = getChainConfig(chainId)
+    const stateViewAddress = config.contracts.uniswapV4StateView as Address | null
     if (!stateViewAddress) {
       setError('StateView not deployed on this chain')
       setIsLoading(false)
@@ -114,7 +114,12 @@ export function usePoolStats(chainIdParam?: number): PoolStatsData {
     }
 
     try {
-      const poolKey = getDustSwapPoolKey(chainId)
+      const poolKey = getVanillaPoolKey(chainId)
+      if (!poolKey) {
+        setError('Vanilla pool not configured on this chain')
+        setIsLoading(false)
+        return
+      }
       const poolId = computePoolId(poolKey)
 
       const [slot0Result, liquidityResult] = await Promise.all([
