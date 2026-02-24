@@ -52,12 +52,14 @@ contracts/dustpool/build/
 contracts/dustpool/lib/
 contracts/dustpool/node_modules/
 
-# DustSwap cache (broadcast artifacts)
+# DustSwap cache and broadcast artifacts
 contracts/dustswap/cache/
+contracts/dustswap/broadcast/
 
 # Internal docs, plans, and submissions
 docs/*
 !docs/CONTRACTS.md
+!docs/research/
 plan.txt
 Track-B-Submission-*.md
 
@@ -73,4 +75,5 @@ next-env.d.ts
 CLAUDE.md
 public/circuits/v2/DustV2Transaction.zkey
 public/circuits/v2-split/DustV2Split.zkey
+public/circuits/v2-compliance/DustV2Compliance.zkey
 .wrangler/
