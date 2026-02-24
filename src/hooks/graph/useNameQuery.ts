@@ -107,15 +107,20 @@ export function useNamesByWallet(walletAddress: string | undefined, chainIdOverr
       if (!normalizedAddress) return [];
       const client = getGraphClient(chainId);
 
-      // Step 1: Get the user's on-chain stealth meta-address from ERC-6538 events
       const userData = await client.request<{
-        user: { metaAddress: { stealthMetaAddress: string; schemeId: string } | null } | null;
+        user: {
+          names: NameEntity[];
+          metaAddress: { stealthMetaAddress: string; schemeId: string } | null;
+        } | null;
       }>(GET_STEALTH_META_BY_REGISTRANT, { address: normalizedAddress });
 
+      // ERC-6538 metaAddress may be null if registered on a different chain.
+      // Fall back to user.names (@derivedFrom owner) which works regardless.
       const onChainMeta = userData?.user?.metaAddress?.stealthMetaAddress;
-      if (!onChainMeta) return [];
+      if (!onChainMeta) {
+        return userData?.user?.names ?? [];
+      }
 
-      // Step 2: Find names registered with that meta-address
       const data = await client.request<NamesQueryResult>(GET_NAMES_BY_META_ADDRESS, {
         metaAddress: onChainMeta.toLowerCase(),
       });

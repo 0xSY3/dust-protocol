@@ -79,12 +79,20 @@ export const SEARCH_NAMES = gql`
   }
 `;
 
-// Get a user's on-chain stealth meta-address by wallet address
-// (from ERC-6538 StealthMetaAddressSet events indexed by the subgraph)
+// Get a user's on-chain stealth meta-address AND owned names by wallet address.
+// names is a @derivedFrom field on User — always populated when the user owns names,
+// even if ERC-6538 was registered on a different chain (metaAddress will be null).
 export const GET_STEALTH_META_BY_REGISTRANT = gql`
   query GetStealthMetaByRegistrant($address: ID!) {
     user(id: $address) {
       id
+      names {
+        id
+        name
+        ownerAddress
+        metaAddress
+        registeredAt
+      }
       metaAddress {
         stealthMetaAddress
         schemeId

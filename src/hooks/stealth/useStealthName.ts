@@ -8,7 +8,7 @@ import {
   discoverNameByWalletHistory, CANONICAL_ADDRESSES,
 } from '@/lib/stealth';
 import { DEFAULT_CHAIN_ID } from '@/config/chains';
-import { useNamesByMetaAddress, useNamesByWallet } from '@/hooks/graph/useNameQuery';
+import { useNamesOwnedBy, useNamesByMetaAddress, useNamesByWallet } from '@/hooks/graph/useNameQuery';
 import { isGraphAvailable } from '@/lib/graph/client';
 import type { OwnedName } from '@/lib/design/types';
 
@@ -36,6 +36,18 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
 
   // --- Graph-based name loading (when USE_GRAPH is enabled) ---
   const graphEnabled = USE_GRAPH && isGraphAvailable(activeChainId);
+
+  // Primary Graph lookup: query names by ownerAddress (most reliable — works
+  // immediately after auto-transfer, no ERC-6538 or derived keys needed)
+  const {
+    data: graphOwnerNames,
+    isLoading: graphOwnerLoading,
+    isError: graphOwnerFailed,
+  } = useNamesOwnedBy(
+    graphEnabled && isConnected ? address : undefined,
+    activeChainId,
+  );
+
   const {
     data: graphNames,
     isLoading: graphLoading,
@@ -61,26 +73,26 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
   );
 
   // Derive ownedNames from Graph data when enabled
+  // Priority: owner-based (most reliable) > metaAddress-based > wallet-chain
   const graphOwnedNames = useMemo<OwnedName[]>(() => {
     if (!graphEnabled) return [];
-    // Prefer metaAddress-based results (more specific), fall back to wallet-based
-    const names = graphNames?.length ? graphNames : graphWalletNames;
+    const names = graphOwnerNames?.length ? graphOwnerNames
+      : graphNames?.length ? graphNames
+      : graphWalletNames;
     if (!names?.length) return [];
     return names.map((n) => ({
       name: n.name,
       fullName: formatNameWithSuffix(n.name),
     }));
-  }, [graphEnabled, graphNames, graphWalletNames]);
+  }, [graphEnabled, graphOwnerNames, graphNames, graphWalletNames]);
 
-  // Graph→RPC fallback: if Graph is enabled but errored, fall back to legacy RPC path
-  const useGraphData = graphEnabled && !graphFailed && !(needsWalletLookup && graphWalletFailed);
+  // Graph→RPC fallback: if Graph is enabled but ALL Graph queries errored, fall back to legacy
+  const useGraphData = graphEnabled && !graphOwnerFailed && !graphFailed && !(needsWalletLookup && graphWalletFailed);
 
-  // Detect when graph succeeded but returned NOTHING — triggers legacy fallback.
-  // Covers both cleared-cache (no metaAddress) and derived-keys scenarios where
-  // the subgraph has no ERC-6538 data or names for this wallet/metaAddress.
+  // Detect when all graph queries succeeded but returned NOTHING — triggers legacy fallback.
   const graphReturnedEmpty = graphEnabled
-    && !graphLoading && !graphWalletLoading
-    && !graphFailed && !graphWalletFailed
+    && !graphOwnerLoading && !graphLoading && !graphWalletLoading
+    && !graphOwnerFailed && !graphFailed && !graphWalletFailed
     && graphOwnedNames.length === 0;
 
   // Unified ownedNames: prefer Graph when it has data, fall back to legacy/discovery
@@ -136,9 +148,8 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
   const registeringNameRef = useRef(false);
 
   const loadOwnedNames = useCallback(async () => {
-    // If graph is enabled, has a metaAddress, AND graph already found names — just refetch.
-    // Otherwise fall through to the legacy discovery pipeline (API + RPC scan).
-    if (graphEnabled && !graphFailed && userMetaAddressRef.current && graphOwnedNames.length > 0) {
+    // If graph already found names (via any method: owner, meta, wallet) — no need for legacy.
+    if (graphEnabled && graphOwnedNames.length > 0) {
       refetchGraphNames();
       return;
     }
@@ -227,7 +238,7 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     }
   // userMetaAddress intentionally excluded — read via ref to prevent re-run on key derivation.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, isConnected, isConfigured, chainId, graphEnabled, graphFailed, refetchGraphNames, tryRecoverName]);
+  }, [address, isConnected, isConfigured, chainId, graphEnabled, graphFailed, graphOwnerFailed, refetchGraphNames, tryRecoverName]);
 
   // Initial load trigger
   // Run legacy discovery when:
@@ -246,16 +257,16 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     // Line 96 already handles the address=undefined case via setLegacyNamesSettled(!address).
   }, [needsLegacyDiscovery, isConnected, isConfigured, loadOwnedNames]);
 
-  // For graph mode, settled = not loading (disabled query also returns loading=false immediately)
-  // When userMetaAddress is available: use metaAddress-based graph query loading state.
-  // When userMetaAddress is null (cleared cache): use wallet-based graph query loading state,
-  // OR wait for legacy pipeline if graph returned empty.
+  // Settled = all relevant queries have finished loading.
+  // Owner-based Graph query is the primary signal (fastest, most reliable).
+  // If Graph found names via any method, settled immediately.
+  // If Graph returned empty, wait for legacy pipeline to also finish.
   const isNamesSettled = useGraphData
-    ? (userMetaAddress
-        ? !graphLoading
-        : (graphOwnedNames.length > 0
-            ? true
-            : (!graphWalletLoading ? legacyNamesSettled : false)))
+    ? (graphOwnedNames.length > 0
+        ? true
+        : (!graphOwnerLoading && !graphLoading && !graphWalletLoading
+            ? legacyNamesSettled
+            : false))
     : legacyNamesSettled;
   const registerName = useCallback(async (name: string, metaAddress: string): Promise<string | null> => {
     if (!isConnected || !isConfigured) {
@@ -286,13 +297,13 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       if (!res.ok) throw new Error(data.error || 'Name registration failed');
 
       const stripped = stripNameSuffix(name);
-      // Optimistically set in React Query cache (persists across page navigation)
       const normalizedMeta = (metaAddress.match(/^st:[a-z]+:(0x[0-9a-fA-F]+)$/)?.[1] || metaAddress).toLowerCase();
-      queryClient.setQueryData(
-        ['names', 'meta', activeChainId, normalizedMeta],
-        [{ id: '', name: stripped, ownerAddress: '', metaAddress: normalizedMeta, registeredAt: String(Math.floor(Date.now() / 1000)) }],
-      );
-      // Also set in component state as backup
+      const now = String(Math.floor(Date.now() / 1000));
+      const optimisticEntry = { id: '', name: stripped, ownerAddress: (address ?? '').toLowerCase(), metaAddress: normalizedMeta, registeredAt: now };
+      // Optimistically set in React Query caches (persists across page navigation)
+      // queryKey for 'owned' must use raw address (wagmi checksummed) to match useNamesOwnedBy
+      queryClient.setQueryData(['names', 'meta', activeChainId, normalizedMeta], [optimisticEntry]);
+      queryClient.setQueryData(['names', 'owned', activeChainId, address], [optimisticEntry]);
       setLegacyOwnedNames([{ name: stripped, fullName: formatNameWithSuffix(stripped) }]);
 
       return data.txHash ?? (data.alreadyRegistered ? 'already-registered' : null);
