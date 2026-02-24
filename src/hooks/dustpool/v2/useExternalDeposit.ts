@@ -3,7 +3,6 @@ import {
   createWalletClient,
   createPublicClient,
   custom,
-  http,
   type Address,
   zeroAddress,
 } from 'viem'
@@ -31,6 +30,7 @@ export type ExternalDepositStatus =
 
 const POLL_INTERVAL_MS = 3000
 const POLL_MAX_ATTEMPTS = 10
+const RECEIPT_TIMEOUT_MS = 30_000
 
 export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?: number) {
   const { address: privyAddress } = useAccount()
@@ -189,14 +189,17 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
       setTxHash(hash)
       setStatus('confirming')
 
+      // Use MetaMask's own transport — it already has the receipt for the tx it just sent.
+      // The configured RPC URLs may be undefined (missing env var) or rate-limited.
       const externalPublic = createPublicClient({
         chain: chainConfig.viemChain,
-        transport: chainConfig.rpcUrls.length > 0
-          ? http(chainConfig.rpcUrls[0])
-          : custom(window.ethereum),
+        transport: custom(window.ethereum),
       })
 
-      const receipt = await externalPublic.waitForTransactionReceipt({ hash })
+      const receipt = await externalPublic.waitForTransactionReceipt({
+        hash,
+        timeout: RECEIPT_TIMEOUT_MS,
+      })
       if (receipt.status === 'reverted') throw new Error('Deposit transaction reverted')
 
       await confirmNote()
