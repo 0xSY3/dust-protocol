@@ -282,9 +282,6 @@ export function SwapV2Card() {
               <span className="text-xs font-bold font-mono text-white tracking-widest uppercase">
                 PRIVACY_SWAP
               </span>
-              <span className="px-1.5 py-0.5 rounded-sm bg-[rgba(0,255,65,0.15)] text-[9px] text-[#00FF41] font-mono font-bold">
-                V2
-              </span>
             </div>
             <div className="flex items-center gap-2">
               <button
