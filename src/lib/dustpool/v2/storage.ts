@@ -59,6 +59,8 @@ export interface StoredNoteV2 {
   encryptedData?: string
   /** AES-GCM IV (base64) — present when note is encrypted */
   iv?: string
+  /** Note lifecycle: 'pending' until on-chain, 'confirmed' after relayer indexes */
+  status?: 'pending' | 'confirmed'
 }
 
 // ─── Conversion ─────────────────────────────────────────────────────────────────
