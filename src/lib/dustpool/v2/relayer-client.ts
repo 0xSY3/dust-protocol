@@ -66,6 +66,39 @@ export interface BatchWithdrawalResult {
   succeeded: number
 }
 
+interface BatchSwapResponse {
+  results: Array<{
+    index: number
+    txHash: string
+    blockNumber: number
+    gasUsed: string
+    fee: string
+    outputCommitment: string | null
+    outputAmount: string | null
+    queueIndex: number | null
+  }>
+  errors: Array<{ index: number; error: string }>
+  total: number
+  succeeded: number
+}
+
+export interface BatchSwapResultItem {
+  txHash: string
+  blockNumber: number
+  gasUsed: string
+  fee: string
+  outputCommitment: string | null
+  outputAmount: string | null
+  queueIndex: number | null
+}
+
+export interface BatchSwapResult {
+  results: BatchSwapResultItem[]
+  errors: Array<{ index: number; error: string }>
+  total: number
+  succeeded: number
+}
+
 interface TransferResponse {
   success: boolean
   txHash: string
@@ -237,6 +270,44 @@ export function createRelayerClient(config?: Partial<RelayerConfig>) {
           blockNumber: r.blockNumber,
           gasUsed: r.gasUsed,
           fee: r.fee,
+        })),
+        errors: data.errors,
+        total: data.total,
+        succeeded: data.succeeded,
+      }
+    },
+
+    /**
+     * Submit multiple swap proofs as a batch.
+     * Relayer shuffles execution order and adds timing jitter between swaps
+     * to defeat FIFO timing correlation attacks.
+     */
+    async submitBatchSwap(
+      swaps: Array<{
+        proof: string
+        publicSignals: string[]
+        tokenIn: string
+        tokenOut: string
+        ownerPubKey: string
+        blinding: string
+        relayerFeeBps: number
+        minAmountOut: string
+      }>,
+      targetChainId: number
+    ): Promise<BatchSwapResult> {
+      const data = await relayerFetch<BatchSwapResponse>(resolvedConfig, '/api/v2/batch-swap', {
+        method: 'POST',
+        body: JSON.stringify({ swaps, targetChainId }),
+      })
+      return {
+        results: data.results.map(r => ({
+          txHash: r.txHash,
+          blockNumber: r.blockNumber,
+          gasUsed: r.gasUsed,
+          fee: r.fee,
+          outputCommitment: r.outputCommitment,
+          outputAmount: r.outputAmount,
+          queueIndex: r.queueIndex,
         })),
         errors: data.errors,
         total: data.total,

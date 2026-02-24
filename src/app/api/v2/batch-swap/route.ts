@@ -35,6 +35,9 @@ interface BatchSwapResult {
   blockNumber: number
   gasUsed: string
   fee: string
+  outputCommitment: string | null
+  outputAmount: string | null
+  queueIndex: number | null
 }
 
 /** Fisher-Yates shuffle — randomizes swap execution order */
@@ -272,6 +275,28 @@ export async function POST(req: Request) {
             throw new Error('Transaction reverted on-chain')
           }
 
+          // Parse PrivateSwapExecuted event for output commitment and amount
+          let outputCommitment: string | null = null
+          let outputAmount: string | null = null
+          let queueIndex: number | null = null
+          try {
+            const iface = new ethers.utils.Interface(DUST_SWAP_ADAPTER_V2_ABI as unknown as string[])
+            for (const log of receipt.logs) {
+              try {
+                const parsed = iface.parseLog(log)
+                if (parsed.name === 'PrivateSwapExecuted') {
+                  outputCommitment = parsed.args.outputCommitment
+                  outputAmount = parsed.args.outputAmount.toString()
+                  break
+                }
+              } catch {
+                // Log from a different contract — skip
+              }
+            }
+          } catch (parseErr) {
+            console.warn(`[V2/batch-swap] Event parsing failed for chunk ${si + 1}:`, parseErr)
+          }
+
           console.log(
             `[V2/batch-swap] Chunk ${si + 1}/${shuffled.length} success: tx=${receipt.transactionHash}`,
           )
@@ -282,6 +307,9 @@ export async function POST(req: Request) {
             blockNumber: receipt.blockNumber,
             gasUsed: receipt.gasUsed.toString(),
             fee: receipt.effectiveGasPrice.mul(receipt.gasUsed).toString(),
+            outputCommitment,
+            outputAmount,
+            queueIndex,
           })
         } catch (chunkErr) {
           const msg = chunkErr instanceof Error ? chunkErr.message : 'Unknown error'
