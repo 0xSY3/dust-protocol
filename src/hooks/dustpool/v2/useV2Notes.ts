@@ -98,7 +98,7 @@ export function useV2Notes(keysRef?: RefObject<V2Keys | null>, chainIdOverride?:
 
       for (const note of pending) {
         try {
-          const status = await relayer.getDepositStatus(note.commitment)
+          const status = await relayer.getDepositStatus(note.commitment, chainId)
           if (status.confirmed && status.leafIndex >= 0) {
             await updateNoteLeafIndex(db, note.id, status.leafIndex)
             didUpdate = true
