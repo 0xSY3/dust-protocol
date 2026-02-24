@@ -9,8 +9,11 @@ import { useSwitchChain } from "wagmi";
 import { useAuth } from "@/contexts/AuthContext";
 import { useV2Keys, useV2Balance } from "@/hooks/dustpool/v2";
 import { useV2Swap, type SwapStatus } from "@/hooks/swap/v2/useV2Swap";
+import { useV2DenomSwap, type DenomSwapStatus } from "@/hooks/swap/v2/useV2DenomSwap";
 import { useSwapQuote } from "@/hooks/swap";
 import { computeAssetId } from "@/lib/dustpool/v2/commitment";
+import { decomposeForSplit, formatChunks, suggestRoundedAmounts } from "@/lib/dustpool/v2/denominations";
+import { resolveTokenSymbol } from "@/lib/dustpool/v2/split-utils";
 import { getExplorerBase } from "@/lib/design/tokens";
 import { AlertCircleIcon, LockIcon, TokenIcon, ShieldIcon } from "@/components/stealth/icons";
 import { V2DepositModal } from "@/components/dustpool/V2DepositModal";
@@ -42,6 +45,30 @@ const STATUS_LABELS: Record<SwapStatus, string> = {
   error: "Swap failed",
 };
 
+const DENOM_STATUS_STEPS: DenomSwapStatus[] = [
+  "decomposing",
+  "splitting",
+  "confirming-split",
+  "polling-leaves",
+  "generating-swap-proofs",
+  "submitting-swaps",
+  "saving-notes",
+];
+
+const DENOM_STATUS_LABELS: Record<DenomSwapStatus, string> = {
+  idle: "",
+  decomposing: "Decomposing into denominations...",
+  splitting: "Generating split proof...",
+  "confirming-split": "Confirming split on-chain...",
+  "polling-leaves": "Waiting for leaf confirmation...",
+  "generating-swap-proofs": "Generating swap proofs...",
+  "submitting-swaps": "Submitting batch swap...",
+  "confirming-swaps": "Confirming swaps on-chain...",
+  "saving-notes": "Saving output notes...",
+  done: "Denomination swap complete!",
+  error: "Denomination swap failed",
+};
+
 export function SwapV2Card() {
   const { isConnected, activeChainId } = useAuth();
   const swapSupported = isSwapSupported(activeChainId);
@@ -69,8 +96,20 @@ export function SwapV2Card() {
   const [showFromTokenDropdown, setShowFromTokenDropdown] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
 
-  // V2 Swap hook
+  // V2 Swap hooks
   const { swap, isPending, status, txHash, error: swapError, outputNote, clearError } = useV2Swap(keysRef, activeChainId);
+  const {
+    denomSwap,
+    isPending: isDenomPending,
+    status: denomStatus,
+    progress: denomProgress,
+    txHashes: denomTxHashes,
+    error: denomError,
+    clearError: clearDenomError,
+  } = useV2DenomSwap(keysRef, activeChainId);
+
+  // Denomination swap toggle (default ON for privacy)
+  const [useDenomSwap, setUseDenomSwap] = useState(true);
 
   // Price quote (reuse V1 quoter — same Uniswap V4 pool)
   const {
@@ -151,6 +190,41 @@ export function SwapV2Card() {
     return parseFloat(formatted).toFixed(toToken.decimals > 6 ? 6 : 2);
   }, [minAmountOut, toToken.decimals]);
 
+  // Denomination chunks preview
+  const denomChunks = useMemo(() => {
+    if (!amountValid || amountInWei <= 0n) return [];
+    try {
+      return decomposeForSplit(amountInWei, fromToken.symbol, 7);
+    } catch {
+      return [];
+    }
+  }, [amountInWei, amountValid, fromToken.symbol]);
+
+  const denomChunksFormatted = useMemo(
+    () => (denomChunks.length > 0 ? formatChunks(denomChunks, fromToken.symbol) : []),
+    [denomChunks, fromToken.symbol]
+  );
+
+  const denomSuggestions = useMemo(() => {
+    if (!amountValid || amountInWei <= 0n || denomChunks.length <= 1) return [];
+    try {
+      return suggestRoundedAmounts(amountInWei, fromToken.symbol, 2);
+    } catch {
+      return [];
+    }
+  }, [amountInWei, amountValid, denomChunks.length, fromToken.symbol]);
+
+  // Whether to actually use denom swap (toggle on + more than 1 chunk)
+  const shouldUseDenomSwap = useDenomSwap && denomChunks.length > 1;
+
+  // Combined status from whichever swap mode is active
+  const activeStatus = shouldUseDenomSwap ? denomStatus : status;
+  const activeIsPending = shouldUseDenomSwap ? isDenomPending : isPending;
+  const activeError = shouldUseDenomSwap ? denomError : swapError;
+  const activeTxHash = shouldUseDenomSwap
+    ? (denomTxHashes.length > 0 ? denomTxHashes[0] : null)
+    : txHash;
+
   // Insufficient balance check
   const insufficientBalance = amountInWei > 0n && amountInWei > fromBalance;
 
@@ -160,8 +234,8 @@ export function SwapV2Card() {
     amountValid &&
     !insufficientBalance &&
     quotedAmountOut > 0n &&
-    status === "idle" &&
-    !isPending &&
+    activeStatus === "idle" &&
+    !activeIsPending &&
     !isQuoteLoading &&
     swapSupported;
 
@@ -174,20 +248,32 @@ export function SwapV2Card() {
 
   const handleSwap = useCallback(async () => {
     if (!canSwap) return;
-    await swap(
-      amountInWei,
-      fromToken.address as Address,
-      toToken.address as Address,
-      minAmountOut,
-      RELAYER_FEE_BPS
-    );
-  }, [canSwap, swap, amountInWei, fromToken.address, toToken.address, minAmountOut]);
+    if (shouldUseDenomSwap) {
+      await denomSwap(
+        amountInWei,
+        fromToken.address as Address,
+        toToken.address as Address,
+        minAmountOut,
+        slippageBps,
+        RELAYER_FEE_BPS
+      );
+    } else {
+      await swap(
+        amountInWei,
+        fromToken.address as Address,
+        toToken.address as Address,
+        minAmountOut,
+        RELAYER_FEE_BPS
+      );
+    }
+  }, [canSwap, shouldUseDenomSwap, denomSwap, swap, amountInWei, fromToken.address, toToken.address, minAmountOut, slippageBps]);
 
   const handleReset = useCallback(() => {
     clearError();
+    clearDenomError();
     setAmountStr("");
     refreshBalances();
-  }, [clearError, refreshBalances]);
+  }, [clearError, clearDenomError, refreshBalances]);
 
   const handlePinSubmit = async () => {
     const ok = await deriveKeys(pinInput);
@@ -236,13 +322,13 @@ export function SwapV2Card() {
 
   // Refresh balances when swap completes
   useEffect(() => {
-    if (status === "done") {
+    if (activeStatus === "done") {
       refreshBalances();
     }
-  }, [status, refreshBalances]);
+  }, [activeStatus, refreshBalances]);
 
   const explorerBase = getExplorerBase(activeChainId);
-  const isProcessing = isPending || (status !== "idle" && status !== "done" && status !== "error");
+  const isProcessing = activeIsPending || (activeStatus !== "idle" && activeStatus !== "done" && activeStatus !== "error");
 
   const getButtonContent = () => {
     if (!isConnected) return "Connect Wallet";
@@ -250,21 +336,33 @@ export function SwapV2Card() {
     if (!hasKeys) return "Unlock V2 Keys";
     if (balanceLoading) return "Loading Balances...";
     if (isQuoteLoading && amountValid) return "Getting Quote...";
-    if (isPending) return STATUS_LABELS[status] || "Processing...";
-    if (status === "done") return "Swap Complete!";
-    if (status === "error") return "Try Again";
+    if (activeIsPending) {
+      if (shouldUseDenomSwap) {
+        const label = DENOM_STATUS_LABELS[denomStatus] || "Processing...";
+        return denomProgress.total > 0
+          ? `${label} (${denomProgress.current}/${denomProgress.total})`
+          : label;
+      }
+      return STATUS_LABELS[status] || "Processing...";
+    }
+    if (activeStatus === "done") return "Swap Complete!";
+    if (activeStatus === "error") return "Try Again";
     if (!amountStr || !amountValid) return "Enter Amount";
     if (insufficientBalance) return "Insufficient Balance";
     if (quotedAmountOut <= 0n && amountValid && !isQuoteLoading && !quoteError) return "No Liquidity";
     if (quoteError) return "Quote Unavailable";
-    return "Swap";
+    return shouldUseDenomSwap && denomChunks.length > 1 ? `Swap (${denomChunks.length} chunks)` : "Swap";
   };
 
-  const buttonDisabled = status === "error" || status === "done"
+  const buttonDisabled = activeStatus === "error" || activeStatus === "done"
     ? false
     : !canSwap;
 
-  const currentStepIndex = STATUS_STEPS.indexOf(status);
+  const currentStepIndex = shouldUseDenomSwap
+    ? DENOM_STATUS_STEPS.indexOf(denomStatus as DenomSwapStatus)
+    : STATUS_STEPS.indexOf(status);
+  const activeSteps = shouldUseDenomSwap ? DENOM_STATUS_STEPS : STATUS_STEPS;
+  const activeLabels = shouldUseDenomSwap ? DENOM_STATUS_LABELS : STATUS_LABELS;
 
   return (
     <div className="w-full max-w-[620px]">
@@ -571,6 +669,83 @@ export function SwapV2Card() {
             </div>
           </div>
 
+          {/* ── Denomination Privacy ─────────────────────────────── */}
+          {amountValid && denomChunks.length > 0 && !isProcessing && (
+            <div className="mt-4 p-3 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)]">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <ShieldIcon size={12} color={useDenomSwap ? "#00FF41" : "rgba(255,255,255,0.35)"} />
+                  <span className="text-[10px] text-[rgba(255,255,255,0.5)] uppercase tracking-widest font-mono">
+                    DENOM_PRIVACY
+                  </span>
+                </div>
+                <button
+                  onClick={() => setUseDenomSwap(!useDenomSwap)}
+                  className={`relative w-8 h-4 rounded-full transition-all ${
+                    useDenomSwap
+                      ? "bg-[rgba(0,255,65,0.25)] border border-[rgba(0,255,65,0.4)]"
+                      : "bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.12)]"
+                  }`}
+                >
+                  <div className={`absolute top-0.5 w-3 h-3 rounded-full transition-all ${
+                    useDenomSwap
+                      ? "left-[calc(100%-14px)] bg-[#00FF41]"
+                      : "left-0.5 bg-[rgba(255,255,255,0.4)]"
+                  }`} />
+                </button>
+              </div>
+
+              {useDenomSwap && denomChunks.length > 1 && (
+                <>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {denomChunksFormatted.map((chunk, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded-sm bg-[rgba(0,255,65,0.06)] border border-[rgba(0,255,65,0.12)] text-[10px] font-mono text-[#00FF41]"
+                      >
+                        {chunk} {fromToken.symbol}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
+                    {denomChunks.length} chunks — each swapped separately for privacy
+                  </span>
+
+                  {denomSuggestions.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-[rgba(255,255,255,0.04)]">
+                      <span className="text-[9px] text-[rgba(255,255,255,0.3)] uppercase tracking-widest font-mono block mb-1.5">
+                        FEWER CHUNKS
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {denomSuggestions.map((s, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setAmountStr(s.formatted)}
+                            className="px-2 py-0.5 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(0,255,65,0.25)] hover:bg-[rgba(0,255,65,0.04)] text-[10px] font-mono text-[rgba(255,255,255,0.5)] hover:text-[#00FF41] transition-all"
+                          >
+                            {s.formatted} {fromToken.symbol} ({s.chunks} chunk{s.chunks > 1 ? "s" : ""})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {useDenomSwap && denomChunks.length === 1 && (
+                <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
+                  Amount matches a denomination — single swap
+                </span>
+              )}
+
+              {!useDenomSwap && (
+                <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
+                  Single swap — amount visible on-chain
+                </span>
+              )}
+            </div>
+          )}
+
           {/* ── Price Info ──────────────────────────────────────── */}
           {amountValid && toAmountFormatted && !isProcessing && (
             <div className="mt-4 p-3 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)]">
@@ -613,11 +788,28 @@ export function SwapV2Card() {
           {/* ── Processing Steps ──────────────────────────────── */}
           {isProcessing && (
             <div className="mt-4 p-3 rounded-sm bg-[rgba(0,255,65,0.03)] border border-[rgba(0,255,65,0.1)]">
+              {shouldUseDenomSwap && denomProgress.total > 0 && (
+                <div className="mb-2.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] text-[rgba(255,255,255,0.4)] uppercase tracking-widest font-mono">
+                      PROGRESS
+                    </span>
+                    <span className="text-[10px] text-[#00FF41] font-mono font-bold">
+                      {denomProgress.current}/{denomProgress.total}
+                    </span>
+                  </div>
+                  <div className="h-1 bg-[rgba(255,255,255,0.06)] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#00FF41] rounded-full transition-all duration-300"
+                      style={{ width: `${(denomProgress.current / denomProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               <div className="flex flex-col gap-2.5">
-                {STATUS_STEPS.map((step, i) => {
-                  const isActive = step === status;
+                {activeSteps.map((step, i) => {
+                  const isActive = step === activeStatus;
                   const isComplete = currentStepIndex > i;
-                  const isPending = currentStepIndex < i;
 
                   return (
                     <div key={step} className="flex items-center gap-2.5">
@@ -645,7 +837,7 @@ export function SwapV2Card() {
                           ? "text-white font-bold"
                           : "text-[rgba(255,255,255,0.25)]"
                       }`}>
-                        {STATUS_LABELS[step]}
+                        {(activeLabels as Record<string, string>)[step]}
                       </span>
                     </div>
                   );
@@ -655,7 +847,7 @@ export function SwapV2Card() {
           )}
 
           {/* ── Success State ───────────────────────────────────── */}
-          {status === "done" && (
+          {activeStatus === "done" && (
             <div className="mt-4 p-4 rounded-sm bg-[rgba(34,197,94,0.06)] border border-[rgba(34,197,94,0.15)]">
               <div className="flex items-center gap-2 mb-3">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -664,9 +856,9 @@ export function SwapV2Card() {
                 <span className="text-[13px] font-bold text-[#22C55E] font-mono">SWAP_COMPLETE</span>
               </div>
 
-              {outputNote && (
+              {(outputNote || denomTxHashes.length > 0) && (
                 <div className="text-[11px] text-[rgba(255,255,255,0.5)] font-mono mb-2">
-                  Received {toAmountFormatted} {toToken.symbol} as shielded UTXO
+                  Received {toAmountFormatted} {toToken.symbol} as shielded UTXO{denomTxHashes.length > 1 ? "s" : ""}
                 </div>
               )}
 
@@ -674,14 +866,15 @@ export function SwapV2Card() {
                 Available after 1hr compliance cooldown
               </div>
 
-              {txHash && (
+              {activeTxHash && (
                 <a
-                  href={`${explorerBase}/tx/${txHash}`}
+                  href={`${explorerBase}/tx/${activeTxHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1 text-[11px] font-mono text-[#00FF41] hover:underline"
                 >
-                  View transaction: {txHash.slice(0, 10)}...{txHash.slice(-8)}
+                  View transaction: {activeTxHash.slice(0, 10)}...{activeTxHash.slice(-8)}
+                  {denomTxHashes.length > 1 && ` (+${denomTxHashes.length - 1} more)`}
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" />
                   </svg>
@@ -691,13 +884,13 @@ export function SwapV2Card() {
           )}
 
           {/* ── Error State ─────────────────────────────────────── */}
-          {status === "error" && swapError && (
+          {activeStatus === "error" && activeError && (
             <div className="mt-4 p-3 rounded-sm bg-[rgba(239,68,68,0.06)] border border-[rgba(239,68,68,0.15)]">
               <div className="flex items-start gap-2">
                 <AlertCircleIcon size={14} color="rgb(239,68,68)" />
                 <div className="flex flex-col gap-1">
                   <span className="text-xs font-bold text-[rgb(239,68,68)] font-mono">SWAP: FAILED</span>
-                  <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">{swapError}</span>
+                  <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">{activeError}</span>
                 </div>
               </div>
             </div>
@@ -724,19 +917,19 @@ export function SwapV2Card() {
           {/* Swap / Reset Button */}
           <button
             onClick={
-              status === "done"
+              activeStatus === "done"
                 ? handleReset
-                : status === "error"
+                : activeStatus === "error"
                 ? handleReset
                 : buttonDisabled
                 ? undefined
                 : handleSwap
             }
-            disabled={status !== "error" && status !== "done" && buttonDisabled}
+            disabled={activeStatus !== "error" && activeStatus !== "done" && buttonDisabled}
             className={`w-full mt-5 py-3 px-4 rounded-sm font-bold font-mono text-sm tracking-wider transition-all ${
-              status === "done"
+              activeStatus === "done"
                 ? "bg-[rgba(34,197,94,0.1)] border border-[rgba(34,197,94,0.2)] text-[#22C55E] hover:bg-[rgba(34,197,94,0.15)] cursor-pointer"
-                : status !== "error" && buttonDisabled
+                : activeStatus !== "error" && buttonDisabled
                 ? "bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] text-[rgba(255,255,255,0.25)] cursor-not-allowed opacity-50"
                 : "bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] text-[#00FF41] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] cursor-pointer"
             }`}
