@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useMemo, type RefObject } from 'react'
 import { useAccount, useChainId, usePublicClient } from 'wagmi'
 import { zeroAddress, type Address } from 'viem'
-import { fflonk } from 'snarkjs'
 import { computeAssetId } from '@/lib/dustpool/v2/commitment'
 import { buildSplitInputs, type SplitOutputNote } from '@/lib/dustpool/v2/proof-inputs'
 import { buildWithdrawInputs } from '@/lib/dustpool/v2/proof-inputs'
@@ -10,70 +9,17 @@ import {
   updateNoteLeafIndex, bigintToHex, hexToBigint, storedToNoteCommitment,
 } from '@/lib/dustpool/v2/storage'
 import type { StoredNoteV2 } from '@/lib/dustpool/v2/storage'
-import { createRelayerClient, type RelayerClient } from '@/lib/dustpool/v2/relayer-client'
+import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { generateV2Proof, verifyV2ProofLocally } from '@/lib/dustpool/v2/proof'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
 import { extractRelayerError } from '@/lib/dustpool/v2/errors'
 import { decomposeForSplit } from '@/lib/dustpool/v2/denominations'
-import {
-  resolveTokenSymbol,
-  parseSplitCalldata,
-  splitOutputToNoteCommitment,
-} from '@/lib/dustpool/v2/split-utils'
-import type { V2Keys, NoteCommitmentV2 } from '@/lib/dustpool/v2/types'
+import { resolveTokenSymbol, splitOutputToNoteCommitment } from '@/lib/dustpool/v2/split-utils'
+import { generateSplitProof, verifySplitProofLocally, pollForLeafIndex } from '@/lib/dustpool/v2/split-proof'
+import type { V2Keys } from '@/lib/dustpool/v2/types'
 
-const SPLIT_CIRCUIT_WASM = '/circuits/v2-split/DustV2Split.wasm'
-const SPLIT_CIRCUIT_ZKEY = process.env.NEXT_PUBLIC_V2_SPLIT_ZKEY_URL || '/circuits/v2-split/DustV2Split.zkey'
-const SPLIT_VKEY_PATH = '/circuits/v2-split/verification_key.json'
 const RECEIPT_TIMEOUT_MS = 30_000
 const MAX_SPLIT_OUTPUTS = 8
-const LEAF_POLL_ATTEMPTS = 15
-const LEAF_POLL_DELAY_MS = 2_000
-
-async function generateSplitProof(
-  circuitInputs: Record<string, string | string[] | string[][]>
-): Promise<{ proof: unknown; publicSignals: string[]; proofCalldata: string }> {
-  const { proof, publicSignals } = await fflonk.fullProve(
-    circuitInputs,
-    SPLIT_CIRCUIT_WASM,
-    SPLIT_CIRCUIT_ZKEY
-  )
-
-  const calldata = await fflonk.exportSolidityCallData(publicSignals, proof)
-  const parsed = parseSplitCalldata(calldata, publicSignals.length)
-  return { proof, publicSignals, proofCalldata: parsed.proofCalldata }
-}
-
-async function verifySplitProofLocally(
-  proof: unknown,
-  publicSignals: string[]
-): Promise<boolean> {
-  try {
-    const vKeyResponse = await fetch(SPLIT_VKEY_PATH)
-    const vKey = await vKeyResponse.json()
-    return await fflonk.verify(vKey, publicSignals, proof)
-  } catch (error) {
-    console.error('[DustPoolV2] Split proof local verification failed:', error)
-    return false
-  }
-}
-
-async function pollForLeafIndex(
-  relayer: RelayerClient,
-  commitmentHex: string,
-  chainId: number
-): Promise<number> {
-  for (let i = 0; i < LEAF_POLL_ATTEMPTS; i++) {
-    const status = await relayer.getDepositStatus(commitmentHex, chainId)
-    if (status.confirmed && status.leafIndex >= 0) {
-      return status.leafIndex
-    }
-    if (i < LEAF_POLL_ATTEMPTS - 1) {
-      await new Promise(r => setTimeout(r, LEAF_POLL_DELAY_MS))
-    }
-  }
-  throw new Error(`Leaf index not confirmed for ${commitmentHex.slice(0, 18)}...`)
-}
 
 export function useV2Split(keysRef: RefObject<V2Keys | null>, chainIdOverride?: number) {
   const { address, isConnected } = useAccount()
