@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { parseUnits, type Address } from "viem";
-import { useAccount, useSwitchChain, useChainId } from "wagmi";
+import { type Address } from "viem";
+import { useSwitchChain } from "wagmi";
 import { useAuth } from "@/contexts/AuthContext";
 import { getExplorerBase } from "@/lib/design/tokens";
 import { V2SwapCard } from "@/components/swap/V2SwapCard";
@@ -19,7 +19,6 @@ import { useV2Keys } from "@/hooks/dustpool/v2";
 import { V2DepositModal } from "@/components/dustpool/V2DepositModal";
 import {
   ShieldIcon,
-  ShieldCheckIcon,
   AlertCircleIcon,
   ExternalLinkIcon,
   PlusIcon,
@@ -208,7 +207,7 @@ function PoolRow({
   isLoading: boolean;
   notesCount: number;
   notesBalance: number;
-  onDeposit: (pool: PoolInfo) => void;
+  onDeposit: () => void;
   onViewStats: (pool: PoolInfo) => void;
 }) {
   const isActive = pool.poolAddress !== null;
@@ -280,7 +279,7 @@ function PoolRow({
                   : "bg-[rgba(255,255,255,0.02)] border-[rgba(255,255,255,0.06)] text-white cursor-not-allowed opacity-40"}`}
               onClick={(e) => {
                 e.stopPropagation();
-                if (isActive) onDeposit(pool);
+                if (isActive) onDeposit();
               }}
             >
               <DropletsIcon />
@@ -293,261 +292,12 @@ function PoolRow({
   );
 }
 
-function PoolDepositModal({
-  isOpen,
-  onClose,
-  pool,
-  onDeposit,
-  depositState,
-  depositError,
-  onReset,
-  depositNote,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  pool: PoolInfo | null;
-  onDeposit: (amount: string) => void;
-  depositState: string;
-  depositError: string | null;
-  onReset: () => void;
-  depositNote: any;
-}) {
-  const [amount, setAmount] = useState("");
-
-  useEffect(() => {
-    if (isOpen) {
-      setAmount("");
-      onReset();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
-
-  if (!isOpen || !pool) return null;
-
-  const isProcessing = ["generating", "approving", "depositing", "confirming"].includes(depositState);
-  const isSuccess = depositState === "success";
-  const isError = depositState === "error";
-
-  const denominations = DEPOSIT_DENOMINATIONS[pool.token.symbol] || DEPOSIT_DENOMINATIONS.ETH;
-
-  const handleClose = () => {
-    if (!isProcessing) {
-      setAmount("");
-      onReset();
-      onClose();
-    }
-  };
-
-  const stepLabel = (() => {
-    switch (depositState) {
-      case "generating": return "Generating commitment...";
-      case "approving": return "Approving token...";
-      case "depositing": return "Depositing to pool...";
-      case "confirming": return "Confirming on-chain...";
-      default: return "";
-    }
-  })();
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200]"
-      onClick={(e) => { if (e.target === e.currentTarget && !isProcessing) handleClose(); }}
-    >
-      <div className="w-full max-w-[440px] mx-4 bg-[rgba(10,10,15,0.95)] border border-[rgba(255,255,255,0.08)] rounded-sm shadow-2xl backdrop-blur-xl overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-[rgba(255,255,255,0.1)]" />
-        <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-[rgba(255,255,255,0.1)]" />
-        <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-[rgba(255,255,255,0.1)]" />
-        <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-[rgba(255,255,255,0.1)]" />
-
-        <div className="flex items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] flex items-center justify-center">
-              <ShieldIcon size={18} color="#00FF41" />
-            </div>
-            <div>
-              <p className="text-base font-bold text-white font-mono">Deposit {pool.token.symbol}</p>
-              <p className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">Add to the {pool.token.symbol} privacy pool</p>
-            </div>
-          </div>
-          {!isProcessing && (
-            <button
-              onClick={handleClose}
-              className="p-2 rounded-sm hover:bg-[rgba(255,255,255,0.06)] transition-all cursor-pointer"
-            >
-              <XIcon size={15} color="rgba(255,255,255,0.4)" />
-            </button>
-          )}
-        </div>
-
-        <div className="px-6 pb-6">
-          {!isProcessing && !isSuccess && !isError && (
-            <div className="flex flex-col gap-5">
-              <div className="p-3 rounded-sm bg-[rgba(0,255,65,0.04)] border border-[rgba(0,255,65,0.15)]">
-                <div className="flex items-start gap-2">
-                  <div className="mt-0.5 shrink-0"><ShieldIcon size={14} color="#00FF41" /></div>
-                  <p className="text-xs text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
-                    Deposits are hidden using Poseidon commitments. Your deposit note is stored locally for swap execution.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Quick Select</p>
-                <div className="flex gap-2">
-                  {denominations.map((denom) => (
-                    <button
-                      key={denom}
-                      className={`flex-1 py-2.5 rounded-sm border cursor-pointer transition-all text-center font-mono text-[13px] font-semibold
-                        ${amount === denom
-                          ? "bg-[rgba(0,255,65,0.1)] border-[rgba(0,255,65,0.3)] text-[#00FF41]"
-                          : "bg-[rgba(255,255,255,0.04)] border-[rgba(255,255,255,0.08)] text-white hover:bg-[rgba(255,255,255,0.07)]"}`}
-                      onClick={() => setAmount(denom)}
-                    >
-                      {denom}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <p className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">Or Enter Custom Amount</p>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                    setAmount(e.target.value.replace(/[^0-9.]/g, ""));
-                  }}
-                  placeholder={`0.0 ${pool.token.symbol}`}
-                  className="w-full p-3 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-sm focus:outline-none focus:border-[#00FF41] focus:bg-[rgba(0,255,65,0.02)] transition-all placeholder-[rgba(255,255,255,0.2)]"
-                />
-              </div>
-
-              <button
-                className={`w-full py-3.5 rounded-sm text-[15px] font-bold text-center transition-all font-mono tracking-wider
-                  ${amount && parseFloat(amount) > 0
-                    ? "bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] text-[#00FF41] cursor-pointer"
-                    : "bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] text-white cursor-not-allowed opacity-40"}`}
-                onClick={() => {
-                  console.log('[PoolDepositModal] Deposit button clicked, amount:', amount);
-                  if (amount && parseFloat(amount) > 0) {
-                    console.log('[PoolDepositModal] Amount valid, calling onDeposit');
-                    onDeposit(amount);
-                  } else {
-                    console.log('[PoolDepositModal] Amount invalid or empty');
-                  }
-                }}
-              >
-                {amount && parseFloat(amount) > 0 ? `Deposit ${amount} ${pool.token.symbol}` : "Enter Amount"}
-              </button>
-            </div>
-          )}
-
-          {isProcessing && (
-            <div className="flex flex-col items-center gap-4 py-6">
-              <div className="w-8 h-8 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm font-semibold text-white font-mono">{stepLabel}</p>
-              <p className="text-xs text-[rgba(255,255,255,0.4)] text-center font-mono">Please confirm the transaction in your wallet</p>
-            </div>
-          )}
-
-          {isSuccess && (
-            <div className="flex flex-col gap-4">
-              <div className="text-center py-2">
-                <div className="inline-flex mb-3">
-                  <ShieldCheckIcon size={40} color="#00FF41" />
-                </div>
-                <p className="text-base font-bold text-white mb-1 font-mono">Deposit Successful</p>
-                <p className="text-[13px] text-[rgba(255,255,255,0.5)] font-mono">{amount} {pool.token.symbol} deposited to privacy pool</p>
-              </div>
-
-              {depositNote && (
-                <div className="p-3 rounded-sm bg-[rgba(0,255,65,0.04)] border border-[rgba(0,255,65,0.15)]">
-                  <p className="text-xs text-[#00FF41] font-semibold mb-2 font-mono">Deposit Note Details</p>
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex justify-between">
-                      <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">Leaf Index</span>
-                      <span className="text-[11px] font-mono text-white">#{depositNote.leafIndex ?? 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">Commitment</span>
-                      <span className="text-[11px] font-mono text-white">
-                        {depositNote.commitment ? (() => {
-                          const hex = `0x${depositNote.commitment.toString(16).padStart(64, '0')}`;
-                          return `${hex.slice(0, 10)}...${hex.slice(-8)}`;
-                        })() : 'N/A'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[11px] text-[rgba(255,255,255,0.4)] font-mono">Secret</span>
-                      <span className="text-[11px] font-mono text-white">
-                        {depositNote.secret ? (() => {
-                          const hex = `0x${depositNote.secret.toString(16).padStart(64, '0')}`;
-                          return `${hex.slice(0, 10)}...${hex.slice(-8)}`;
-                        })() : 'N/A'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
-                <p className="text-xs text-amber-400 font-semibold mb-1 font-mono">Save Your Deposit Note</p>
-                <p className="text-[11px] text-[rgba(255,255,255,0.4)] leading-relaxed font-mono">
-                  Your deposit note has been saved to this browser. If you clear browser data, you will lose access to this deposit.
-                </p>
-              </div>
-
-              <button
-                className="w-full py-3.5 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] text-[15px] font-bold text-[#00FF41] text-center cursor-pointer transition-all font-mono tracking-wider"
-                onClick={handleClose}
-              >
-                Done
-              </button>
-            </div>
-          )}
-
-          {isError && (
-            <div className="flex flex-col gap-4">
-              <div className="text-center py-2">
-                <div className="inline-flex mb-3">
-                  <AlertCircleIcon size={40} color="#ef4444" />
-                </div>
-                <p className="text-base font-bold text-white mb-1 font-mono">Deposit Failed</p>
-                <p className="text-[13px] text-[rgba(255,255,255,0.5)] font-mono">{depositError}</p>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  className="flex-1 py-3.5 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.07)] text-sm font-semibold text-white text-center cursor-pointer transition-all font-mono"
-                  onClick={handleClose}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="flex-1 py-3.5 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] text-sm font-bold text-[#00FF41] text-center cursor-pointer transition-all font-mono tracking-wider"
-                  onClick={onReset}
-                >
-                  Try Again
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function PoolsPageClient() {
   const { isConnected, activeChainId } = useAuth();
-  const walletChainId = useChainId();
   const swapSupported = isSwapSupported(activeChainId);
   const contracts = getSwapContracts(activeChainId);
   const explorerBase = getExplorerBase(activeChainId);
   const { switchChain } = useSwitchChain();
-
-  const isWalletOnCorrectChain = walletChainId === 11155111;
 
   const pools: PoolInfo[] = [
     {
@@ -564,11 +314,10 @@ export default function PoolsPageClient() {
     },
   ];
 
-  const { deposit, state: depositState, error: depositError, reset: resetDeposit, getDepositCount, currentNote } = useDustSwapPool(activeChainId);
+  const { getDepositCount } = useDustSwapPool(activeChainId);
   const { unspentNotes, loading: notesLoading } = useSwapNotes();
   const { keysRef: v2KeysRef } = useV2Keys();
 
-  const [selectedPool, setSelectedPool] = useState<PoolInfo | null>(null);
   const [isDepositOpen, setIsDepositOpen] = useState(false);
   const [statsPool, setStatsPool] = useState<PoolInfo | null>(null);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
@@ -623,8 +372,7 @@ export default function PoolsPageClient() {
     }
   }, [isConnected, swapSupported, switchChain]);
 
-  const handleDeposit = (pool: PoolInfo) => {
-    setSelectedPool(pool);
+  const handleDeposit = () => {
     setIsDepositOpen(true);
   };
 
@@ -632,64 +380,6 @@ export default function PoolsPageClient() {
     setStatsPool(pool);
     setIsStatsOpen(true);
   };
-
-  const handleExecuteDeposit = useCallback(
-    async (amount: string) => {
-      console.log('[PoolsPage] handleExecuteDeposit called with amount:', amount);
-      console.log('[PoolsPage] selectedPool:', selectedPool);
-      console.log('[PoolsPage] deposit function:', deposit);
-      console.log('[PoolsPage] isConnected:', isConnected);
-      console.log('[PoolsPage] walletChainId:', walletChainId);
-      console.log('[PoolsPage] isWalletOnCorrectChain:', isWalletOnCorrectChain);
-
-      if (!selectedPool) {
-        console.log('[PoolsPage] No selected pool, returning');
-        return;
-      }
-
-      if (!isConnected) {
-        console.error('[PoolsPage] Wallet not connected!');
-        return;
-      }
-
-      if (!isWalletOnCorrectChain && switchChain) {
-        console.log('[PoolsPage] Wallet on wrong chain, switching to Ethereum Sepolia...');
-        try {
-          await switchChain({ chainId: 11155111 });
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (err) {
-          console.error('[PoolsPage] Failed to switch chain:', err);
-          return;
-        }
-      }
-
-      const decimals = selectedPool.token.decimals;
-      const amountBigInt = parseUnits(amount, decimals);
-
-      console.log('[PoolsPage] Calling deposit with:', {
-        tokenAddress: selectedPool.token.address,
-        tokenSymbol: selectedPool.token.symbol,
-        amount: amountBigInt.toString(),
-      });
-
-      const result = await deposit(
-        selectedPool.token.address as Address,
-        selectedPool.token.symbol,
-        amountBigInt
-      );
-
-      console.log('[PoolsPage] Deposit result:', result);
-      console.log('[PoolsPage] Deposit error:', depositError);
-      console.log('[PoolsPage] Deposit state:', depositState);
-
-      if (result) {
-        fetchCounts();
-      } else {
-        console.error('[PoolsPage] Deposit failed - check depositError state');
-      }
-    },
-    [selectedPool, deposit, fetchCounts, walletChainId, isWalletOnCorrectChain, switchChain]
-  );
 
   return (
     <div className="min-h-screen p-4 md:p-8 relative">
@@ -746,7 +436,7 @@ export default function PoolsPageClient() {
               {swapSupported && (
                 <button
                   className="flex items-center gap-1.5 px-4 py-3 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] transition-all text-sm font-bold text-[#00FF41] font-mono tracking-wider shrink-0 cursor-pointer h-[calc(100%-2px)]"
-                  onClick={() => handleDeposit(pools[0])}
+                  onClick={() => handleDeposit()}
                 >
                   <PlusIcon size={16} color="#00FF41" />
                   New Deposit
