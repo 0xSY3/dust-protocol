@@ -1,3 +1,4 @@
+import { type Address } from 'viem'
 import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains'
 
 // ─── Supported Tokens ────────────────────────────────────────────────────────
@@ -6,11 +7,11 @@ export const ETH_ADDRESS = '0x0000000000000000000000000000000000000000' as const
 
 export const USDC_ADDRESS_SEPOLIA = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' as const
 
-const USDC_ADDRESSES: Record<number, string> = {
+const USDC_ADDRESSES: Record<number, Address> = {
   11155111: USDC_ADDRESS_SEPOLIA,
 }
 
-export function getUSDCAddress(chainId?: number): string {
+export function getUSDCAddress(chainId?: number): Address {
   const id = chainId ?? DEFAULT_CHAIN_ID
   const addr = USDC_ADDRESSES[id]
   if (!addr) throw new Error(`USDC not configured for chain ${id}`)
@@ -18,7 +19,7 @@ export function getUSDCAddress(chainId?: number): string {
 }
 
 export interface SwapToken {
-  address: string
+  address: Address
   symbol: string
   name: string
   decimals: number
