@@ -71,10 +71,12 @@ export function PoolComposition({ ethReserve, usdcReserve, shieldedEth, shielded
         </div>
         <div className="flex justify-between text-[11px] font-mono">
           <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#00FF41] opacity-60 shrink-0" />
             <ETHIcon size={14} />
             <span className="text-[rgba(255,255,255,0.7)] font-bold">{formatReserve(totalEth, false)}</span>
           </div>
           <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[rgba(255,255,255,0.2)] shrink-0" />
             <USDCIcon size={14} />
             <span className="text-[rgba(255,255,255,0.7)] font-bold">{formatReserve(totalUsdc, true)}</span>
           </div>
@@ -84,12 +86,14 @@ export function PoolComposition({ ethReserve, usdcReserve, shieldedEth, shielded
       {/* Labels — desktop only */}
       <div className="hidden md:flex flex-col gap-2 mt-3 text-xs font-mono items-center">
         <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[#00FF41] opacity-60 shrink-0" />
           <ETHIcon size={16} />
           <span className="text-[rgba(255,255,255,0.7)] font-bold">
             {formatReserve(totalEth, false)}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-[rgba(255,255,255,0.2)] shrink-0" />
           <USDCIcon size={16} />
           <span className="text-[rgba(255,255,255,0.7)] font-bold">
             {formatReserve(totalUsdc, true)}

@@ -18,6 +18,7 @@ import {
   CheckIcon,
   ExternalLinkIcon,
   QRIcon,
+  LockIcon,
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
 import { errorToUserMessage } from "@/lib/dustpool/v2/errors";
@@ -33,6 +34,11 @@ interface V2DepositModalProps {
   onClose: () => void;
   keysRef: RefObject<V2Keys | null>;
   chainId?: number;
+  hasKeys?: boolean;
+  hasPin?: boolean;
+  onDeriveKeys?: (pin: string) => Promise<boolean>;
+  isDeriving?: boolean;
+  keyError?: string | null;
 }
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -53,7 +59,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
   );
 }
 
-export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositModalProps) {
+export function V2DepositModal({ isOpen, onClose, keysRef, chainId, hasKeys: hasKeysProp, hasPin, onDeriveKeys, isDeriving, keyError }: V2DepositModalProps) {
   const { address } = useAccount();
   const { data: walletBalance } = useBalance({ address });
   const publicClient = usePublicClient();
@@ -69,6 +75,10 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
   const [selectedToken, setSelectedToken] = useState<SelectedToken>("native");
   const [isApproving, setIsApproving] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState<bigint>(0n);
+  const [pinInput, setPinInput] = useState("");
+
+  // Keys available: use prop if provided, otherwise check ref directly
+  const keysAvailable = hasKeysProp ?? !!keysRef.current;
 
   const usdcConfig = useMemo(() => getTokenBySymbol(chainId ?? 0, 'USDC'), [chainId]);
   const usdcAddr = usdcConfig?.address as Address | undefined;
@@ -97,6 +107,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
       setSelectedToken("native");
       setShowDepositLink(false);
       setIsApproving(false);
+      setPinInput("");
       clearScreening();
       ext.reset();
       if (address) screenAddress();
@@ -281,7 +292,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
             </div>
 
             {/* Tab Switcher */}
-            {!isSuccess && !isError && (
+            {keysAvailable && !isSuccess && !isError && (
               <div className="flex mb-4 border-b border-[rgba(255,255,255,0.08)]">
                 <button
                   onClick={() => switchTab("self")}
@@ -313,8 +324,65 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
 
             <div className="flex flex-col gap-4">
 
+              {/* ═══════════════ PIN UNLOCK GATE ═══════════════ */}
+              {!keysAvailable && !isSuccess && !isError && (
+                <div className="flex flex-col gap-4 py-2">
+                  <div className="p-3 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)]">
+                    <div className="flex items-start gap-2">
+                      <div className="mt-0.5 shrink-0"><LockIcon size={14} color="#f59e0b" /></div>
+                      <p className="text-xs text-[rgba(255,255,255,0.5)] leading-relaxed font-mono">
+                        Unlock your V2 keys to generate deposit commitments. {hasPin ? "Enter your PIN below." : "Set a 6-digit PIN to derive your keys."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
+                      {hasPin ? "Enter PIN" : "Set 6-digit PIN"}
+                    </label>
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={pinInput}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      onKeyDown={(e: React.KeyboardEvent) => {
+                        if (e.key === "Enter" && pinInput.length === 6 && onDeriveKeys) {
+                          onDeriveKeys(pinInput).then(ok => { if (ok) setPinInput(""); });
+                        }
+                      }}
+                      placeholder="••••••"
+                      className="w-full p-3 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-sm text-center tracking-[0.5em] focus:outline-none focus:border-[#00FF41] focus:bg-[rgba(0,255,65,0.02)] transition-all placeholder-[rgba(255,255,255,0.2)]"
+                    />
+                    {keyError && (
+                      <p className="text-[11px] text-red-400 font-mono">{keyError}</p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (onDeriveKeys) onDeriveKeys(pinInput).then(ok => { if (ok) setPinInput(""); });
+                    }}
+                    disabled={pinInput.length !== 6 || isDeriving || !onDeriveKeys}
+                    className="w-full py-3 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] transition-all text-sm font-bold text-[#00FF41] font-mono tracking-wider disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isDeriving ? (
+                      <>
+                        <div className="w-3 h-3 border border-[#00FF41] border-t-transparent rounded-full animate-spin" />
+                        Unlocking...
+                      </>
+                    ) : (
+                      <>
+                        <LockIcon size={14} color="#00FF41" />
+                        Unlock Keys
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
               {/* ═══════════════ SELF DEPOSIT TAB ═══════════════ */}
-              {depositMode === "self" && !isPending && !isApproving && !isSuccess && !isError && (
+              {keysAvailable && depositMode === "self" && !isPending && !isApproving && !isSuccess && !isError && (
                 <>
                   {/* Compliance screening status */}
                   {isScreening && (
@@ -445,7 +513,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
               )}
 
               {/* ═══════════════ EXTERNAL DEPOSIT TAB ═══════════════ */}
-              {depositMode === "external" && ext.status !== "success" && ext.status !== "error" && !showDepositLink && (
+              {keysAvailable && depositMode === "external" && ext.status !== "success" && ext.status !== "error" && !showDepositLink && (
                 <>
                   {/* Explainer */}
                   <div className="p-3 rounded-sm bg-[rgba(99,102,241,0.06)] border border-[rgba(99,102,241,0.15)]">

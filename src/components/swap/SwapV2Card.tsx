@@ -1005,11 +1005,15 @@ export function SwapV2Card() {
         onClose={() => {
           setShowDepositModal(false);
           refreshBalances();
-          // Refresh again after a short delay to pick up notes saved moments ago
           setTimeout(refreshBalances, 1500);
         }}
         keysRef={keysRef}
         chainId={activeChainId}
+        hasKeys={hasKeys}
+        hasPin={hasPin}
+        onDeriveKeys={deriveKeys}
+        isDeriving={isDeriving}
+        keyError={keyError}
       />
     </div>
   );

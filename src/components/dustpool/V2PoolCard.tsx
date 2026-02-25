@@ -203,6 +203,11 @@ export function V2PoolCard({ chainId: chainIdOverride }: V2PoolCardProps) {
         onClose={handleModalClose}
         keysRef={keysRef}
         chainId={chainId}
+        hasKeys={hasKeys}
+        hasPin={hasPin}
+        onDeriveKeys={deriveKeys}
+        isDeriving={isDeriving}
+        keyError={keyError}
       />
       <V2WithdrawModal
         isOpen={activeModal === "withdraw"}

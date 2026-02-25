@@ -302,6 +302,11 @@ export function V2SwapCard({ chainId }: V2SwapCardProps) {
         onClose={handleModalClose}
         keysRef={keysRef}
         chainId={chainId}
+        hasKeys={hasKeys}
+        hasPin={hasPin}
+        onDeriveKeys={deriveKeys}
+        isDeriving={isDeriving}
+        keyError={keyError}
       />
       <V2WithdrawModal
         isOpen={activeModal === "withdraw"}
