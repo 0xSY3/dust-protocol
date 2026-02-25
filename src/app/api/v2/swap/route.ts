@@ -264,7 +264,7 @@ export async function POST(req: Request) {
     }
   } catch (e) {
     console.error('[V2/swap] Error:', e)
-    const raw = e instanceof Error ? e.message : ''
+    const raw = e instanceof Error ? e.message : String(e)
     let message = 'Swap failed'
     if (raw.includes('InvalidProof')) message = 'Invalid proof'
     else if (raw.includes('NullifierAlreadySpent')) message = 'Note already spent'
@@ -274,7 +274,8 @@ export async function POST(req: Request) {
     else if (raw.includes('InvalidFieldElement')) message = 'Invalid field element in public signals'
     else if (raw.includes('SlippageExceeded')) message = 'Swap slippage exceeded'
     else if (raw.includes('InvalidChainId')) message = 'Invalid chain ID in proof'
+    else if (raw.includes('Sponsor not configured')) message = 'Relayer key not configured'
 
-    return NextResponse.json({ error: message }, { status: 500, headers: NO_STORE })
+    return NextResponse.json({ error: message, detail: raw.slice(0, 500) }, { status: 500, headers: NO_STORE })
   }
 }
