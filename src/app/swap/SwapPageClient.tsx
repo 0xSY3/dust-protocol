@@ -11,7 +11,6 @@ export default function SwapPageClient() {
     currentPrice: poolPrice,
     ethReserve,
     usdcReserve,
-    totalValueLocked,
     shieldedEth,
     shieldedUsdc,
     noteCount,
@@ -28,16 +27,13 @@ export default function SwapPageClient() {
 
   const poolStatsProps = {
     currentPrice: oraclePrice,
-    ethReserve,
-    usdcReserve,
-    totalValueLocked,
     shieldedEth,
     shieldedUsdc,
     noteCount,
     combinedTvl,
     isLoading,
     poolTick: tick !== undefined ? tick : undefined,
-    priceSource: chainlinkPrice ? 'chainlink' as const : 'pool' as const,
+    priceSource: chainlinkPrice != null ? 'chainlink' as const : poolPrice != null ? 'pool' as const : undefined,
   };
 
   return (
@@ -60,10 +56,10 @@ export default function SwapPageClient() {
         <SwapV2Card onPoolChange={refetch} oraclePrice={oraclePrice} />
         <div className="hidden md:flex">
           <PoolComposition
-            ethReserve={ethReserve.toString()}
-            usdcReserve={usdcReserve.toString()}
-            shieldedEth={shieldedEth.toString()}
-            shieldedUsdc={shieldedUsdc.toString()}
+            ethReserve={ethReserve}
+            usdcReserve={usdcReserve}
+            shieldedEth={shieldedEth}
+            shieldedUsdc={shieldedUsdc}
             currentPrice={oraclePrice}
           />
         </div>
@@ -73,10 +69,10 @@ export default function SwapPageClient() {
       <div className="flex flex-col items-center gap-3 md:hidden w-full">
         <PoolStats {...poolStatsProps} />
         <PoolComposition
-          ethReserve={ethReserve.toString()}
-          usdcReserve={usdcReserve.toString()}
-          shieldedEth={shieldedEth.toString()}
-          shieldedUsdc={shieldedUsdc.toString()}
+          ethReserve={ethReserve}
+          usdcReserve={usdcReserve}
+          shieldedEth={shieldedEth}
+          shieldedUsdc={shieldedUsdc}
           currentPrice={oraclePrice}
         />
       </div>
