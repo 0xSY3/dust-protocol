@@ -9,7 +9,8 @@ import {
     IHooksAdapter,
     IDustPoolV2,
     IPoolManagerAdapter,
-    IERC20Adapter
+    IERC20Adapter,
+    IAggregatorV3
 } from "../src/DustSwapAdapterV2.sol";
 import {PoseidonT3} from "poseidon-solidity/PoseidonT3.sol";
 import {PoseidonT6} from "poseidon-solidity/PoseidonT6.sol";
@@ -522,4 +523,185 @@ contract DustSwapAdapterV2Test is Test {
             OWNER_PUB_KEY, BLINDING, address(mockToken), relayer, 100
         );
     }
+
+    // ─── Test 14: Oracle Admin ───────────────────────────────────────────────
+
+    function testSetPriceOracle() public {
+        MockChainlinkOracle oracle = new MockChainlinkOracle(2500e8, 8);
+        vm.prank(deployer);
+        adapter.setPriceOracle(address(oracle));
+        assertEq(address(adapter.priceOracle()), address(oracle));
+    }
+
+    function testSetPriceOracle_onlyOwner() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        adapter.setPriceOracle(address(1));
+    }
+
+    function testSetMaxOracleDeviation() public {
+        vm.prank(deployer);
+        adapter.setMaxOracleDeviation(500); // 5%
+        assertEq(adapter.maxOracleDeviationBps(), 500);
+    }
+
+    function testSetMaxOracleDeviation_rejectsTooHigh() public {
+        vm.prank(deployer);
+        vm.expectRevert(DustSwapAdapterV2.DeviationBpsTooHigh.selector);
+        adapter.setMaxOracleDeviation(5001);
+    }
+
+    // ─── Test 15: Oracle Bound — Swap Passes Within Bounds ───────────────────
+
+    function testOracleBound_passesWithinBounds() public {
+        // Oracle: 2000 USD/ETH. Swap: 1 ETH → 1900 USDC (5% below oracle — within 10%)
+        // Use 6-decimal amounts to match _checkOracleBound's USDC assumption
+        MockERC20 mockUSDC = new MockERC20();
+        mockUSDC.mint(address(mockPool), 1_000_000e6);
+        mockUSDC.mint(address(mockPM), 1_000_000e6);
+
+        PoolKey memory usdcPoolKey = PoolKey({
+            currency0: address(0),
+            currency1: address(mockUSDC),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooksAdapter(address(0))
+        });
+
+        MockChainlinkOracle oracle = new MockChainlinkOracle(2000e8, 8);
+        vm.startPrank(deployer);
+        adapter.setPriceOracle(address(oracle));
+        adapter.setMaxOracleDeviation(1000); // 10%
+        vm.stopPrank();
+
+        uint256 outputUSDC = 1900e6; // 1900 USDC = 5% below oracle price of 2000
+        mockPool.setWithdrawAmount(INPUT_ETH);
+        int256 delta = _packDelta(-int128(int256(INPUT_ETH)), int128(int256(outputUSDC)));
+        mockPM.setSwapResult(delta);
+
+        uint256 fee = (outputUSDC * RELAYER_FEE_BPS) / 10_000;
+        uint256 userAmount = outputUSDC - fee;
+
+        vm.prank(relayer);
+        adapter.executeSwap(
+            _dummyProof(), bytes32(uint256(0xAABB)), bytes32(uint256(0x1111)), bytes32(uint256(0x2222)),
+            bytes32(uint256(0x3333)), bytes32(uint256(0x4444)),
+            INPUT_ETH, uint256(0x5555), address(0),
+            usdcPoolKey, true, userAmount,
+            OWNER_PUB_KEY, BLINDING, address(mockUSDC), relayer, RELAYER_FEE_BPS
+        );
+
+        assertEq(mockPool.erc20DepositCount(), 1);
+    }
+
+    // ─── Test 16: Oracle Deviation Reverts ────────────────────────────────────
+
+    function testOracleBound_deviationReverts() public {
+        // Oracle: 2000 USD/ETH. Swap output: 500 USDC = 75% below oracle → revert
+        MockERC20 mockUSDC = new MockERC20();
+        mockUSDC.mint(address(mockPool), 1_000_000e6);
+        mockUSDC.mint(address(mockPM), 1_000_000e6);
+
+        PoolKey memory usdcPoolKey = PoolKey({
+            currency0: address(0),
+            currency1: address(mockUSDC),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooksAdapter(address(0))
+        });
+
+        MockChainlinkOracle oracle = new MockChainlinkOracle(2000e8, 8);
+        vm.startPrank(deployer);
+        adapter.setPriceOracle(address(oracle));
+        adapter.setMaxOracleDeviation(1000); // 10%
+        vm.stopPrank();
+
+        uint256 outputUSDC = 500e6; // 500 USDC = 75% below oracle
+        mockPool.setWithdrawAmount(INPUT_ETH);
+        int256 delta = _packDelta(-int128(int256(INPUT_ETH)), int128(int256(outputUSDC)));
+        mockPM.setSwapResult(delta);
+
+        vm.prank(relayer);
+        vm.expectRevert(); // OracleDeviationExceeded
+        adapter.executeSwap(
+            _dummyProof(), bytes32(uint256(1)), bytes32(uint256(1)), bytes32(0),
+            bytes32(0), bytes32(0),
+            INPUT_ETH, 0, address(0),
+            usdcPoolKey, true, 1,
+            OWNER_PUB_KEY, BLINDING, address(mockUSDC), relayer, 0
+        );
+    }
+
+    // ─── Test 17: Oracle Stale Reverts ───────────────────────────────────────
+
+    function testOracleBound_staleReverts() public {
+        vm.warp(10_000); // set block.timestamp to avoid underflow
+
+        MockChainlinkOracle oracle = new MockChainlinkOracle(2000e8, 8);
+        oracle.setUpdatedAt(block.timestamp - 7200); // 2 hours ago
+
+        vm.startPrank(deployer);
+        adapter.setPriceOracle(address(oracle));
+        adapter.setMaxOracleDeviation(1000);
+        vm.stopPrank();
+
+        MockERC20 mockUSDC = new MockERC20();
+        mockUSDC.mint(address(mockPool), 1_000_000e6);
+        mockUSDC.mint(address(mockPM), 1_000_000e6);
+
+        PoolKey memory usdcPoolKey = PoolKey({
+            currency0: address(0),
+            currency1: address(mockUSDC),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooksAdapter(address(0))
+        });
+
+        mockPool.setWithdrawAmount(INPUT_ETH);
+        int256 delta = _packDelta(-int128(int256(INPUT_ETH)), int128(int256(1900e6)));
+        mockPM.setSwapResult(delta);
+
+        vm.prank(relayer);
+        vm.expectRevert(abi.encodeWithSelector(DustSwapAdapterV2.OracleStale.selector, block.timestamp - 7200));
+        adapter.executeSwap(
+            _dummyProof(), bytes32(uint256(1)), bytes32(uint256(1)), bytes32(0),
+            bytes32(0), bytes32(0),
+            INPUT_ETH, 0, address(0),
+            usdcPoolKey, true, 1,
+            OWNER_PUB_KEY, BLINDING, address(mockUSDC), relayer, 0
+        );
+    }
+
+    // ─── Test 17: No Oracle = Skip Check ─────────────────────────────────────
+
+    function testOracleBound_noOracleSkipsCheck() public {
+        // Default: priceOracle = address(0). Swap should pass without oracle check.
+        uint256 fee = (OUTPUT_TOKEN * RELAYER_FEE_BPS) / 10_000;
+        uint256 userAmount = OUTPUT_TOKEN - fee;
+        _executeETHToERC20Swap(INPUT_ETH, OUTPUT_TOKEN, RELAYER_FEE_BPS, userAmount);
+        assertEq(mockPool.erc20DepositCount(), 1);
+    }
+}
+
+// ─── Mock Chainlink Oracle ──────────────────────────────────────────────────
+
+contract MockChainlinkOracle {
+    int256 public _answer;
+    uint8 public _decimals;
+    uint256 public _updatedAt;
+
+    constructor(int256 answer_, uint8 decimals_) {
+        _answer = answer_;
+        _decimals = decimals_;
+        _updatedAt = block.timestamp;
+    }
+
+    function setAnswer(int256 answer_) external { _answer = answer_; }
+    function setUpdatedAt(uint256 ts) external { _updatedAt = ts; }
+
+    function latestRoundData() external view returns (uint80, int256, uint256, uint256, uint80) {
+        return (1, _answer, block.timestamp, _updatedAt, 1);
+    }
+
+    function decimals() external view returns (uint8) { return _decimals; }
 }

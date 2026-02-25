@@ -4,10 +4,11 @@ import { SwapV2Card } from "@/components/swap/SwapV2Card";
 import { PoolStats } from "@/components/swap/PoolStats";
 import { PoolComposition } from "@/components/swap/PoolComposition";
 import { usePoolStats } from "@/hooks/swap/usePoolStats";
+import { useChainlinkPrice } from "@/hooks/swap/useChainlinkPrice";
 
 export default function SwapPageClient() {
   const {
-    currentPrice,
+    currentPrice: poolPrice,
     ethReserve,
     usdcReserve,
     totalValueLocked,
@@ -17,10 +18,16 @@ export default function SwapPageClient() {
     combinedTvl,
     isLoading,
     tick,
+    refetch,
   } = usePoolStats();
 
+  const { price: chainlinkPrice } = useChainlinkPrice();
+
+  // Prefer Chainlink oracle price; fall back to pool spot price
+  const oraclePrice = chainlinkPrice ?? poolPrice;
+
   const poolStatsProps = {
-    currentPrice,
+    currentPrice: oraclePrice,
     ethReserve,
     usdcReserve,
     totalValueLocked,
@@ -30,6 +37,7 @@ export default function SwapPageClient() {
     combinedTvl,
     isLoading,
     poolTick: tick !== undefined ? tick : undefined,
+    priceSource: chainlinkPrice ? 'chainlink' as const : 'pool' as const,
   };
 
   return (
@@ -49,14 +57,14 @@ export default function SwapPageClient() {
         <div className="hidden md:flex">
           <PoolStats {...poolStatsProps} />
         </div>
-        <SwapV2Card />
+        <SwapV2Card onPoolChange={refetch} oraclePrice={oraclePrice} />
         <div className="hidden md:flex">
           <PoolComposition
             ethReserve={ethReserve.toString()}
             usdcReserve={usdcReserve.toString()}
             shieldedEth={shieldedEth.toString()}
             shieldedUsdc={shieldedUsdc.toString()}
-            currentPrice={currentPrice}
+            currentPrice={oraclePrice}
           />
         </div>
       </div>
@@ -69,7 +77,7 @@ export default function SwapPageClient() {
           usdcReserve={usdcReserve.toString()}
           shieldedEth={shieldedEth.toString()}
           shieldedUsdc={shieldedUsdc.toString()}
-          currentPrice={currentPrice}
+          currentPrice={oraclePrice}
         />
       </div>
     </div>

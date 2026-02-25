@@ -9,6 +9,12 @@ import {PoseidonT6} from "poseidon-solidity/PoseidonT6.sol";
 
 // ─── Minimal Interfaces ─────────────────────────────────────────────────────
 
+interface IAggregatorV3 {
+    function latestRoundData()
+        external view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
+    function decimals() external view returns (uint8);
+}
+
 interface IERC20Adapter {
     function transfer(address to, uint256 amount) external returns (bool);
     function approve(address spender, uint256 amount) external returns (bool);
@@ -80,6 +86,9 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
     uint160 private constant MIN_SQRT_PRICE = 4295128739;
     uint160 private constant MAX_SQRT_PRICE = 1461446703485210103287273052203988822378723970342;
 
+    /// @dev Chainlink oracle price staleness threshold (1 hour)
+    uint256 private constant ORACLE_STALE_THRESHOLD = 3600;
+
     // ─── Immutables ──────────────────────────────────────────────────────────
 
     IPoolManagerAdapter public immutable POOL_MANAGER;
@@ -88,6 +97,12 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
     // ─── State ───────────────────────────────────────────────────────────────
 
     mapping(address => bool) public authorizedRelayers;
+
+    /// @notice Chainlink ETH/USD price feed (address(0) = disabled)
+    IAggregatorV3 public priceOracle;
+
+    /// @notice Maximum allowed deviation from oracle price in basis points (default: 1000 = 10%)
+    uint256 public maxOracleDeviationBps = 1000;
 
     // ─── Structs ─────────────────────────────────────────────────────────────
 
@@ -111,6 +126,8 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
     );
 
     event RelayerUpdated(address indexed relayer, bool allowed);
+    event OracleUpdated(address indexed oracle);
+    event MaxDeviationUpdated(uint256 bps);
 
     // ─── Errors ──────────────────────────────────────────────────────────────
 
@@ -123,6 +140,9 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
     error TransferFailed();
     error PoolPaused();
     error ZeroAddress();
+    error OracleDeviationExceeded(uint256 oraclePrice, uint256 executionPrice);
+    error OracleStale(uint256 updatedAt);
+    error DeviationBpsTooHigh();
 
     // ─── Modifiers ───────────────────────────────────────────────────────────
 
@@ -224,6 +244,9 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
         uint256 userAmount = outputAmount - fee;
         if (userAmount < minAmountOut) revert SlippageExceeded();
 
+        // ── Oracle price bound check (anti-sandwich) ────────────────────────
+        _checkOracleBound(inputAmount, outputAmount, tokenIn, tokenOut);
+
         // ── Compute output commitment ───────────────────────────────────────
         uint256 assetId = PoseidonT3.hash([block.chainid, uint256(uint160(tokenOut))]);
         uint256 commitment = PoseidonT6.hash([ownerPubKey, userAmount, assetId, block.chainid, blinding]);
@@ -304,6 +327,21 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
         emit RelayerUpdated(relayer_, allowed);
     }
 
+    /// @notice Set the Chainlink price oracle. address(0) disables oracle checks.
+    /// @param oracle_ Chainlink AggregatorV3Interface address
+    function setPriceOracle(address oracle_) external onlyOwner {
+        priceOracle = IAggregatorV3(oracle_);
+        emit OracleUpdated(oracle_);
+    }
+
+    /// @notice Set maximum allowed deviation from oracle price
+    /// @param bps Deviation in basis points (e.g. 1000 = 10%). Max 5000 (50%).
+    function setMaxOracleDeviation(uint256 bps) external onlyOwner {
+        if (bps > 5000) revert DeviationBpsTooHigh();
+        maxOracleDeviationBps = bps;
+        emit MaxDeviationUpdated(bps);
+    }
+
     /// @notice Emergency withdraw all ETH held by this contract
     function emergencyWithdrawETH() external onlyOwner {
         uint256 bal = address(this).balance;
@@ -324,6 +362,61 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
     }
 
     // ─── Internal ────────────────────────────────────────────────────────────
+
+    /// @dev Check that swap execution price is within oracle bounds.
+    ///      Only applies when oracle is set (non-zero) and swap involves ETH↔ERC20.
+    ///      Oracle returns ETH/USD price with 8 decimals.
+    ///      Execution price: for ETH→USDC, price = (outputAmount * 1e18) / inputAmount (USDC per ETH in 6-dec terms)
+    ///      We scale both to comparable units before checking deviation.
+    function _checkOracleBound(
+        uint256 inputAmount,
+        uint256 outputAmount,
+        address tokenIn,
+        address tokenOut
+    ) internal view {
+        if (address(priceOracle) == address(0)) return;
+
+        // Only check ETH↔stablecoin swaps (one side must be native ETH)
+        bool ethIn = tokenIn == address(0);
+        bool ethOut = tokenOut == address(0);
+        if (!ethIn && !ethOut) return;
+
+        (, int256 answer,, uint256 updatedAt,) = priceOracle.latestRoundData();
+        if (block.timestamp - updatedAt > ORACLE_STALE_THRESHOLD) revert OracleStale(updatedAt);
+        if (answer <= 0) return;
+
+        uint8 oracleDecimals = priceOracle.decimals();
+
+        // Oracle price in 1e18 precision (ETH/USD)
+        uint256 oraclePriceX18 = uint256(answer) * (10 ** (18 - oracleDecimals));
+
+        // Execution price in 1e18 precision
+        // ETH→USDC: executionPrice = (usdcOut * 1e18 * 1e12) / ethIn
+        //   (1e12 converts USDC 6-dec to 18-dec equivalent)
+        // USDC→ETH: executionPrice = (ethOut * 1e18) / (usdcIn * 1e12)
+        //   then compare inverse
+        uint256 executionPriceX18;
+        if (ethIn) {
+            // ETH in, token out: price = outputAmount (token units) scaled to 18-dec / inputAmount (wei)
+            // Assume output token is USDC-like (6 decimals) — scale to 18-dec
+            executionPriceX18 = (outputAmount * 1e12 * 1e18) / inputAmount;
+        } else {
+            // Token in, ETH out: price = inputAmount (token units) scaled to 18-dec / outputAmount (wei)
+            executionPriceX18 = (inputAmount * 1e12 * 1e18) / outputAmount;
+        }
+
+        // Check deviation: |oracle - execution| / oracle <= maxDeviationBps / 10000
+        uint256 deviation;
+        if (executionPriceX18 < oraclePriceX18) {
+            deviation = ((oraclePriceX18 - executionPriceX18) * 10_000) / oraclePriceX18;
+        } else {
+            deviation = ((executionPriceX18 - oraclePriceX18) * 10_000) / oraclePriceX18;
+        }
+
+        if (deviation > maxOracleDeviationBps) {
+            revert OracleDeviationExceeded(oraclePriceX18, executionPriceX18);
+        }
+    }
 
     /// @dev Settle a negative delta by transferring tokens to PoolManager
     function _settle(address currency, uint256 amount) internal {

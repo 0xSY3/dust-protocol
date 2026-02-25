@@ -5,7 +5,7 @@ import { parseEther, parseUnits, formatEther, formatUnits } from 'viem'
 // denomination are indistinguishable from each other on-chain.
 
 const ETH_DENOMINATION_VALUES = [
-  '10', '5', '3', '2', '1',
+  '100', '50', '20', '10', '5', '3', '2', '1',
   '0.5', '0.3', '0.2', '0.1',
   '0.05', '0.03', '0.02', '0.01',
 ] as const

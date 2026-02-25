@@ -14,6 +14,7 @@ interface PoolStatsProps {
   combinedTvl: number
   isLoading: boolean
   poolTick?: number
+  priceSource?: 'chainlink' | 'pool'
 }
 
 function formatNumber(num: number, decimals: number = 2): string {
@@ -45,6 +46,7 @@ export function PoolStats({
   combinedTvl,
   isLoading,
   poolTick,
+  priceSource,
 }: PoolStatsProps) {
   // Composition bar based on shielded reserves (privacy pool)
   const shieldedEthValue = shieldedEth * (currentPrice ?? 0)
@@ -110,6 +112,11 @@ export function PoolStats({
         <div className="flex items-center gap-1.5">
           <BarChart3Icon className={iconClass} />
           <span className={labelClass}>Oracle</span>
+          {priceSource && (
+            <span className={`text-[8px] font-mono px-1 py-0.5 rounded-sm ${priceSource === 'chainlink' ? 'text-[#00FF41] bg-[rgba(0,255,65,0.08)]' : 'text-[rgba(255,255,255,0.3)] bg-[rgba(255,255,255,0.04)]'}`}>
+              {priceSource === 'chainlink' ? 'CHAINLINK' : 'POOL'}
+            </span>
+          )}
         </div>
         <div className="text-sm font-bold text-white font-mono tracking-tight">
           <div className="hidden md:flex flex-col items-center gap-0.5">

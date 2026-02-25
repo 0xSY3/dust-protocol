@@ -75,7 +75,7 @@ const DENOM_STATUS_LABELS: Record<DenomSwapStatus, string> = {
   error: "Denomination swap failed",
 };
 
-export function SwapV2Card() {
+export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () => void; oraclePrice?: number | null }) {
   const { isConnected, activeChainId } = useAuth();
   const swapSupported = isSwapSupported(activeChainId);
   const { switchChain } = useSwitchChain();
@@ -185,6 +185,17 @@ export function SwapV2Card() {
     if (!amountValid || !toAmountFormatted) return 0;
     return parseFloat(toAmountFormatted) / parsedAmount;
   }, [amountValid, parsedAmount, toAmountFormatted]);
+
+  // Price impact: compare effective rate to oracle spot price
+  const priceImpactPct = useMemo(() => {
+    if (!oraclePrice || oraclePrice <= 0 || exchangeRate <= 0) return null;
+    // For ETH→USDC: exchangeRate is USDC per ETH, oraclePrice is USDC per ETH
+    // For USDC→ETH: exchangeRate is ETH per USDC, fair rate is 1/oraclePrice
+    const isFromEth = fromToken.symbol === 'ETH';
+    const fairRate = isFromEth ? oraclePrice : 1 / oraclePrice;
+    if (fairRate <= 0) return null;
+    return ((fairRate - exchangeRate) / fairRate) * 100;
+  }, [oraclePrice, exchangeRate, fromToken.symbol]);
 
   const minAmountOut = useMemo(() => {
     if (quotedAmountOut <= 0n) return 0n;
@@ -572,7 +583,6 @@ export function SwapV2Card() {
                   {showFromTokenDropdown && (
                     <div className="absolute top-full left-0 mt-1 w-36 bg-[#06080F] border border-[rgba(255,255,255,0.1)] rounded-sm shadow-xl overflow-hidden z-40">
                       {Object.values(SUPPORTED_TOKENS)
-                        .filter((t) => t.address !== toToken.address)
                         .map((t) => (
                           <button
                             key={t.symbol}
@@ -773,6 +783,15 @@ export function SwapV2Card() {
                   </span>
                 </div>
 
+                {priceImpactPct !== null && priceImpactPct > 1 && (
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-[rgba(255,255,255,0.35)] font-mono">PRICE_IMPACT</span>
+                    <span className={`font-mono font-bold ${priceImpactPct > 50 ? "text-red-400" : priceImpactPct > 10 ? "text-amber-400" : "text-[rgba(255,255,255,0.7)]"}`}>
+                      {priceImpactPct > 99 ? ">99" : priceImpactPct.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="text-[rgba(255,255,255,0.35)] font-mono">SLIPPAGE</span>
                   <span className="font-mono text-[rgba(255,255,255,0.7)]">
@@ -911,6 +930,18 @@ export function SwapV2Card() {
             </div>
           )}
 
+          {/* High price impact warning */}
+          {priceImpactPct !== null && priceImpactPct > 50 && !isProcessing && (
+            <div className="mt-3 p-2 rounded-sm bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.2)]">
+              <div className="flex items-center gap-2">
+                <AlertCircleIcon size={12} color="rgb(239,68,68)" />
+                <span className="text-[10px] text-red-400 font-mono">
+                  Extreme price impact ({priceImpactPct > 99 ? ">99" : priceImpactPct.toFixed(0)}%). Pool liquidity is too low for this amount.
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Insufficient balance warning */}
           {insufficientBalance && !isProcessing && (
             <div className="mt-3 p-2 rounded-sm bg-[rgba(239,68,68,0.06)] border border-[rgba(239,68,68,0.1)]">
@@ -1005,7 +1036,8 @@ export function SwapV2Card() {
         onClose={() => {
           setShowDepositModal(false);
           refreshBalances();
-          setTimeout(refreshBalances, 1500);
+          onPoolChange?.();
+          setTimeout(() => { refreshBalances(); onPoolChange?.(); }, 1500);
         }}
         keysRef={keysRef}
         chainId={activeChainId}
