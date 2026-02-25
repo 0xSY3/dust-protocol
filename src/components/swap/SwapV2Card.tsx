@@ -12,6 +12,7 @@ import { useV2Swap, type SwapStatus } from "@/hooks/swap/v2/useV2Swap";
 import { useV2DenomSwap, type DenomSwapStatus } from "@/hooks/swap/v2/useV2DenomSwap";
 import { useSwapQuote } from "@/hooks/swap";
 import { computeAssetId } from "@/lib/dustpool/v2/commitment";
+import { prefetchProofAssets } from "@/lib/dustpool/v2/proof";
 import { decomposeForSplit, formatChunks, suggestRoundedAmounts } from "@/lib/dustpool/v2/denominations";
 import { getExplorerBase } from "@/lib/design/tokens";
 import { AlertCircleIcon, LockIcon, TokenIcon, ShieldIcon } from "@/components/stealth/icons";
@@ -371,6 +372,7 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
 
   useEffect(() => {
     if (!hasKeys) return;
+    prefetchProofAssets();
     const interval = setInterval(refreshBalances, 30_000);
     return () => clearInterval(interval);
   }, [hasKeys, refreshBalances]);

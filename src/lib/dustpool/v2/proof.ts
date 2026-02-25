@@ -12,7 +12,7 @@ import { TREE_DEPTH } from './constants'
 const WASM_PATH = '/circuits/v2/DustV2Transaction.wasm'
 const ZKEY_PATH = process.env.NEXT_PUBLIC_V2_ZKEY_URL || 'https://pub-79a49cd9d00544bdbf2c2dd393b47a1f.r2.dev/v2/DustV2Transaction.zkey?v=2'
 const VKEY_PATH = '/circuits/v2/verification_key.json'
-const PROOF_TIMEOUT_MS = 120_000
+const PROOF_TIMEOUT_MS = 300_000
 
 export interface V2ProofResult {
   proof: unknown
@@ -237,6 +237,25 @@ export async function verifyV2ProofLocally(
 }
 
 // ── Cleanup ───────────────────────────────────────────────────────────────
+
+/** Prefetch zkey + wasm into browser cache so proof generation is faster. */
+export function prefetchProofAssets(): void {
+  if (typeof window === 'undefined') return
+  try {
+    const link1 = document.createElement('link')
+    link1.rel = 'prefetch'
+    link1.href = ZKEY_PATH
+    link1.as = 'fetch'
+    link1.crossOrigin = 'anonymous'
+    document.head.appendChild(link1)
+
+    const link2 = document.createElement('link')
+    link2.rel = 'prefetch'
+    link2.href = WASM_PATH
+    link2.as = 'fetch'
+    document.head.appendChild(link2)
+  } catch { /* noop */ }
+}
 
 export function terminateV2ProofWorker(): void {
   if (proofWorker) {
