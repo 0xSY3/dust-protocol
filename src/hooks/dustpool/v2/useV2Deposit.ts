@@ -117,6 +117,8 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
         leafIndex,
         spent: false,
         createdAt: Date.now(),
+        complianceStatus: 'unverified',
+        blockNumber: Number(receipt.blockNumber),
       }
 
       const db = await openV2Database()

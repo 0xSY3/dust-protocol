@@ -61,6 +61,12 @@ export interface StoredNoteV2 {
   iv?: string
   /** Note lifecycle: 'pending' until on-chain, 'confirmed' after relayer indexes */
   status?: 'pending' | 'confirmed'
+  /** Compliance status: tracks whether this note has been proven clean */
+  complianceStatus?: 'unverified' | 'verified' | 'inherited'
+  /** Transaction hash of the compliance proof submission */
+  complianceTxHash?: string
+  /** Block number when note was included on-chain (for scoped view key filtering) */
+  blockNumber?: number
 }
 
 // ─── Conversion ─────────────────────────────────────────────────────────────────
@@ -81,6 +87,7 @@ export function storedToNoteCommitment(stored: StoredNoteV2): NoteCommitmentV2 {
     leafIndex: stored.leafIndex,
     spent: stored.spent,
     createdAt: stored.createdAt,
+    blockNumber: stored.blockNumber,
   }
 }
 
@@ -472,6 +479,38 @@ export async function getPendingNotes(
 
   if (!encKey) return raw
   return Promise.all(raw.map(n => decryptFromStorage(n, encKey)))
+}
+
+/**
+ * Update a note's compliance status after proof verification.
+ */
+export function updateNoteComplianceStatus(
+  db: IDBDatabase,
+  commitmentHex: string,
+  complianceStatus: 'unverified' | 'verified' | 'inherited',
+  complianceTxHash?: string
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_NAME], 'readwrite')
+    const store = tx.objectStore(STORE_NAME)
+    const getRequest = store.get(commitmentHex)
+
+    getRequest.onsuccess = () => {
+      const note = getRequest.result as StoredNoteV2 | undefined
+      if (!note) {
+        resolve()
+        return
+      }
+
+      note.complianceStatus = complianceStatus
+      if (complianceTxHash) note.complianceTxHash = complianceTxHash
+      const putRequest = store.put(note)
+      putRequest.onsuccess = () => resolve()
+      putRequest.onerror = () => reject(putRequest.error)
+    }
+
+    getRequest.onerror = () => reject(getRequest.error)
+  })
 }
 
 /**

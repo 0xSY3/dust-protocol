@@ -156,8 +156,7 @@ CANNOT do:
   - Modify balances`}
         </div>
         <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed mb-4">
-          This follows the <strong className="text-white">Railgun model</strong> rather than Zcash&apos;s incoming
-          viewing key model. The key difference: Railgun-style view keys include nullifier tracking, meaning the
+          Unlike Zcash&apos;s incoming viewing key model, Dust view keys include nullifier tracking, meaning the
           holder can see both deposits <em>and</em> spending activity. A Zcash-style ivk only reveals incoming notes.
         </p>
         <DocsCallout type="warning" title="View key security">

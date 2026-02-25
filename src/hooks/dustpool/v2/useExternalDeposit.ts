@@ -81,6 +81,7 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
       spent: false,
       createdAt: Date.now(),
       status: 'pending',
+      complianceStatus: 'unverified',
     }
 
     const db = await openV2Database()
@@ -202,6 +203,9 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
       })
       if (receipt.status === 'reverted') throw new Error('Deposit transaction reverted')
 
+      if (pendingNoteRef.current) {
+        pendingNoteRef.current.blockNumber = Number(receipt.blockNumber)
+      }
       await confirmNote()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'External deposit failed'
