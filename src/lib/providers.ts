@@ -33,12 +33,15 @@ export function getChainProvider(chainId?: number): ethers.providers.BaseProvide
   if (!provider) {
     const config = getChainConfig(id);
     const urls = config.rpcUrls;
+    // Specify network explicitly so ethers skips the detectNetwork() RPC call.
+    // Prevents NETWORK_ERROR when public RPCs are slow or rate-limited.
+    const network = { chainId: id, name: config.name };
     if (urls.length <= 1) {
-      provider = new ethers.providers.JsonRpcProvider(urls[0]);
+      provider = new ethers.providers.JsonRpcProvider(urls[0], network);
     } else {
       provider = new ethers.providers.FallbackProvider(
         urls.map((url, i) => ({
-          provider: new ethers.providers.JsonRpcProvider(url),
+          provider: new ethers.providers.JsonRpcProvider(url, network),
           priority: i + 1,
           weight: 1,
           stallTimeout: 2000,
@@ -58,7 +61,8 @@ export function getChainBatchProvider(chainId?: number): ethers.providers.JsonRp
   if (!provider) {
     const config = getChainConfig(id);
     const urlIdx = batchUrlIdx.get(id) ?? 0;
-    provider = new ethers.providers.JsonRpcBatchProvider(config.rpcUrls[urlIdx] ?? config.rpcUrl);
+    const network = { chainId: id, name: config.name };
+    provider = new ethers.providers.JsonRpcBatchProvider(config.rpcUrls[urlIdx] ?? config.rpcUrl, network);
     batchProviderCache.set(id, provider);
   }
   return provider;

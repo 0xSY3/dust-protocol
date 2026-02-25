@@ -29,6 +29,8 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
   useEffect(() => { userMetaAddressRef.current = userMetaAddress; }, [userMetaAddress]);
   // Guard against concurrent invocations of the discovery pipeline.
   const loadingRef = useRef(false);
+  // Prevents re-running legacy discovery after it has already settled for this address.
+  const legacySettledRef = useRef(false);
   // Tracks the current address so stale async results from a previous address are discarded.
   const addressRef = useRef(address);
 
@@ -107,6 +109,7 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
     setIsLoading(false);
     recoveryAttempted.current = false;
     loadingRef.current = false;
+    legacySettledRef.current = false;
     setLegacyNamesSettled(!address);
     // Purge stale name cache to prevent one-render data leak across wallet switches
     queryClient.removeQueries({ queryKey: ['names'] });
@@ -161,8 +164,8 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       return;
     }
 
-    // Prevent concurrent scans for the same address.
-    if (loadingRef.current) return;
+    // Prevent concurrent scans and duplicate runs after settling.
+    if (loadingRef.current || legacySettledRef.current) return;
     loadingRef.current = true;
     setIsLoading(true);
     setError(null);
@@ -234,6 +237,7 @@ export function useStealthName(userMetaAddress?: string | null, chainId?: number
       if (addressRef.current === scanAddress) {
         setIsLoading(false);
         loadingRef.current = false;
+        legacySettledRef.current = true;
         setLegacyNamesSettled(true);
       }
     }
