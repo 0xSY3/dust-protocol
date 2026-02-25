@@ -102,6 +102,28 @@ Deployed with: Pausable, Ownable2Step, chainId, I1 recipient binding, 2-in-8-out
 
 Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
 
+### DustSwap V2 — Adapter (Ethereum Sepolia)
+
+Atomic private swaps: withdraw from DustPoolV2 → swap on Uniswap V4 → deposit output back.
+
+| Contract | Address |
+|----------|---------|
+| DustSwapAdapterV2 | `0xb91Afd19FeB4000E228243f40B8d98ea07127400` |
+| Chainlink ETH/USD Oracle | `0x694AA1769357215DE4FAC081bf1f309aDC325306` |
+| PoseidonT3 (library) | `0x203a488C06e9add25D4b51F7EDE8e56bCC4B1A1C` |
+| PoseidonT6 (library) | `0x666333F371685334CdD69bdDdaFBABc87CE7c7Db` |
+| Uniswap V4 PoolManager | `0x93805603e0167574dFe2F50ABdA8f42C85002FD8` |
+
+Oracle: Chainlink ETH/USD, 10% max deviation, 1-hour stale threshold.
+
+Verified: [Blockscout](https://eth-sepolia.blockscout.com/address/0xb91afd19feb4000e228243f40b8d98ea07127400)
+
+#### Previous DustSwap V2 Adapter Deployments (deprecated)
+
+| Contract | Address | Note |
+|----------|---------|------|
+| DustSwapAdapterV2 | `0xe2bE4d7b5C1952B3DDB210499800A45aa0DD097C` | Pre-oracle, no Chainlink bound |
+
 ### Thanos Sepolia (chain ID: 111551119090)
 
 | Contract | Address |

@@ -172,7 +172,7 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
     dustPoolV2Verifier: '0xd0f5aB15Ef3C882EB4341D38A3183Cc1FDcCFD8a',
     dustPoolV2SplitVerifier: '0x472CBA068f19738eB514B7f0b846a63E7E502120',
     dustPoolV2ComplianceVerifier: null,
-    dustSwapAdapterV2: '0xe2bE4d7b5C1952B3DDB210499800A45aa0DD097C',
+    dustSwapAdapterV2: '0xb91Afd19FeB4000E228243f40B8d98ea07127400',
     dustSwapVanillaPoolKey: {
       currency0: '0x0000000000000000000000000000000000000000',
       currency1: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',

@@ -23,3 +23,6 @@ remappings = [
 
 [rpc_endpoints]
 ethereum_sepolia = "${SEPOLIA_RPC_URL}"
+
+[etherscan]
+ethereum_sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.etherscan.io/api", chain = 11155111 }
