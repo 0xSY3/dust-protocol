@@ -3,12 +3,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePublicClient } from 'wagmi'
 import { type Address, parseUnits } from 'viem'
+
 import {
   QUOTER_ABI,
   getVanillaPoolKey,
   getSwapDirection,
 } from '@/lib/swap/contracts'
 import { SUPPORTED_TOKENS } from '@/lib/swap/constants'
+import { getChainConfig } from '@/config/chains'
 
 function getTokenDecimals(tokenAddress: Address): number {
   const addr = tokenAddress.toLowerCase()
@@ -17,7 +19,6 @@ function getTokenDecimals(tokenAddress: Address): number {
   }
   return 18
 }
-import { getChainConfig } from '@/config/chains'
 
 interface UseSwapQuoteParams {
   fromToken: Address
@@ -34,6 +35,7 @@ interface SwapQuoteResult {
 }
 
 const DEBOUNCE_MS = 500
+const MAX_UINT128 = 2n ** 128n - 1n
 
 export function useSwapQuote({
   fromToken,
@@ -43,8 +45,8 @@ export function useSwapQuote({
 }: UseSwapQuoteParams): SwapQuoteResult {
   const publicClient = usePublicClient()
 
-  const [amountOut, setAmountOut] = useState<bigint>(BigInt(0))
-  const [gasEstimate, setGasEstimate] = useState<bigint>(BigInt(0))
+  const [amountOut, setAmountOut] = useState<bigint>(0n)
+  const [gasEstimate, setGasEstimate] = useState<bigint>(0n)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -71,26 +73,28 @@ export function useSwapQuote({
         const poolKey = getVanillaPoolKey(chainId)
         if (!poolKey) {
           setError('Vanilla pool not configured on this chain')
-          setIsLoading(false)
           return
         }
-        const { zeroForOne, sqrtPriceLimitX96 } = getSwapDirection(fromToken, toToken, poolKey)
+        const { zeroForOne } = getSwapDirection(fromToken, toToken, poolKey)
 
         const parsedAmount = parseFloat(amount)
         if (isNaN(parsedAmount) || parsedAmount <= 0) {
-          setAmountOut(BigInt(0))
-          setGasEstimate(BigInt(0))
-          setIsLoading(false)
+          setAmountOut(0n)
+          setGasEstimate(0n)
           return
         }
 
         const fromDecimals = getTokenDecimals(fromToken)
         const exactAmount = parseUnits(amount, fromDecimals)
 
-        if (exactAmount <= BigInt(0)) {
-          setAmountOut(BigInt(0))
-          setGasEstimate(BigInt(0))
-          setIsLoading(false)
+        if (exactAmount <= 0n) {
+          setAmountOut(0n)
+          setGasEstimate(0n)
+          return
+        }
+
+        if (exactAmount > MAX_UINT128) {
+          setError('Amount exceeds maximum')
           return
         }
 
@@ -114,23 +118,37 @@ export function useSwapQuote({
           ],
         })
 
-        // Check if this call is still the latest
         if (callId !== abortRef.current) return
 
         const [quotedAmountOut, quotedGasEstimate] = result.result as [bigint, bigint]
+
+        // Discards quotes returning less than 0.01% of input value
+        const toDecimals = getTokenDecimals(toToken)
+        const decimalDiff = toDecimals - fromDecimals
+        const inputScaled = decimalDiff >= 0
+          ? exactAmount * (10n ** BigInt(decimalDiff))
+          : exactAmount / (10n ** BigInt(-decimalDiff))
+        const dustThreshold = inputScaled / 10000n
+        if (quotedAmountOut > 0n && quotedAmountOut < dustThreshold) {
+          setAmountOut(0n)
+          setGasEstimate(0n)
+          setError('No liquidity for this direction')
+          return
+        }
+
         setAmountOut(quotedAmountOut)
         setGasEstimate(quotedGasEstimate)
         setError(null)
       } catch (err) {
         if (callId !== abortRef.current) return
         const message = err instanceof Error ? err.message : 'Quote failed'
-        // Don't surface "pool not initialized" as a hard error — just return 0
+        setAmountOut(0n)
+        setGasEstimate(0n)
+        // Treat all quoter reverts as no-liquidity (pool may be uninitialized or tick range empty)
         if (
           message.includes('revert') ||
           message.includes('execution reverted')
         ) {
-          setAmountOut(BigInt(0))
-          setGasEstimate(BigInt(0))
           setError('Pool not available')
         } else {
           setError(message)
@@ -145,22 +163,20 @@ export function useSwapQuote({
   )
 
   useEffect(() => {
-    // Clear previous timer
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
 
-    // Reset if no amount
     if (!amountIn || parseFloat(amountIn) <= 0) {
-      setAmountOut(BigInt(0))
-      setGasEstimate(BigInt(0))
+      setAmountOut(0n)
+      setGasEstimate(0n)
       setIsLoading(false)
       setError(null)
       return
     }
 
-    setAmountOut(BigInt(0))
+    setAmountOut(0n)
     setIsLoading(true)
     setError(null)
 
@@ -174,6 +190,7 @@ export function useSwapQuote({
       if (timerRef.current) {
         clearTimeout(timerRef.current)
       }
+      setIsLoading(false)
     }
   }, [amountIn, fetchQuote])
 
