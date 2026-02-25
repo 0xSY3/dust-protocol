@@ -6,10 +6,19 @@ import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
 
 class ServerJsonRpcProvider extends ethers.providers.JsonRpcProvider {
   private rpcUrl: string;
+  private knownNetwork: ethers.providers.Network;
 
   constructor(rpcUrl: string, network: { name: string; chainId: number }) {
     super(rpcUrl, network);
     this.rpcUrl = rpcUrl;
+    this.knownNetwork = { name: network.name, chainId: network.chainId };
+  }
+
+  // FallbackProvider calls detectNetwork() on all children during construction
+  // and reconciles results. Our send() returns raw hex for eth_chainId which
+  // breaks reconciliation. Return the known network directly.
+  async detectNetwork(): Promise<ethers.providers.Network> {
+    return this.knownNetwork;
   }
 
   async send(method: string, params: unknown[]): Promise<unknown> {

@@ -16,6 +16,7 @@ export function useV2Balance(keysRef?: RefObject<V2Keys | null>, chainIdOverride
   const [notes, setNotes] = useState<NoteCommitmentV2[]>([])
   const [pendingDeposits, setPendingDeposits] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const generationRef = useRef(0)
 
   const refreshBalances = useCallback(async () => {
     if (!address) {
@@ -27,35 +28,42 @@ export function useV2Balance(keysRef?: RefObject<V2Keys | null>, chainIdOverride
       return
     }
 
+    const gen = ++generationRef.current
     setIsLoading(true)
     try {
       const db = await openV2Database()
       const keys = keysRef?.current
       const encKey = keys ? await deriveStorageKey(keys.spendingKey) : undefined
+
       const storedNotes = await getUnspentNotes(db, address, chainId, encKey)
 
-      const converted = storedNotes.map(storedToNoteCommitment)
+      // Discard result if address/chain changed during async operation
+      if (gen !== generationRef.current) return
+
+      const decryptedNotes = storedNotes.filter(n => n.asset && n.amount)
+      const converted = decryptedNotes.map(storedToNoteCommitment)
       setNotes(converted)
 
-      // Aggregate balances keyed by asset ID (bigint)
       const balanceMap = new Map<bigint, bigint>()
       for (const stored of storedNotes) {
+        if (!stored.asset || !stored.amount) continue
         const assetId = hexToBigint(stored.asset)
         const amount = hexToBigint(stored.amount)
         balanceMap.set(assetId, (balanceMap.get(assetId) ?? 0n) + amount)
       }
       setBalances(balanceMap)
 
-      // Extract ETH-specific balance
       const ethAssetId = await computeAssetId(chainId, zeroAddress)
       setTotalEthBalance(balanceMap.get(ethAssetId) ?? 0n)
 
       const pending = await getPendingNotes(db, address, chainId, encKey)
+      if (gen !== generationRef.current) return
       setPendingDeposits(pending.length)
     } catch (e) {
+      if (gen !== generationRef.current) return
       console.error('[DustPoolV2] Failed to load balances:', e)
     } finally {
-      setIsLoading(false)
+      if (gen === generationRef.current) setIsLoading(false)
     }
   }, [address, chainId])
 

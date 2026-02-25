@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, type RefObject } from "react";
+import { useState, useEffect, useCallback, useMemo, type RefObject } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { parseEther, formatEther } from "viem";
-import { useAccount, useBalance } from "wagmi";
+import { parseEther, formatEther, parseUnits, formatUnits, zeroAddress, publicActions, type Address } from "viem";
+import { useAccount, useBalance, usePublicClient, useWalletClient } from "wagmi";
 import { QRCodeSVG } from "qrcode.react";
 import { useV2Deposit, useV2Compliance, useExternalDeposit } from "@/hooks/dustpool/v2";
 import {
@@ -12,6 +12,7 @@ import {
   AlertCircleIcon,
   XIcon,
   ETHIcon,
+  USDCIcon,
   WalletIcon,
   CopyIcon,
   CheckIcon,
@@ -20,8 +21,12 @@ import {
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
 import { errorToUserMessage } from "@/lib/dustpool/v2/errors";
+import { getTokenBySymbol } from "@/config/tokens";
+import { ERC20_ABI } from "@/lib/swap/contracts";
+import { getDustPoolV2Config } from "@/lib/dustpool/v2/contracts";
 
 type DepositMode = "self" | "external";
+type SelectedToken = "native" | "USDC";
 
 interface V2DepositModalProps {
   isOpen: boolean;
@@ -51,6 +56,8 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
 export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositModalProps) {
   const { address } = useAccount();
   const { data: walletBalance } = useBalance({ address });
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
   const { deposit, isPending, txHash, error, clearError } = useV2Deposit(keysRef, chainId);
   const { screenAddress, screeningResult, isScreening, clearScreening } = useV2Compliance(chainId);
   const ext = useExternalDeposit(keysRef, chainId);
@@ -59,13 +66,37 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
   const [maxWarning, setMaxWarning] = useState("");
   const [depositMode, setDepositMode] = useState<DepositMode>("self");
   const [showDepositLink, setShowDepositLink] = useState(false);
+  const [selectedToken, setSelectedToken] = useState<SelectedToken>("native");
+  const [isApproving, setIsApproving] = useState(false);
+  const [usdcBalance, setUsdcBalance] = useState<bigint>(0n);
+
+  const usdcConfig = useMemo(() => getTokenBySymbol(chainId ?? 0, 'USDC'), [chainId]);
+  const usdcAddr = usdcConfig?.address as Address | undefined;
+  const isUSDC = selectedToken === 'USDC' && !!usdcAddr;
+  const tokenSymbol = isUSDC ? 'USDC' : 'ETH';
+
+  // Fetch USDC balance when modal opens
+  useEffect(() => {
+    if (!isOpen || !usdcAddr || !publicClient || !address) {
+      setUsdcBalance(0n);
+      return;
+    }
+    publicClient.readContract({
+      address: usdcAddr,
+      abi: ERC20_ABI,
+      functionName: 'balanceOf',
+      args: [address],
+    }).then(bal => setUsdcBalance(bal as bigint)).catch(() => setUsdcBalance(0n));
+  }, [isOpen, usdcAddr, publicClient, address]);
 
   useEffect(() => {
     if (isOpen) {
       setAmount("");
       setMaxWarning("");
       setDepositMode("self");
+      setSelectedToken("native");
       setShowDepositLink(false);
+      setIsApproving(false);
       clearScreening();
       ext.reset();
       if (address) screenAddress();
@@ -76,37 +107,74 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
     try {
       const num = parseFloat(amount);
       if (isNaN(num) || num <= 0) return null;
-      return parseEther(amount);
+      return isUSDC ? parseUnits(amount, 6) : parseEther(amount);
     } catch {
       return null;
     }
   })();
 
-  const walletBalanceFormatted = walletBalance
-    ? parseFloat(formatEther(walletBalance.value)).toFixed(4)
-    : "0.0000";
+  const activeBalance = isUSDC ? usdcBalance : walletBalance?.value ?? 0n;
+  const walletBalanceFormatted = isUSDC
+    ? parseFloat(formatUnits(usdcBalance, 6)).toFixed(2)
+    : walletBalance
+      ? parseFloat(formatEther(walletBalance.value)).toFixed(4)
+      : "0.0000";
 
-  const exceedsBalance = parsedAmount !== null && walletBalance
-    ? parsedAmount > walletBalance.value
+  const exceedsBalance = parsedAmount !== null
+    ? parsedAmount > activeBalance
     : false;
 
   const isScreeningBlocked = screeningResult?.status === "blocked";
   const isScreeningPassed = screeningResult?.status === "clear" || screeningResult?.status === "no-screening";
-  const canSelfDeposit = parsedAmount !== null && !exceedsBalance && !isPending && !isScreening && isScreeningPassed;
+  const canSelfDeposit = parsedAmount !== null && !exceedsBalance && !isPending && !isApproving && !isScreening && isScreeningPassed;
 
   const canExternalDeposit = parsedAmount !== null && ext.status === "idle" && ext.hasInjectedWallet;
   const canGenerateLink = parsedAmount !== null && ext.status === "idle";
 
-  const isBusy = isPending || ext.status === "connecting-wallet" || ext.status === "awaiting-tx" || ext.status === "confirming" || ext.status === "polling-relayer" || ext.status === "generating-note";
+  const isBusy = isPending || isApproving || ext.status === "connecting-wallet" || ext.status === "awaiting-tx" || ext.status === "confirming" || ext.status === "polling-relayer" || ext.status === "generating-note";
 
   const handleDeposit = async () => {
     if (!parsedAmount) return;
-    await deposit(parsedAmount);
+
+    if (isUSDC && usdcAddr) {
+      const contractConfig = getDustPoolV2Config(chainId ?? 0);
+      if (!contractConfig || !publicClient || !walletClient || !address) return;
+
+      setIsApproving(true);
+      try {
+        const allowance = await publicClient.readContract({
+          address: usdcAddr,
+          abi: ERC20_ABI,
+          functionName: 'allowance',
+          args: [address, contractConfig.address],
+        }) as bigint;
+
+        if (allowance < parsedAmount) {
+          const approveHash = await walletClient.writeContract({
+            address: usdcAddr,
+            abi: ERC20_ABI,
+            functionName: 'approve',
+            args: [contractConfig.address, parsedAmount],
+          });
+          const walletPublic = walletClient.extend(publicActions);
+          await walletPublic.waitForTransactionReceipt({ hash: approveHash });
+        }
+      } catch {
+        setIsApproving(false);
+        return;
+      }
+      setIsApproving(false);
+
+      await deposit(parsedAmount, usdcAddr);
+    } else {
+      await deposit(parsedAmount);
+    }
   };
 
   const handleExternalDeposit = async () => {
     if (!parsedAmount) return;
-    await ext.depositViaWallet(parsedAmount);
+    const asset = isUSDC && usdcAddr ? usdcAddr : zeroAddress;
+    await ext.depositViaWallet(parsedAmount, asset);
   };
 
   const handleGenerateLink = async () => {
@@ -129,6 +197,16 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
   }, [isOpen, isBusy, handleClose]);
 
   const handleMaxClick = () => {
+    if (isUSDC) {
+      if (usdcBalance > 0n) {
+        setAmount(formatUnits(usdcBalance, 6));
+        setMaxWarning("");
+      } else {
+        setAmount("0");
+        setMaxWarning("No USDC balance");
+      }
+      return;
+    }
     if (!walletBalance) return;
     const reserved = parseEther("0.005");
     const max = walletBalance.value > reserved ? walletBalance.value - reserved : 0n;
@@ -149,6 +227,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
   const switchTab = (mode: DepositMode) => {
     if (isBusy) return;
     setDepositMode(mode);
+    setSelectedToken("native");
     setAmount("");
     setMaxWarning("");
     setShowDepositLink(false);
@@ -158,6 +237,13 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
     } else {
       ext.reset();
     }
+  };
+
+  const selectToken = (token: SelectedToken) => {
+    if (isBusy) return;
+    setSelectedToken(token);
+    setAmount("");
+    setMaxWarning("");
   };
 
   return (
@@ -228,7 +314,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
             <div className="flex flex-col gap-4">
 
               {/* ═══════════════ SELF DEPOSIT TAB ═══════════════ */}
-              {depositMode === "self" && !isPending && !isSuccess && !isError && (
+              {depositMode === "self" && !isPending && !isApproving && !isSuccess && !isError && (
                 <>
                   {/* Compliance screening status */}
                   {isScreening && (
@@ -270,18 +356,44 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
                     </div>
                   )}
 
+                  {/* Token Selector */}
+                  {usdcConfig && (
+                    <div className="flex gap-1 p-0.5 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)]">
+                      <button
+                        onClick={() => selectToken("native")}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-sm text-[10px] font-mono font-bold tracking-wider transition-all ${
+                          !isUSDC
+                            ? "bg-[rgba(0,255,65,0.1)] text-[#00FF41] border border-[rgba(0,255,65,0.2)]"
+                            : "text-[rgba(255,255,255,0.4)] hover:text-[rgba(255,255,255,0.6)] border border-transparent"
+                        }`}
+                      >
+                        <ETHIcon size={14} /> ETH
+                      </button>
+                      <button
+                        onClick={() => selectToken("USDC")}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-sm text-[10px] font-mono font-bold tracking-wider transition-all ${
+                          isUSDC
+                            ? "bg-[rgba(0,255,65,0.1)] text-[#00FF41] border border-[rgba(0,255,65,0.2)]"
+                            : "text-[rgba(255,255,255,0.4)] hover:text-[rgba(255,255,255,0.6)] border border-transparent"
+                        }`}
+                      >
+                        <USDCIcon size={14} /> USDC
+                      </button>
+                    </div>
+                  )}
+
                   {/* Amount input */}
                   <div className="flex flex-col gap-1.5">
                     <div className="flex justify-between items-center">
                       <label className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
-                        Amount (ETH)
+                        Amount ({tokenSymbol})
                       </label>
                       <button
                         onClick={handleMaxClick}
                         className="flex items-center gap-1 text-[10px] text-[#00FF41] font-mono hover:underline"
                       >
-                        <ETHIcon size={12} />
-                        MAX: {walletBalanceFormatted} ETH
+                        {isUSDC ? <USDCIcon size={12} /> : <ETHIcon size={12} />}
+                        MAX: {walletBalanceFormatted} {tokenSymbol}
                       </button>
                     </div>
                     <input
@@ -296,7 +408,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
                       className="w-full p-3 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-sm focus:outline-none focus:border-[#00FF41] focus:bg-[rgba(0,255,65,0.02)] transition-all placeholder-[rgba(255,255,255,0.2)]"
                     />
                     {exceedsBalance && (
-                      <p className="text-[11px] text-red-400 font-mono">Insufficient wallet balance</p>
+                      <p className="text-[11px] text-red-400 font-mono">Insufficient {tokenSymbol} balance</p>
                     )}
                     {maxWarning && (
                       <p className="text-[11px] text-amber-400 font-mono">{maxWarning}</p>
@@ -309,16 +421,25 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
                     disabled={!canSelfDeposit}
                     className="w-full py-3 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] transition-all text-sm font-bold text-[#00FF41] font-mono tracking-wider disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {parsedAmount ? `Deposit ${amount} ETH` : "Enter Amount"}
+                    {parsedAmount ? `Deposit ${amount} ${tokenSymbol}` : "Enter Amount"}
                   </button>
                 </>
+              )}
+
+              {/* Self deposit — approving USDC */}
+              {depositMode === "self" && isApproving && (
+                <div className="flex flex-col items-center gap-4 py-6">
+                  <div className="w-8 h-8 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm font-semibold text-white font-mono">Approving USDC...</p>
+                  <p className="text-xs text-[rgba(255,255,255,0.4)] text-center font-mono">Confirm the approval in your wallet</p>
+                </div>
               )}
 
               {/* Self deposit — processing */}
               {depositMode === "self" && isPending && (
                 <div className="flex flex-col items-center gap-4 py-6">
                   <div className="w-8 h-8 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm font-semibold text-white font-mono">Depositing to V2 pool...</p>
+                  <p className="text-sm font-semibold text-white font-mono">Depositing {tokenSymbol} to V2 pool...</p>
                   <p className="text-xs text-[rgba(255,255,255,0.4)] text-center font-mono">Confirm the transaction in your wallet</p>
                 </div>
               )}
@@ -336,10 +457,36 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
                     </div>
                   </div>
 
+                  {/* Token Selector */}
+                  {usdcConfig && (
+                    <div className="flex gap-1 p-0.5 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)]">
+                      <button
+                        onClick={() => selectToken("native")}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-sm text-[10px] font-mono font-bold tracking-wider transition-all ${
+                          !isUSDC
+                            ? "bg-[rgba(0,255,65,0.1)] text-[#00FF41] border border-[rgba(0,255,65,0.2)]"
+                            : "text-[rgba(255,255,255,0.4)] hover:text-[rgba(255,255,255,0.6)] border border-transparent"
+                        }`}
+                      >
+                        <ETHIcon size={14} /> ETH
+                      </button>
+                      <button
+                        onClick={() => selectToken("USDC")}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-sm text-[10px] font-mono font-bold tracking-wider transition-all ${
+                          isUSDC
+                            ? "bg-[rgba(0,255,65,0.1)] text-[#00FF41] border border-[rgba(0,255,65,0.2)]"
+                            : "text-[rgba(255,255,255,0.4)] hover:text-[rgba(255,255,255,0.6)] border border-transparent"
+                        }`}
+                      >
+                        <USDCIcon size={14} /> USDC
+                      </button>
+                    </div>
+                  )}
+
                   {/* Amount input */}
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[9px] text-[rgba(255,255,255,0.5)] uppercase tracking-wider font-mono">
-                      Deposit Amount (ETH)
+                      Deposit Amount ({tokenSymbol})
                     </label>
                     <input
                       type="text"
@@ -361,7 +508,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
                       className="w-full py-3 rounded-sm bg-[rgba(0,255,65,0.1)] border border-[rgba(0,255,65,0.2)] hover:bg-[rgba(0,255,65,0.15)] hover:border-[#00FF41] hover:shadow-[0_0_15px_rgba(0,255,65,0.15)] transition-all text-sm font-bold text-[#00FF41] font-mono tracking-wider disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       <WalletIcon size={16} color="#00FF41" />
-                      {parsedAmount ? `Connect & Deposit ${amount} ETH` : "Enter Amount"}
+                      {parsedAmount ? `Connect & Deposit ${amount} ${tokenSymbol}` : "Enter Amount"}
                     </button>
                   )}
 
@@ -464,7 +611,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
                     <div className="flex justify-between items-center mb-1">
                       <p className="text-[9px] text-[rgba(255,255,255,0.4)] uppercase tracking-wider font-mono">Amount</p>
                     </div>
-                    <p className="text-sm font-mono text-white font-bold">{amount} ETH</p>
+                    <p className="text-sm font-mono text-white font-bold">{amount} {tokenSymbol}</p>
                   </div>
 
                   {/* Confirm deposit button */}
@@ -492,7 +639,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId }: V2DepositM
                       <ShieldCheckIcon size={40} color="#00FF41" />
                     </div>
                     <p className="text-base font-bold text-white mb-1 font-mono">Deposit Successful</p>
-                    <p className="text-[13px] text-[rgba(255,255,255,0.5)] font-mono">{amount} ETH deposited to V2 privacy pool</p>
+                    <p className="text-[13px] text-[rgba(255,255,255,0.5)] font-mono">{amount} {tokenSymbol} deposited to V2 privacy pool</p>
                   </div>
 
                   {(txHash || ext.txHash) && (

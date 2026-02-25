@@ -234,13 +234,16 @@ export async function computeReportNullifiers(
  * Columns: Date, Type, Amount (wei), Amount (ETH), Asset, Commitment, Status
  */
 export function formatReportCSV(report: DisclosureReport): string {
-  const header = 'Date,Type,Amount (wei),Amount (ETH),Asset,Commitment,Leaf Index,Status'
+  const header = 'Date,Type,Amount (raw),Amount (human),Asset,Commitment,Leaf Index,Status'
   const rows = report.notes.map(n => {
     const date = new Date(n.createdAt).toISOString()
-    const amountWei = n.amount
-    const amountEth = formatWeiToEth(n.amount)
+    const amountRaw = n.amount
+    // Detect USDC (6 decimals) vs ETH (18 decimals) by asset field
+    const isEthAsset = !n.asset || n.asset === 'ETH' || n.asset === '0x0000000000000000000000000000000000000000'
+    const decimals = isEthAsset ? 18 : 6
+    const amountHuman = formatWeiToEth(n.amount, decimals)
     const status = n.spent ? 'Spent' : 'Unspent'
-    return `${date},Deposit,${amountWei},${amountEth},${n.asset},${n.commitment},${n.leafIndex},${status}`
+    return `${date},Deposit,${amountRaw},${amountHuman},${n.asset},${n.commitment},${n.leafIndex},${status}`
   })
 
   const summary = [
@@ -287,8 +290,8 @@ export function parseReportJSON(json: string): DisclosureReport {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatWeiToEth(weiStr: string): string {
+function formatWeiToEth(weiStr: string, decimals: number = 18): string {
   const wei = BigInt(weiStr)
-  const eth = Number(wei) / 1e18
-  return eth.toFixed(6)
+  const val = Number(wei) / Math.pow(10, decimals)
+  return val.toFixed(decimals > 6 ? 6 : 4)
 }

@@ -234,7 +234,7 @@ describe('formatReportCSV', () => {
     const csv = formatReportCSV(report)
     const lines = csv.split('\n')
 
-    expect(lines[0]).toBe('Date,Type,Amount (wei),Amount (ETH),Asset,Commitment,Leaf Index,Status')
+    expect(lines[0]).toBe('Date,Type,Amount (raw),Amount (human),Asset,Commitment,Leaf Index,Status')
     expect(lines).toHaveLength(3 + 1 + 8) // header + 3 notes + blank + 7 summary lines
   })
 })

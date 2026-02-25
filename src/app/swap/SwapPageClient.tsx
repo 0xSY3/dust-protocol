@@ -11,6 +11,10 @@ export default function SwapPageClient() {
     ethReserve,
     usdcReserve,
     totalValueLocked,
+    shieldedEth,
+    shieldedUsdc,
+    noteCount,
+    combinedTvl,
     isLoading,
     tick,
   } = usePoolStats();
@@ -20,6 +24,10 @@ export default function SwapPageClient() {
     ethReserve,
     usdcReserve,
     totalValueLocked,
+    shieldedEth,
+    shieldedUsdc,
+    noteCount,
+    combinedTvl,
     isLoading,
     poolTick: tick !== undefined ? tick : undefined,
   };
@@ -46,6 +54,9 @@ export default function SwapPageClient() {
           <PoolComposition
             ethReserve={ethReserve.toString()}
             usdcReserve={usdcReserve.toString()}
+            shieldedEth={shieldedEth.toString()}
+            shieldedUsdc={shieldedUsdc.toString()}
+            currentPrice={currentPrice}
           />
         </div>
       </div>
@@ -56,6 +67,9 @@ export default function SwapPageClient() {
         <PoolComposition
           ethReserve={ethReserve.toString()}
           usdcReserve={usdcReserve.toString()}
+          shieldedEth={shieldedEth.toString()}
+          shieldedUsdc={shieldedUsdc.toString()}
+          currentPrice={currentPrice}
         />
       </div>
     </div>

@@ -40,6 +40,7 @@ export function V2PoolCard({ chainId: chainIdOverride }: V2PoolCardProps) {
     if (ok) {
       setPinInput("");
       setShowPinInput(false);
+      refreshBalances();
     }
   };
 

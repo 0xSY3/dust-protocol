@@ -1,10 +1,10 @@
 import { useState, useCallback, useRef, useMemo, type RefObject } from 'react'
 import {
   createWalletClient,
-  createPublicClient,
   custom,
   type Address,
   zeroAddress,
+  publicActions,
 } from 'viem'
 import { useChainId, useAccount } from 'wagmi'
 import { getChainConfig } from '@/config/chains'
@@ -16,6 +16,7 @@ import { openV2Database, saveNoteV2, bigintToHex, type StoredNoteV2 } from '@/li
 import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
 import { buildDepositCalldata, buildDepositLink } from '@/lib/dustpool/v2/deposit-link'
+import { ERC20_ABI } from '@/lib/swap/contracts'
 import type { V2Keys } from '@/lib/dustpool/v2/types'
 
 export type ExternalDepositStatus =
@@ -106,7 +107,10 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
 
   /** Poll relayer and update note to confirmed */
   const confirmNote = useCallback(async () => {
-    if (!commitmentHex || !privyAddress || !keysRef.current) return
+    const pending = pendingNoteRef.current
+    // Use the ref (synchronously set) instead of commitmentHex state which
+    // may not have flushed yet when called in the same tick as prepareDeposit.
+    if (!pending || !privyAddress || !keysRef.current) return
 
     setStatus('polling-relayer')
     const relayer = createRelayerClient()
@@ -114,7 +118,7 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
 
     for (let i = 0; i < POLL_MAX_ATTEMPTS; i++) {
       try {
-        const result = await relayer.getDepositStatus(commitmentHex, chainId)
+        const result = await relayer.getDepositStatus(pending.commitment, chainId)
         if (result.confirmed) {
           leafIndex = result.leafIndex
           break
@@ -123,34 +127,33 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
     }
 
-    if (pendingNoteRef.current && keysRef.current) {
+    if (keysRef.current) {
       const db = await openV2Database()
       const encKey = await deriveStorageKey(keysRef.current.spendingKey)
 
       if (leafIndex === -1) {
-        // Relayer hasn't indexed yet — leave note as 'pending' for background sync
-        await saveNoteV2(db, privyAddress, pendingNoteRef.current, encKey)
+        await saveNoteV2(db, privyAddress, pending, encKey)
         setStatus('success')
         return
       }
 
-      pendingNoteRef.current.leafIndex = leafIndex
-      pendingNoteRef.current.status = 'confirmed'
-      await saveNoteV2(db, privyAddress, pendingNoteRef.current, encKey)
+      pending.leafIndex = leafIndex
+      pending.status = 'confirmed'
+      await saveNoteV2(db, privyAddress, pending, encKey)
     }
 
     setStatus('success')
-  }, [commitmentHex, privyAddress, chainId, keysRef])
+  }, [privyAddress, chainId, keysRef])
 
   /** Path A: Connect external wallet and deposit directly */
-  const depositViaWallet = useCallback(async (amount: bigint) => {
+  const depositViaWallet = useCallback(async (amount: bigint, asset: Address = zeroAddress) => {
     if (busyRef.current) return
     busyRef.current = true
     setError(null)
     setTxHash(null)
 
     try {
-      const { commitmentBytes } = await prepareDeposit(amount)
+      const { commitmentBytes } = await prepareDeposit(amount, asset)
 
       if (!window.ethereum) throw new Error('No browser wallet detected')
       if (!contractConfig) throw new Error('Contract config unavailable')
@@ -168,7 +171,6 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
         transport: custom(window.ethereum),
       })
 
-      // Ensure external wallet is on the correct chain
       try {
         await window.ethereum.request({
           method: 'wallet_switchEthereumChain',
@@ -179,33 +181,78 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
       }
 
       setStatus('awaiting-tx')
-      const hash = await externalWallet.writeContract({
-        address: contractConfig.address,
-        abi: DUST_POOL_V2_ABI,
-        functionName: 'deposit',
-        args: [commitmentBytes],
-        value: amount,
-      })
+
+      let hash: `0x${string}`
+      if (asset === zeroAddress) {
+        hash = await externalWallet.writeContract({
+          address: contractConfig.address,
+          abi: DUST_POOL_V2_ABI,
+          functionName: 'deposit',
+          args: [commitmentBytes],
+          value: amount,
+        })
+      } else {
+        const walletPublic = externalWallet.extend(publicActions)
+        const allowance = await walletPublic.readContract({
+          address: asset,
+          abi: ERC20_ABI,
+          functionName: 'allowance',
+          args: [accounts[0] as Address, contractConfig.address],
+        }) as bigint
+
+        if (allowance < amount) {
+          const approveHash = await externalWallet.writeContract({
+            address: asset,
+            abi: ERC20_ABI,
+            functionName: 'approve',
+            args: [contractConfig.address, amount],
+          })
+          // Poll approve receipt directly — same Brave/MetaMask workaround
+          for (let i = 0; i < 15; i++) {
+            try {
+              const raw = await window.ethereum!.request({
+                method: 'eth_getTransactionReceipt',
+                params: [approveHash],
+              }) as { status: string } | null
+              if (raw) break
+            } catch { /* retry */ }
+            await new Promise(r => setTimeout(r, 2_000))
+          }
+        }
+
+        hash = await externalWallet.writeContract({
+          address: contractConfig.address,
+          abi: DUST_POOL_V2_ABI,
+          functionName: 'depositERC20',
+          args: [commitmentBytes, asset, amount],
+        })
+      }
 
       setTxHash(hash)
       setStatus('confirming')
 
-      // Use MetaMask's own transport — it already has the receipt for the tx it just sent.
-      // The configured RPC URLs may be undefined (missing env var) or rate-limited.
-      const externalPublic = createPublicClient({
-        chain: chainConfig.viemChain,
-        transport: custom(window.ethereum),
-      })
-
-      const receipt = await externalPublic.waitForTransactionReceipt({
-        hash,
-        timeout: RECEIPT_TIMEOUT_MS,
-      })
-      if (receipt.status === 'reverted') throw new Error('Deposit transaction reverted')
-
-      if (pendingNoteRef.current) {
-        pendingNoteRef.current.blockNumber = Number(receipt.blockNumber)
+      // Poll receipt directly via window.ethereum.request() — viem's
+      // waitForTransactionReceipt hangs in Brave/MetaMask due to broken
+      // eth_subscribe support in injected EIP-1193 providers.
+      let reverted = false
+      for (let i = 0; i < 20; i++) {
+        try {
+          const raw = await window.ethereum!.request({
+            method: 'eth_getTransactionReceipt',
+            params: [hash],
+          }) as { status: string; blockNumber: string } | null
+          if (raw) {
+            reverted = raw.status === '0x0'
+            if (pendingNoteRef.current && raw.blockNumber) {
+              pendingNoteRef.current.blockNumber = parseInt(raw.blockNumber, 16)
+            }
+            break
+          }
+        } catch { /* node hasn't indexed yet — retry */ }
+        await new Promise(r => setTimeout(r, 2_000))
       }
+
+      if (reverted) throw new Error('Deposit transaction reverted')
       await confirmNote()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'External deposit failed'

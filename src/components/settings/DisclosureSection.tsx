@@ -13,7 +13,6 @@ import {
   ETHIcon,
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
-import { formatEther } from "viem";
 
 interface DisclosureSectionProps {
   keysRef: RefObject<V2Keys | null>;
@@ -61,15 +60,21 @@ export function DisclosureSection({ keysRef, chainId }: DisclosureSectionProps) 
     triggerDownload(content, `dust-disclosure-${timestamp}.${ext}`, mime);
   }, [exportReport]);
 
-  const totalAmount = report
-    ? report.notes.reduce((sum, n) => sum + BigInt(n.amount), 0n)
-    : null;
-  const totalSpent = report
-    ? report.notes.filter(n => n.spent).reduce((sum, n) => sum + BigInt(n.amount), 0n)
-    : null;
-  const totalUnspent = report
-    ? report.notes.filter(n => !n.spent).reduce((sum, n) => sum + BigInt(n.amount), 0n)
-    : null;
+  // Group note amounts by asset to avoid mixing ETH (18 dec) and USDC (6 dec)
+  const ethNotes = report ? report.notes.filter(n => !n.asset || n.asset === 'ETH' || n.asset === '0x0000000000000000000000000000000000000000') : [];
+  const usdcNotes = report ? report.notes.filter(n => n.asset && n.asset !== 'ETH' && n.asset !== '0x0000000000000000000000000000000000000000') : [];
+
+  const totalEthAmount = ethNotes.reduce((sum, n) => sum + BigInt(n.amount), 0n);
+  const totalEthSpent = ethNotes.filter(n => n.spent).reduce((sum, n) => sum + BigInt(n.amount), 0n);
+  const totalEthUnspent = ethNotes.filter(n => !n.spent).reduce((sum, n) => sum + BigInt(n.amount), 0n);
+
+  const totalUsdcAmount = usdcNotes.reduce((sum, n) => sum + BigInt(n.amount), 0n);
+  const totalUsdcUnspent = usdcNotes.filter(n => !n.spent).reduce((sum, n) => sum + BigInt(n.amount), 0n);
+
+  const formatAmount = (wei: bigint, decimals: number): string => {
+    const val = Number(wei) / Math.pow(10, decimals);
+    return val.toFixed(4);
+  };
 
   return (
     <div className="p-6 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] rounded-sm">
@@ -153,20 +158,30 @@ export function DisclosureSection({ keysRef, chainId }: DisclosureSectionProps) 
               <div className="px-3 py-2.5 bg-[rgba(255,255,255,0.03)] rounded-sm">
                 <p className="text-[10px] text-[rgba(255,255,255,0.4)] font-mono uppercase tracking-wider">Total</p>
                 <p className="text-sm text-white font-mono font-semibold mt-0.5 flex items-center gap-1">
-                  {totalAmount !== null ? <><ETHIcon size={14} />{parseFloat(formatEther(totalAmount)).toFixed(4)} ETH</> : "-"}
+                  <ETHIcon size={14} />{formatAmount(totalEthAmount, 18)} ETH
                 </p>
+                {totalUsdcAmount > 0n && (
+                  <p className="text-sm text-white font-mono font-semibold mt-0.5">
+                    {formatAmount(totalUsdcAmount, 6)} USDC
+                  </p>
+                )}
               </div>
               <div className="px-3 py-2.5 bg-[rgba(255,255,255,0.03)] rounded-sm">
                 <p className="text-[10px] text-[rgba(255,255,255,0.4)] font-mono uppercase tracking-wider">Spent</p>
                 <p className="text-sm text-[rgba(255,255,255,0.6)] font-mono font-semibold mt-0.5 flex items-center gap-1">
-                  {totalSpent !== null ? <><ETHIcon size={14} />{parseFloat(formatEther(totalSpent)).toFixed(4)} ETH</> : "-"}
+                  <ETHIcon size={14} />{formatAmount(totalEthSpent, 18)} ETH
                 </p>
               </div>
               <div className="px-3 py-2.5 bg-[rgba(255,255,255,0.03)] rounded-sm">
                 <p className="text-[10px] text-[rgba(255,255,255,0.4)] font-mono uppercase tracking-wider">Unspent</p>
                 <p className="text-sm text-[#00FF41] font-mono font-semibold mt-0.5 flex items-center gap-1">
-                  {totalUnspent !== null ? <><ETHIcon size={14} />{parseFloat(formatEther(totalUnspent)).toFixed(4)} ETH</> : "-"}
+                  <ETHIcon size={14} />{formatAmount(totalEthUnspent, 18)} ETH
                 </p>
+                {totalUsdcUnspent > 0n && (
+                  <p className="text-sm text-[#00FF41] font-mono font-semibold mt-0.5">
+                    {formatAmount(totalUsdcUnspent, 6)} USDC
+                  </p>
+                )}
               </div>
             </div>
 

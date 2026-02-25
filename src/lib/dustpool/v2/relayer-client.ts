@@ -359,10 +359,12 @@ export function createRelayerClient(config?: Partial<RelayerConfig>) {
      * Check whether a deposit commitment has been confirmed and its leaf index.
      */
     async getDepositStatus(commitment: string, chainId?: number): Promise<DepositStatus> {
+      // Pad to bytes32 — route validates ^0x[0-9a-fA-F]{64}$
+      const padded = '0x' + commitment.replace(/^0x/, '').padStart(64, '0')
       const params = chainId != null ? `?chainId=${chainId}` : ''
       const data = await relayerFetch<DepositStatusResponse>(
         resolvedConfig,
-        `/api/v2/deposit/status/${commitment}${params}`
+        `/api/v2/deposit/status/${padded}${params}`
       )
       return {
         confirmed: data.confirmed,

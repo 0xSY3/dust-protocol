@@ -39,7 +39,7 @@ const chains = getSupportedChains();
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/swap", label: "Swap" },
-  { href: "/pools", label: "Pools" },
+  { href: "/pools", label: "Shield" },
   { href: "/wallet", label: "Wallet" },
   { href: "/links", label: "Links" },
   { href: "/activities", label: "Activity" },

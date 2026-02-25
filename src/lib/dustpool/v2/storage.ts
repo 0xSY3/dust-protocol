@@ -221,29 +221,25 @@ export async function getUnspentNotes(
   chainId?: number,
   encKey?: CryptoKey
 ): Promise<StoredNoteV2[]> {
+  if (!walletAddress) return []
   const addr = walletAddress.toLowerCase()
 
+  // Query by walletAddress index and filter in JS.
+  // The wallet_chain_spent compound index uses boolean `spent` which is not
+  // a valid IndexedDB key type — IDBKeyRange.only() rejects booleans.
   const raw: StoredNoteV2[] = await new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_NAME], 'readonly')
     const store = tx.objectStore(STORE_NAME)
+    const index = store.index('walletAddress')
+    const request = index.getAll(addr)
 
-    if (chainId !== undefined) {
-      const index = store.index('wallet_chain_spent')
-      const key = IDBKeyRange.only([addr, chainId, false])
-      const request = index.getAll(key)
-
-      request.onsuccess = () => resolve(request.result as StoredNoteV2[])
-      request.onerror = () => reject(request.error)
-    } else {
-      const index = store.index('walletAddress')
-      const request = index.getAll(addr)
-
-      request.onsuccess = () => {
-        const notes = (request.result as StoredNoteV2[]).filter((n) => !n.spent)
-        resolve(notes)
-      }
-      request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const notes = (request.result as StoredNoteV2[]).filter(n =>
+        !n.spent && (chainId === undefined || n.chainId === chainId)
+      )
+      resolve(notes)
     }
+    request.onerror = () => reject(request.error)
   })
 
   if (!encKey) return raw
@@ -461,17 +457,19 @@ export async function getPendingNotes(
   chainId: number,
   encKey?: CryptoKey
 ): Promise<StoredNoteV2[]> {
+  if (!walletAddress) return []
   const addr = walletAddress.toLowerCase()
 
   const raw: StoredNoteV2[] = await new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_NAME], 'readonly')
     const store = tx.objectStore(STORE_NAME)
-    const index = store.index('wallet_chain_spent')
-    const key = IDBKeyRange.only([addr, chainId, false])
-    const request = index.getAll(key)
+    const index = store.index('walletAddress')
+    const request = index.getAll(addr)
 
     request.onsuccess = () => {
-      const notes = (request.result as StoredNoteV2[]).filter(n => n.leafIndex === -1)
+      const notes = (request.result as StoredNoteV2[]).filter(n =>
+        !n.spent && n.chainId === chainId && n.leafIndex === -1
+      )
       resolve(notes)
     }
     request.onerror = () => reject(request.error)

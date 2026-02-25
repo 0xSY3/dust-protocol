@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { usePublicClient, useChainId } from 'wagmi'
-import { type Address } from 'viem'
+import { type Address, zeroAddress } from 'viem'
 import {
   STATE_VIEW_ABI,
   getVanillaPoolKey,
   computePoolId,
 } from '@/lib/swap/contracts'
 import { getChainConfig } from '@/config/chains'
+import { DUST_POOL_V2_ABI, getDustPoolV2Address } from '@/lib/dustpool/v2/contracts'
 
 const Q96 = BigInt(2) ** BigInt(96)
 const Q192 = Q96 * Q96
@@ -24,8 +25,16 @@ export interface PoolStatsData {
   ethReserve: number
   /** Estimated USDC in pool (human-readable) */
   usdcReserve: number
-  /** Total value locked in USD */
+  /** Total value locked in USD (swap pool only) */
   totalValueLocked: number
+  /** Shielded ETH in DustPoolV2 (human-readable) */
+  shieldedEth: number
+  /** Shielded USDC in DustPoolV2 (human-readable) */
+  shieldedUsdc: number
+  /** Total notes in DustPoolV2 (deposit queue tail) */
+  noteCount: number
+  /** Combined TVL: privacy pool + swap pool */
+  combinedTvl: number
   isLoading: boolean
   error: string | null
   /** Re-fetch pool data immediately */
@@ -43,16 +52,28 @@ export interface PoolStatsData {
  * Using bigint to avoid Number overflow (sqrtPriceX96 can be ~3.96e27
  * which is far beyond Number.MAX_SAFE_INTEGER ~9e15).
  *
- * We compute: price_human = (sqrtPriceX96^2 * 10^12) / 2^192
- * Then convert to float with 2 decimal places of precision via:
- *   price_human = Number((sqrtPriceX96^2 * 10^14) / 2^192) / 100
+ * For correctly initialized pools (tick ≈ -198,000): applies full 10^12 decimal
+ * adjustment. For pools initialized with human-readable sqrtPrice (tick ≈ 78,000):
+ * the decimal offset is already baked in — detected via sanity bound.
  */
+const DECIMAL_ADJUSTMENT = BigInt(10) ** BigInt(12)
+
 function sqrtPriceToHumanPrice(sqrtPriceX96: bigint): number {
   const sqrtPriceSq = sqrtPriceX96 * sqrtPriceX96
-  // Multiply by 10^14 (10^12 for decimal adjustment + 10^2 for 2 decimal places)
-  // then divide by Q192, yielding price * 100 as a bigint
-  const priceX100 = (sqrtPriceSq * BigInt(10) ** BigInt(14)) / Q192
-  return Number(priceX100) / 100
+
+  // Standard conversion with 10^12 decimal adjustment + 10^2 for precision
+  const priceX100 = (sqrtPriceSq * DECIMAL_ADJUSTMENT * 100n) / Q192
+  const price = Number(priceX100) / 100
+
+  // Guard: if price exceeds $1M/ETH the pool was likely initialized with
+  // human-readable price (sqrt(2500) * 2^96 instead of sqrt(2.5e-9) * 2^96),
+  // meaning the decimal adjustment was already baked into sqrtPriceX96.
+  if (price > 1_000_000) {
+    const rawX100 = (sqrtPriceSq * 100n) / Q192
+    return Number(rawX100) / 100
+  }
+
+  return price
 }
 
 /**
@@ -85,6 +106,95 @@ function estimateReserves(
   return { ethReserve, usdcReserve }
 }
 
+// USDC addresses per chain (Sepolia only for now)
+const USDC_ADDRESSES: Record<number, Address> = {
+  11155111: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+}
+
+async function fetchPrivacyPoolStats(
+  client: ReturnType<typeof usePublicClient>,
+  poolAddress: Address,
+  chainId: number,
+): Promise<{ ethWei: bigint; usdcUnits: bigint; noteCount: number }> {
+  if (!client) return { ethWei: 0n, usdcUnits: 0n, noteCount: 0 }
+
+  const usdcAddr = USDC_ADDRESSES[chainId]
+  const calls = [
+    client.readContract({
+      address: poolAddress,
+      abi: DUST_POOL_V2_ABI,
+      functionName: 'totalDeposited',
+      args: [zeroAddress],
+    }),
+    client.readContract({
+      address: poolAddress,
+      abi: DUST_POOL_V2_ABI,
+      functionName: 'depositQueueTail',
+    }),
+  ]
+
+  if (usdcAddr) {
+    calls.push(
+      client.readContract({
+        address: poolAddress,
+        abi: DUST_POOL_V2_ABI,
+        functionName: 'totalDeposited',
+        args: [usdcAddr],
+      }),
+    )
+  }
+
+  const results = await Promise.all(calls)
+  return {
+    ethWei: results[0] as bigint,
+    usdcUnits: usdcAddr ? (results[2] as bigint) : 0n,
+    noteCount: Number(results[1] as bigint),
+  }
+}
+
+async function fetchSwapPoolStats(
+  client: ReturnType<typeof usePublicClient>,
+  stateViewAddress: Address,
+  chainId: number,
+): Promise<{ sqrtPriceX96: bigint; tick: number; liquidity: bigint } | null> {
+  if (!client) return null
+
+  const poolKey = getVanillaPoolKey(chainId)
+  if (!poolKey) return null
+  const poolId = computePoolId(poolKey)
+
+  try {
+    const [slot0Result, liquidityResult] = await Promise.all([
+      client.readContract({
+        address: stateViewAddress,
+        abi: STATE_VIEW_ABI,
+        functionName: 'getSlot0',
+        args: [poolId],
+      }),
+      client.readContract({
+        address: stateViewAddress,
+        abi: STATE_VIEW_ABI,
+        functionName: 'getLiquidity',
+        args: [poolId],
+      }),
+    ])
+
+    const [price, poolTick] = slot0Result as [bigint, number, number, number]
+    return {
+      sqrtPriceX96: price,
+      tick: poolTick,
+      liquidity: liquidityResult as bigint,
+    }
+  } catch (err) {
+    // Pool may not be initialized — return zeros
+    const message = err instanceof Error ? err.message : ''
+    if (message.includes('revert') || message.includes('execution reverted')) {
+      return { sqrtPriceX96: 0n, tick: 0, liquidity: 0n }
+    }
+    throw err
+  }
+}
+
 export function usePoolStats(chainIdParam?: number): PoolStatsData {
   const publicClient = usePublicClient()
   const walletChainId = useChainId()
@@ -93,6 +203,9 @@ export function usePoolStats(chainIdParam?: number): PoolStatsData {
   const [sqrtPriceX96, setSqrtPriceX96] = useState<bigint>(BigInt(0))
   const [tick, setTick] = useState<number>(0)
   const [liquidity, setLiquidity] = useState<bigint>(BigInt(0))
+  const [shieldedEthWei, setShieldedEthWei] = useState<bigint>(0n)
+  const [shieldedUsdcUnits, setShieldedUsdcUnits] = useState<bigint>(0n)
+  const [noteCount, setNoteCount] = useState<number>(0)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -106,62 +219,44 @@ export function usePoolStats(chainIdParam?: number): PoolStatsData {
     }
 
     const config = getChainConfig(chainId)
+
+    // Fetch DustPoolV2 stats (privacy pool) — independent of swap pool
+    const dustPoolAddress = getDustPoolV2Address(chainId)
+    const privacyPoolPromise = dustPoolAddress
+      ? fetchPrivacyPoolStats(publicClient, dustPoolAddress, chainId)
+      : Promise.resolve(null)
+
+    // Fetch swap pool stats (Uniswap V4)
     const stateViewAddress = config.contracts.uniswapV4StateView as Address | null
-    if (!stateViewAddress) {
-      setError('StateView not deployed on this chain')
-      setIsLoading(false)
-      return
-    }
+    const swapPoolPromise = stateViewAddress
+      ? fetchSwapPoolStats(publicClient, stateViewAddress, chainId)
+      : Promise.resolve(null)
 
     try {
-      const poolKey = getVanillaPoolKey(chainId)
-      if (!poolKey) {
-        setError('Vanilla pool not configured on this chain')
-        setIsLoading(false)
-        return
-      }
-      const poolId = computePoolId(poolKey)
-
-      const [slot0Result, liquidityResult] = await Promise.all([
-        publicClient.readContract({
-          address: stateViewAddress,
-          abi: STATE_VIEW_ABI,
-          functionName: 'getSlot0',
-          args: [poolId],
-        }),
-        publicClient.readContract({
-          address: stateViewAddress,
-          abi: STATE_VIEW_ABI,
-          functionName: 'getLiquidity',
-          args: [poolId],
-        }),
+      const [privacyResult, swapResult] = await Promise.all([
+        privacyPoolPromise,
+        swapPoolPromise,
       ])
 
       if (!mountedRef.current) return
 
-      const [price, poolTick] = slot0Result as [bigint, number, number, number]
-      const liq = liquidityResult as bigint
+      if (swapResult) {
+        setSqrtPriceX96(swapResult.sqrtPriceX96)
+        setTick(swapResult.tick)
+        setLiquidity(swapResult.liquidity)
+      }
 
-      setSqrtPriceX96(price)
-      setTick(poolTick)
-      setLiquidity(liq)
+      if (privacyResult) {
+        setShieldedEthWei(privacyResult.ethWei)
+        setShieldedUsdcUnits(privacyResult.usdcUnits)
+        setNoteCount(privacyResult.noteCount)
+      }
+
       setError(null)
     } catch (err) {
       if (!mountedRef.current) return
-      // Pool may not be initialized yet — return zeros gracefully
       const message = err instanceof Error ? err.message : 'Failed to read pool'
-      if (
-        message.includes('revert') ||
-        message.includes('execution reverted')
-      ) {
-        // Pool not initialized — set defaults, no error shown
-        setSqrtPriceX96(BigInt(0))
-        setTick(0)
-        setLiquidity(BigInt(0))
-        setError(null)
-      } else {
-        setError(message)
-      }
+      setError(message)
     } finally {
       if (mountedRef.current) {
         setIsLoading(false)
@@ -194,6 +289,16 @@ export function usePoolStats(chainIdParam?: number): PoolStatsData {
       ? ethReserve * currentPrice + usdcReserve
       : 0
 
+  // Privacy pool reserves (human-readable)
+  const shieldedEth = Number(shieldedEthWei) / 1e18
+  const shieldedUsdc = Number(shieldedUsdcUnits) / 1e6
+
+  // Combined TVL: privacy pool + swap pool
+  const shieldedTvl = currentPrice !== null
+    ? shieldedEth * currentPrice + shieldedUsdc
+    : shieldedEth * 2000 + shieldedUsdc // fallback price estimate
+  const combinedTvl = totalValueLocked + shieldedTvl
+
   return {
     sqrtPriceX96,
     tick,
@@ -202,6 +307,10 @@ export function usePoolStats(chainIdParam?: number): PoolStatsData {
     ethReserve,
     usdcReserve,
     totalValueLocked,
+    shieldedEth,
+    shieldedUsdc,
+    noteCount,
+    combinedTvl,
     isLoading,
     error,
     refetch: fetchPoolData,

@@ -5,29 +5,32 @@ import { ETHIcon, USDCIcon } from '@/components/stealth/icons'
 interface PoolCompositionProps {
   ethReserve: string
   usdcReserve: string
+  shieldedEth: string
+  shieldedUsdc: string
+  currentPrice: number | null
 }
 
-function formatReserve(value: string, isUsdc: boolean): string {
-  const num = parseFloat(value)
-  if (isNaN(num)) return '—'
+function formatReserve(value: number, isUsdc: boolean): string {
+  if (!isFinite(value) || isNaN(value)) return '—'
   if (isUsdc) {
-    if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`
-    if (num >= 1e3) return `${(num / 1e3).toFixed(1)}K`
-    return num.toFixed(0)
+    if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
+    if (value >= 1e3) return `${(value / 1e3).toFixed(1)}K`
+    return value.toFixed(0)
   }
-  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`
-  if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`
-  return num.toFixed(2)
+  if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
+  if (value >= 1e3) return `${(value / 1e3).toFixed(2)}K`
+  if (value < 0.01 && value > 0) return value.toFixed(4)
+  return value.toFixed(2)
 }
 
-export function PoolComposition({ ethReserve, usdcReserve }: PoolCompositionProps) {
-  const ethNum = parseFloat(ethReserve) || 0
-  const usdcNum = parseFloat(usdcReserve) || 0
+export function PoolComposition({ ethReserve, usdcReserve, shieldedEth, shieldedUsdc, currentPrice }: PoolCompositionProps) {
+  const totalEth = (parseFloat(ethReserve) || 0) + (parseFloat(shieldedEth) || 0)
+  const totalUsdc = (parseFloat(usdcReserve) || 0) + (parseFloat(shieldedUsdc) || 0)
 
-  // Compute relative heights for the bar (normalized to total value)
-  // Use raw values for visual ratio — ETH on bottom (green), USDC on top (white)
-  const total = ethNum + usdcNum
-  const ethPct = total > 0 ? Math.round((ethNum / total) * 100) : 45
+  // Convert to USD for meaningful bar percentages
+  const ethUsdValue = totalEth * (currentPrice ?? 0)
+  const totalUsd = ethUsdValue + totalUsdc
+  const ethPct = totalUsd > 0 ? Math.round((ethUsdValue / totalUsd) * 100) : 50
   const usdcPct = 100 - ethPct
 
   return (
@@ -69,11 +72,11 @@ export function PoolComposition({ ethReserve, usdcReserve }: PoolCompositionProp
         <div className="flex justify-between text-[11px] font-mono">
           <div className="flex items-center gap-1.5">
             <ETHIcon size={14} />
-            <span className="text-[rgba(255,255,255,0.7)] font-bold">{formatReserve(ethReserve, false)}</span>
+            <span className="text-[rgba(255,255,255,0.7)] font-bold">{formatReserve(totalEth, false)}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <USDCIcon size={14} />
-            <span className="text-[rgba(255,255,255,0.7)] font-bold">{formatReserve(usdcReserve, true)}</span>
+            <span className="text-[rgba(255,255,255,0.7)] font-bold">{formatReserve(totalUsdc, true)}</span>
           </div>
         </div>
       </div>
@@ -83,13 +86,13 @@ export function PoolComposition({ ethReserve, usdcReserve }: PoolCompositionProp
         <div className="flex items-center gap-1.5">
           <ETHIcon size={16} />
           <span className="text-[rgba(255,255,255,0.7)] font-bold">
-            {formatReserve(ethReserve, false)}
+            {formatReserve(totalEth, false)}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <USDCIcon size={16} />
           <span className="text-[rgba(255,255,255,0.7)] font-bold">
-            {formatReserve(usdcReserve, true)}
+            {formatReserve(totalUsdc, true)}
           </span>
         </div>
       </div>

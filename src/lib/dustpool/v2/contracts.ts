@@ -105,6 +105,14 @@ export const DUST_POOL_V2_ABI = [
     inputs: [],
     outputs: [{ type: 'uint256' }],
   },
+  // totalDeposited(address) — net deposited per asset (deposits minus withdrawals)
+  {
+    name: 'totalDeposited',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'token', type: 'address' }],
+    outputs: [{ type: 'uint256' }],
+  },
   // Compliance oracle
   {
     name: 'complianceOracle',

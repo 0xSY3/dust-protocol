@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, type RefObject } from 'react'
+import { useState, useCallback, useRef, useMemo, useEffect, type RefObject } from 'react'
 import { useAccount, useChainId, usePublicClient } from 'wagmi'
 import { zeroAddress, type Address } from 'viem'
 import { computeAssetId, computeOwnerPubKey, poseidonHash } from '@/lib/dustpool/v2/commitment'
@@ -56,6 +56,12 @@ export function useV2DenomSwap(keysRef: RefObject<V2Keys | null>, chainIdOverrid
   const [txHashes, setTxHashes] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const swappingRef = useRef(false)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const denomSwap = useCallback(async (
     amountIn: bigint,
@@ -242,7 +248,7 @@ export function useV2DenomSwap(keysRef: RefObject<V2Keys | null>, chainIdOverrid
       setStatus('generating-swap-proofs')
 
       const ownerPubKey = await computeOwnerPubKey(keys.spendingKey)
-      const feeBps = relayerFeeBps ?? 100
+      const feeBps = relayerFeeBps ?? 200
 
       const swaps: Array<{
         proof: string
@@ -274,11 +280,9 @@ export function useV2DenomSwap(keysRef: RefObject<V2Keys | null>, chainIdOverrid
         }
 
         const blinding = generateBlinding()
-        // Proportional minAmountOut: scale by chunk fraction of total, apply slippage
+        // Proportional minAmountOut: minAmountOut already has slippage applied by caller
         const chunkMinOut = (minAmountOut * chunks[i]) / amountIn
-        const slippageAdjusted = chunkMinOut - (chunkMinOut * BigInt(slippageBps) / 10000n)
-        // Ensure at least 1 wei minimum to pass relayer validation
-        const finalMinOut = slippageAdjusted > 0n ? slippageAdjusted : 1n
+        const finalMinOut = chunkMinOut > 0n ? chunkMinOut : 1n
 
         swaps.push({
           proof: proofResult.proofCalldata,
@@ -303,9 +307,22 @@ export function useV2DenomSwap(keysRef: RefObject<V2Keys | null>, chainIdOverrid
       )
 
       const hashes = batchResult.results.map(r => r.txHash)
-      setTxHashes(hashes)
+      if (mountedRef.current) setTxHashes(hashes)
+
+      // ── Step 6b: Verify batch swap receipts on-chain ────────────────
+      if (mountedRef.current) setStatus('confirming-swaps')
+      for (const result of batchResult.results) {
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash: result.txHash as `0x${string}`,
+          timeout: RECEIPT_TIMEOUT_MS,
+        })
+        if (receipt.status === 'reverted') {
+          console.error(`[V2/denom-swap] Swap tx reverted: ${result.txHash}`)
+        }
+      }
 
       // ── Step 7: Verify and save output notes ──────────────────────────
+      if (!mountedRef.current) return
       setStatus('saving-notes')
 
       const outputAssetId = await computeAssetId(chainId, tokenOut)
@@ -359,21 +376,25 @@ export function useV2DenomSwap(keysRef: RefObject<V2Keys | null>, chainIdOverrid
         }
       }
 
-      if (batchResult.errors.length > 0) {
-        const failedCount = batchResult.errors.length
-        setStatus('error')
-        setError(
-          `${batchResult.succeeded}/${batchResult.total} swaps succeeded. ` +
-          `${failedCount} failed — denomination notes remain in pool for retry.`
-        )
-      } else {
-        setStatus('done')
+      if (mountedRef.current) {
+        if (batchResult.errors.length > 0) {
+          const failedCount = batchResult.errors.length
+          setStatus('error')
+          setError(
+            `${batchResult.succeeded}/${batchResult.total} swaps succeeded. ` +
+            `${failedCount} failed — denomination notes remain in pool for retry.`
+          )
+        } else {
+          setStatus('done')
+        }
       }
     } catch (e) {
-      setStatus('error')
-      setError(extractRelayerError(e, 'Denomination swap failed'))
+      if (mountedRef.current) {
+        setStatus('error')
+        setError(extractRelayerError(e, 'Denomination swap failed'))
+      }
     } finally {
-      setIsPending(false)
+      if (mountedRef.current) setIsPending(false)
       swappingRef.current = false
     }
   }, [isConnected, address, chainId, publicClient])

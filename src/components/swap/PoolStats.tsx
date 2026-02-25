@@ -8,11 +8,16 @@ interface PoolStatsProps {
   ethReserve: number
   usdcReserve: number
   totalValueLocked: number
+  shieldedEth: number
+  shieldedUsdc: number
+  noteCount: number
+  combinedTvl: number
   isLoading: boolean
   poolTick?: number
 }
 
 function formatNumber(num: number, decimals: number = 2): string {
+  if (!isFinite(num) || isNaN(num)) return '—'
   if (num >= 1e9) return `${(num / 1e9).toFixed(decimals)}B`
   if (num >= 1e6) return `${(num / 1e6).toFixed(decimals)}M`
   if (num >= 1e3) return `${(num / 1e3).toFixed(decimals)}K`
@@ -34,13 +39,17 @@ export function PoolStats({
   ethReserve,
   usdcReserve,
   totalValueLocked,
+  shieldedEth,
+  shieldedUsdc,
+  noteCount,
+  combinedTvl,
   isLoading,
   poolTick,
 }: PoolStatsProps) {
-  const ethValue = ethReserve * (currentPrice ?? 0)
-  const totalValue =
-    totalValueLocked > 0 ? totalValueLocked : ethValue + usdcReserve
-  const ethPercent = totalValue > 0 ? (ethValue / totalValue) * 100 : 50
+  // Composition bar based on shielded reserves (privacy pool)
+  const shieldedEthValue = shieldedEth * (currentPrice ?? 0)
+  const shieldedTotal = shieldedEthValue + shieldedUsdc
+  const ethPercent = shieldedTotal > 0 ? (shieldedEthValue / shieldedTotal) * 100 : 50
   const usdcPercent = 100 - ethPercent
 
   if (isLoading) {
@@ -58,22 +67,22 @@ export function PoolStats({
 
   return (
     <div className="flex flex-row md:flex-col gap-2 md:gap-3 w-full md:w-[180px] md:h-full" style={{ minHeight: 'inherit' }}>
-      {/* TVL Card */}
+      {/* TVL Card — combined privacy pool + swap pool */}
       <div className={cardClass}>
         <div className="flex items-center gap-1.5">
           <DollarSignIcon className={iconClass} />
           <span className={labelClass}>TVL</span>
         </div>
         <span className="text-base font-bold text-white font-mono tracking-tight">
-          ${formatNumber(totalValue)}
+          ${formatNumber(combinedTvl)}
         </span>
       </div>
 
-      {/* Notes / Composition Card */}
+      {/* Shielded — privacy pool composition + note count */}
       <div className={cardClass}>
         <div className="flex items-center gap-1.5">
           <ShieldIcon className={iconClass} />
-          <span className={labelClass}>Notes</span>
+          <span className={labelClass}>Shielded</span>
         </div>
         <div className="flex flex-col gap-1 mt-0.5 w-full">
           <div className="flex gap-0.5 h-1.5 w-full rounded-full overflow-hidden bg-[rgba(255,255,255,0.1)]">
@@ -87,8 +96,11 @@ export function PoolStats({
             />
           </div>
           <div className="flex justify-between text-[10px] font-mono text-[rgba(255,255,255,0.3)]">
-            <span className="flex items-center gap-1"><ETHIcon size={12} /> {formatNumber(ethReserve, 2)}</span>
-            <span className="flex items-center gap-1"><USDCIcon size={12} /> {formatNumber(usdcReserve, 0)}</span>
+            <span className="flex items-center gap-1"><ETHIcon size={12} /> {formatNumber(shieldedEth, 4)}</span>
+            <span className="flex items-center gap-1"><USDCIcon size={12} /> {formatNumber(shieldedUsdc, 0)}</span>
+          </div>
+          <div className="text-center text-[10px] font-mono text-[rgba(255,255,255,0.25)] mt-0.5">
+            {noteCount} note{noteCount !== 1 ? 's' : ''}
           </div>
         </div>
       </div>
@@ -105,7 +117,7 @@ export function PoolStats({
             <span>≈ {currentPrice != null ? formatNumber(currentPrice, 2) : '—'}</span>
             <USDCIcon size={14} />
           </div>
-          <span className="md:hidden flex items-center gap-1">1 <ETHIcon size={12} /> ≈ {currentPrice != null ? formatNumber(currentPrice, 0) : '—'} <USDCIcon size={12} /></span>
+          <span className="md:hidden flex items-center gap-1">1 <ETHIcon size={12} /> ≈ {currentPrice != null ? formatNumber(currentPrice, 2) : '—'} <USDCIcon size={12} /></span>
         </div>
         {poolTick !== undefined && (
           <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">

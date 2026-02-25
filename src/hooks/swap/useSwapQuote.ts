@@ -2,13 +2,21 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePublicClient } from 'wagmi'
-import { type Address } from 'viem'
+import { type Address, parseUnits } from 'viem'
 import {
   QUOTER_ABI,
   getVanillaPoolKey,
   getSwapDirection,
 } from '@/lib/swap/contracts'
 import { SUPPORTED_TOKENS } from '@/lib/swap/constants'
+
+function getTokenDecimals(tokenAddress: Address): number {
+  const addr = tokenAddress.toLowerCase()
+  for (const token of Object.values(SUPPORTED_TOKENS)) {
+    if (token.address.toLowerCase() === addr) return token.decimals
+  }
+  return 18
+}
 import { getChainConfig } from '@/config/chains'
 
 interface UseSwapQuoteParams {
@@ -76,13 +84,8 @@ export function useSwapQuote({
           return
         }
 
-        // Determine decimals from token config
-        const fromDecimals = zeroForOne
-          ? SUPPORTED_TOKENS.ETH.decimals
-          : SUPPORTED_TOKENS.USDC.decimals
-        const exactAmount = BigInt(
-          Math.floor(parsedAmount * Math.pow(10, fromDecimals))
-        )
+        const fromDecimals = getTokenDecimals(fromToken)
+        const exactAmount = parseUnits(amount, fromDecimals)
 
         if (exactAmount <= BigInt(0)) {
           setAmountOut(BigInt(0))
@@ -157,6 +160,7 @@ export function useSwapQuote({
       return
     }
 
+    setAmountOut(BigInt(0))
     setIsLoading(true)
     setError(null)
 

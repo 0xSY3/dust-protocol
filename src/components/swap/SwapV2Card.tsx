@@ -84,7 +84,7 @@ export function SwapV2Card() {
   const { keysRef, hasKeys, hasPin, isDeriving, error: keyError, deriveKeys } = useV2Keys();
 
   // V2 balance
-  const { balances, isLoading: balanceLoading, refreshBalances } = useV2Balance(keysRef, activeChainId);
+  const { balances, pendingDeposits, isLoading: balanceLoading, refreshBalances } = useV2Balance(keysRef, activeChainId);
 
   // Token state
   const [fromToken, setFromToken] = useState<SwapToken>(SUPPORTED_TOKENS.ETH);
@@ -94,9 +94,10 @@ export function SwapV2Card() {
   const [customSlippage, setCustomSlippage] = useState("");
   const [showSlippageSettings, setShowSlippageSettings] = useState(false);
 
-  // PIN input
+  // PIN input — shown inline when user tries to swap without keys
   const [pinInput, setPinInput] = useState("");
   const [showPinInput, setShowPinInput] = useState(false);
+  const [pendingSwapAfterPin, setPendingSwapAfterPin] = useState(false);
 
   // Token dropdown
   const [showFromTokenDropdown, setShowFromTokenDropdown] = useState(false);
@@ -234,11 +235,21 @@ export function SwapV2Card() {
   // Insufficient balance check
   const insufficientBalance = amountInWei > 0n && amountInWei > fromBalance;
 
+  // canSwap requires keys; canAttemptSwap allows triggering PIN prompt
   const canSwap =
     isConnected &&
     hasKeys &&
     amountValid &&
     !insufficientBalance &&
+    quotedAmountOut > 0n &&
+    activeStatus === "idle" &&
+    !activeIsPending &&
+    !isQuoteLoading &&
+    swapSupported;
+
+  const canAttemptSwap =
+    isConnected &&
+    amountValid &&
     quotedAmountOut > 0n &&
     activeStatus === "idle" &&
     !activeIsPending &&
@@ -286,9 +297,22 @@ export function SwapV2Card() {
     if (ok) {
       setPinInput("");
       setShowPinInput(false);
-      refreshBalances();
+      await refreshBalances();
+      if (pendingSwapAfterPin) {
+        setPendingSwapAfterPin(false);
+      }
     }
   };
+
+  // When user clicks swap without keys, show PIN prompt
+  const handleSwapOrUnlock = useCallback(() => {
+    if (!hasKeys) {
+      setShowPinInput(true);
+      setPendingSwapAfterPin(true);
+      return;
+    }
+    handleSwap();
+  }, [hasKeys, handleSwap]);
 
   const handleSlippageChange = (bps: number) => {
     setSlippageBps(bps);
@@ -299,8 +323,9 @@ export function SwapV2Card() {
     const cleaned = value.replace(/[^0-9.]/g, "");
     setCustomSlippage(cleaned);
     const num = parseFloat(cleaned);
-    if (!isNaN(num) && num > 0 && num <= 50) {
-      setSlippageBps(Math.round(num * 100));
+    if (!isNaN(num) && num > 0) {
+      const clamped = Math.min(num, 50);
+      setSlippageBps(Math.round(clamped * 100));
     }
   };
 
@@ -313,7 +338,10 @@ export function SwapV2Card() {
   const handleMaxClick = () => {
     if (fromBalance <= 0n) return;
     const formatted = formatUnits(fromBalance, fromToken.decimals);
-    setAmountStr(formatted);
+    // Trim to reasonable precision to avoid displaying 18+ decimal digits
+    const maxDecimals = fromToken.decimals > 6 ? 8 : 4;
+    const trimmed = parseFloat(formatted).toFixed(maxDecimals).replace(/\.?0+$/, '');
+    setAmountStr(trimmed || '0');
   };
 
   // Auto-switch chain
@@ -333,13 +361,21 @@ export function SwapV2Card() {
     }
   }, [activeStatus, refreshBalances]);
 
+  // Auto-refresh balances every 30s to pick up background sync changes
+  useEffect(() => {
+    if (!hasKeys) return;
+    const interval = setInterval(refreshBalances, 30_000);
+    return () => clearInterval(interval);
+  }, [hasKeys, refreshBalances]);
+
   const explorerBase = getExplorerBase(activeChainId);
   const isProcessing = activeIsPending || (activeStatus !== "idle" && activeStatus !== "done" && activeStatus !== "error");
 
   const getButtonContent = () => {
     if (!isConnected) return "Connect Wallet";
     if (!swapSupported) return "Swaps Not Available";
-    if (!hasKeys) return "Unlock V2 Keys";
+    if (!hasKeys && showPinInput) return "Enter PIN to Unlock";
+    if (!hasKeys) return "Unlock & Swap";
     if (balanceLoading) return "Loading Balances...";
     if (isQuoteLoading && amountValid) return "Getting Quote...";
     if (activeIsPending) {
@@ -362,7 +398,7 @@ export function SwapV2Card() {
 
   const buttonDisabled = activeStatus === "error" || activeStatus === "done"
     ? false
-    : !canSwap;
+    : hasKeys ? !canSwap : !canAttemptSwap;
 
   const currentStepIndex = shouldUseDenomSwap
     ? DENOM_STATUS_STEPS.indexOf(denomStatus as DenomSwapStatus)
@@ -390,8 +426,7 @@ export function SwapV2Card() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowDepositModal(true)}
-                disabled={!hasKeys}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(0,255,65,0.06)] hover:border-[rgba(0,255,65,0.25)] transition-all text-[11px] font-mono text-[rgba(255,255,255,0.6)] hover:text-[#00FF41] disabled:opacity-30 disabled:cursor-not-allowed"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(0,255,65,0.06)] hover:border-[rgba(0,255,65,0.25)] transition-all text-[11px] font-mono text-[rgba(255,255,255,0.6)] hover:text-[#00FF41]"
               >
                 <span className="text-[13px] leading-none">+</span>
                 <span className="tracking-wider">Deposit</span>
@@ -472,64 +507,30 @@ export function SwapV2Card() {
             </div>
           )}
 
-          {/* PIN Unlock */}
-          {isConnected && swapSupported && !hasKeys && !showPinInput && (
-            <button
-              onClick={() => setShowPinInput(true)}
-              className="mb-4 w-full p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)] hover:border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.1)] transition-all cursor-pointer text-left"
-            >
-              <div className="flex items-center gap-2">
-                <LockIcon size={12} color="#f59e0b" />
-                <span className="text-[11px] text-amber-400 font-mono">
-                  {hasPin ? "Enter PIN to unlock V2 swap" : "Set up PIN to use V2 swap"}
-                </span>
-              </div>
-            </button>
-          )}
-
-          {isConnected && swapSupported && !hasKeys && showPinInput && (
-            <div className="mb-4 p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
-              <div className="flex items-center gap-2 mb-2.5">
-                <LockIcon size={12} color="#f59e0b" />
-                <span className="text-[11px] text-amber-400 font-mono font-bold">Enter 6-digit PIN</span>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && pinInput.length === 6) handlePinSubmit();
-                  }}
-                  placeholder="------"
-                  autoFocus
-                  className="flex-1 px-3 py-2 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-sm text-center tracking-[0.3em] focus:outline-none focus:border-amber-400/50 transition-all placeholder-[rgba(255,255,255,0.15)]"
-                />
-                <button
-                  onClick={handlePinSubmit}
-                  disabled={pinInput.length !== 6 || isDeriving}
-                  className="px-4 py-2 rounded-sm bg-[rgba(245,158,11,0.12)] border border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.2)] text-xs font-bold text-amber-400 font-mono disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                >
-                  {isDeriving ? (
-                    <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    "UNLOCK"
-                  )}
-                </button>
-              </div>
-              {keyError && (
-                <p className="mt-2 text-[10px] text-red-400 font-mono">{keyError}</p>
-              )}
+          {/* Keys status indicator */}
+          {isConnected && swapSupported && (
+            <div className="mb-4 flex items-center gap-1.5">
+              <div className={`w-1.5 h-1.5 rounded-full ${hasKeys ? "bg-[#00FF41]" : "bg-[rgba(255,255,255,0.2)]"}`} />
+              <span className={`text-[10px] font-mono ${hasKeys ? "text-[#00FF41]" : "text-[rgba(255,255,255,0.3)]"}`}>
+                {hasKeys ? "V2 keys active" : "Keys locked"}
+              </span>
             </div>
           )}
 
-          {/* Keys active indicator */}
-          {hasKeys && (
-            <div className="mb-4 flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#00FF41]" />
-              <span className="text-[10px] text-[#00FF41] font-mono">V2 keys active</span>
+          {/* Pending deposits banner */}
+          {hasKeys && pendingDeposits > 0 && !isProcessing && (
+            <div className="mb-4 p-3 rounded-sm bg-[rgba(99,102,241,0.06)] border border-[rgba(99,102,241,0.15)]">
+              <div className="flex items-start gap-2">
+                <ShieldIcon size={12} color="#818cf8" />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[11px] text-indigo-400 font-mono font-bold">
+                    {pendingDeposits} pending deposit{pendingDeposits > 1 ? "s" : ""}
+                  </span>
+                  <span className="text-[10px] text-[rgba(255,255,255,0.35)] font-mono leading-relaxed">
+                    Deposits require relayer confirmation before they appear in your balance. This usually takes 30-60 seconds.
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -537,11 +538,16 @@ export function SwapV2Card() {
           <div className="mb-0">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[9px] text-[rgba(255,255,255,0.4)] uppercase tracking-widest font-mono">FROM</span>
-              {hasKeys && (
-                <span className="text-[10px] text-[rgba(255,255,255,0.35)] font-mono">
-                  Balance: <span className="text-[rgba(255,255,255,0.6)]">{displayFromBalance}</span> {fromToken.symbol}
-                </span>
-              )}
+              <span className="text-[10px] text-[rgba(255,255,255,0.35)] font-mono">
+                {hasKeys ? (
+                  <>Balance: <span className="text-[rgba(255,255,255,0.6)]">{displayFromBalance}</span> {fromToken.symbol}</>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <LockIcon size={9} color="rgba(255,255,255,0.3)" />
+                    Balance locked
+                  </span>
+                )}
+              </span>
             </div>
 
             <div className="rounded-sm p-3.5 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] focus-within:border-[rgba(0,255,65,0.3)] transition-all">
@@ -599,7 +605,7 @@ export function SwapV2Card() {
                   value={amountStr}
                   onChange={(e) => handleAmountChange(e.target.value)}
                   placeholder="0.0"
-                  disabled={!hasKeys || isProcessing}
+                  disabled={isProcessing}
                   className="flex-1 min-w-0 bg-transparent border-none outline-none text-[22px] font-mono font-bold text-white text-right p-0 placeholder-[rgba(255,255,255,0.15)] focus:outline-none focus:ring-0 disabled:opacity-40 disabled:cursor-not-allowed"
                 />
               </div>
@@ -864,7 +870,10 @@ export function SwapV2Card() {
 
               {(outputNote || denomTxHashes.length > 0) && (
                 <div className="text-[11px] text-[rgba(255,255,255,0.5)] font-mono mb-2">
-                  Received {toAmountFormatted} {toToken.symbol} as shielded UTXO{denomTxHashes.length > 1 ? "s" : ""}
+                  Received {outputNote
+                    ? parseFloat(formatUnits(BigInt(`0x${outputNote.amount.replace('0x', '')}`), toToken.decimals)).toFixed(toToken.decimals > 6 ? 6 : 2)
+                    : toAmountFormatted
+                  } {toToken.symbol} as shielded UTXO{denomTxHashes.length > 1 ? "s" : ""}
                 </div>
               )}
 
@@ -920,6 +929,47 @@ export function SwapV2Card() {
             </div>
           )}
 
+          {/* Inline PIN prompt — shown when user tries to swap without keys */}
+          {showPinInput && !hasKeys && (
+            <div className="mt-4 p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
+              <div className="flex items-center gap-2 mb-2.5">
+                <LockIcon size={12} color="#f59e0b" />
+                <span className="text-[11px] text-amber-400 font-mono font-bold">
+                  {hasPin ? "Enter PIN to unlock" : "Set 6-digit PIN"}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && pinInput.length === 6) handlePinSubmit();
+                  }}
+                  placeholder="------"
+                  autoFocus
+                  className="flex-1 px-3 py-2 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-sm text-center tracking-[0.3em] focus:outline-none focus:border-amber-400/50 transition-all placeholder-[rgba(255,255,255,0.15)]"
+                />
+                <button
+                  onClick={handlePinSubmit}
+                  disabled={pinInput.length !== 6 || isDeriving}
+                  className="px-4 py-2 rounded-sm bg-[rgba(245,158,11,0.12)] border border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.2)] text-xs font-bold text-amber-400 font-mono disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  {isDeriving ? (
+                    <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    "UNLOCK"
+                  )}
+                </button>
+              </div>
+              {keyError && (
+                <p className="mt-2 text-[10px] text-red-400 font-mono">{keyError}</p>
+              )}
+            </div>
+          )}
+
           {/* Swap / Reset Button */}
           <button
             onClick={
@@ -929,7 +979,7 @@ export function SwapV2Card() {
                 ? handleReset
                 : buttonDisabled
                 ? undefined
-                : handleSwap
+                : handleSwapOrUnlock
             }
             disabled={activeStatus !== "error" && activeStatus !== "done" && buttonDisabled}
             className={`w-full mt-5 py-3 px-4 rounded-sm font-bold font-mono text-sm tracking-wider transition-all ${
@@ -955,6 +1005,8 @@ export function SwapV2Card() {
         onClose={() => {
           setShowDepositModal(false);
           refreshBalances();
+          // Refresh again after a short delay to pick up notes saved moments ago
+          setTimeout(refreshBalances, 1500);
         }}
         keysRef={keysRef}
         chainId={activeChainId}

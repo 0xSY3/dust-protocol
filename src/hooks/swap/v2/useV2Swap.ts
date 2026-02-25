@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, type RefObject } from 'react'
+import { useState, useCallback, useRef, useMemo, useEffect, type RefObject } from 'react'
 import { useAccount, useChainId, usePublicClient } from 'wagmi'
 import type { Address } from 'viem'
 import { computeAssetId, computeOwnerPubKey, poseidonHash } from '@/lib/dustpool/v2/commitment'
@@ -50,6 +50,12 @@ export function useV2Swap(keysRef: RefObject<V2Keys | null>, chainIdOverride?: n
   const [error, setError] = useState<string | null>(null)
   const [outputNote, setOutputNote] = useState<StoredNoteV2 | null>(null)
   const swappingRef = useRef(false)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const swap = useCallback(async (
     amountIn: bigint,
@@ -68,6 +74,7 @@ export function useV2Swap(keysRef: RefObject<V2Keys | null>, chainIdOverride?: n
     if (!adapterAddress) { setError(`DustSwap V2 not deployed on chain ${chainId}`); return }
 
     swappingRef.current = true
+    if (!mountedRef.current) { swappingRef.current = false; return }
     setIsPending(true)
     setError(null)
     setTxHash(null)
@@ -145,7 +152,7 @@ export function useV2Swap(keysRef: RefObject<V2Keys | null>, chainIdOverride?: n
             tokenOut,
             ownerPubKey: ownerPubKey.toString(),
             blinding: blinding.toString(),
-            relayerFeeBps: relayerFeeBps ?? 100,
+            relayerFeeBps: relayerFeeBps ?? 200,
             minAmountOut: minAmountOut.toString(),
           }),
         })
@@ -176,6 +183,7 @@ export function useV2Swap(keysRef: RefObject<V2Keys | null>, chainIdOverride?: n
         }
       }
 
+      if (!mountedRef.current) return
       setTxHash(submission.result.txHash)
       const proofInputs = submission.proofInputs
 
@@ -191,6 +199,7 @@ export function useV2Swap(keysRef: RefObject<V2Keys | null>, chainIdOverride?: n
         throw new Error(`Swap transaction reverted (tx: ${submission.result.txHash})`)
       }
 
+      if (!mountedRef.current) return
       setStatus('saving-note')
 
       // Verify relayer's output commitment before trusting it for storage
@@ -247,12 +256,14 @@ export function useV2Swap(keysRef: RefObject<V2Keys | null>, chainIdOverride?: n
       }
       await markSpentAndSaveChange(db, inputStored.id, changeStored, encKey)
 
-      setStatus('done')
+      if (mountedRef.current) setStatus('done')
     } catch (e) {
-      setStatus('error')
-      setError(extractRelayerError(e, 'Swap failed'))
+      if (mountedRef.current) {
+        setStatus('error')
+        setError(extractRelayerError(e, 'Swap failed'))
+      }
     } finally {
-      setIsPending(false)
+      if (mountedRef.current) setIsPending(false)
       swappingRef.current = false
     }
   }, [isConnected, address, chainId, publicClient])
