@@ -28,6 +28,7 @@ const DEFAULT_SLIPPAGE_BPS = 50;
 
 const STATUS_STEPS: SwapStatus[] = [
   "selecting-note",
+  "proving-compliance",
   "generating-proof",
   "submitting",
   "confirming",
@@ -37,6 +38,7 @@ const STATUS_STEPS: SwapStatus[] = [
 const STATUS_LABELS: Record<SwapStatus, string> = {
   idle: "",
   "selecting-note": "Selecting optimal note...",
+  "proving-compliance": "Proving compliance...",
   "generating-proof": "Generating ZK proof...",
   submitting: "Submitting to relayer...",
   confirming: "Confirming on-chain...",
@@ -47,9 +49,11 @@ const STATUS_LABELS: Record<SwapStatus, string> = {
 
 const DENOM_STATUS_STEPS: DenomSwapStatus[] = [
   "decomposing",
+  "proving-compliance",
   "splitting",
   "confirming-split",
   "polling-leaves",
+  "proving-denom-compliance",
   "generating-swap-proofs",
   "submitting-swaps",
   "saving-notes",
@@ -58,9 +62,11 @@ const DENOM_STATUS_STEPS: DenomSwapStatus[] = [
 const DENOM_STATUS_LABELS: Record<DenomSwapStatus, string> = {
   idle: "",
   decomposing: "Decomposing into denominations...",
+  "proving-compliance": "Proving compliance...",
   splitting: "Generating split proof...",
   "confirming-split": "Confirming split on-chain...",
   "polling-leaves": "Waiting for leaf confirmation...",
+  "proving-denom-compliance": "Proving denomination compliance...",
   "generating-swap-proofs": "Generating swap proofs...",
   "submitting-swaps": "Submitting batch swap...",
   "confirming-swaps": "Confirming swaps on-chain...",

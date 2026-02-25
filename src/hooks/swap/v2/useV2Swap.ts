@@ -13,6 +13,7 @@ import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { generateV2Proof, verifyV2ProofLocally } from '@/lib/dustpool/v2/proof'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
 import { extractRelayerError } from '@/lib/dustpool/v2/errors'
+import { ensureComplianceProved } from '@/lib/dustpool/v2/compliance-gate'
 import { getChainConfig } from '@/config/chains'
 import type { V2Keys } from '@/lib/dustpool/v2/types'
 
@@ -29,6 +30,7 @@ interface SwapRelayerResponse {
 export type SwapStatus =
   | 'idle'
   | 'selecting-note'
+  | 'proving-compliance'
   | 'generating-proof'
   | 'submitting'
   | 'confirming'
@@ -95,6 +97,16 @@ export function useV2Swap(keysRef: RefObject<V2Keys | null>, chainIdOverride?: n
 
       const inputStored = eligible[0]
       const inputNote = storedToNoteCommitment(inputStored)
+
+      // Compliance gate: prove note is not from a sanctioned source
+      if (!publicClient) throw new Error('Public client not available')
+      setStatus('proving-compliance')
+      await ensureComplianceProved(
+        [{ commitment: inputNote.commitment, leafIndex: inputNote.leafIndex, complianceStatus: inputStored.complianceStatus }],
+        keys.nullifierKey,
+        chainId,
+        publicClient,
+      )
 
       const relayer = createRelayerClient()
 
@@ -208,6 +220,7 @@ export function useV2Swap(keysRef: RefObject<V2Keys | null>, chainIdOverride?: n
         leafIndex: submission.result.queueIndex ?? -1,
         spent: false,
         createdAt: Date.now(),
+        complianceStatus: 'unverified',
       }
       await saveNoteV2(db, address, outputStored, encKey)
       setOutputNote(outputStored)
@@ -229,6 +242,7 @@ export function useV2Swap(keysRef: RefObject<V2Keys | null>, chainIdOverride?: n
           leafIndex: -1,
           spent: false,
           createdAt: Date.now(),
+          complianceStatus: 'inherited',
         }
       }
       await markSpentAndSaveChange(db, inputStored.id, changeStored, encKey)

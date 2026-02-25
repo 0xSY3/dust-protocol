@@ -14,6 +14,7 @@ import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { generateV2Proof, verifyV2ProofLocally } from '@/lib/dustpool/v2/proof'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
 import { extractRelayerError } from '@/lib/dustpool/v2/errors'
+import { ensureComplianceProved } from '@/lib/dustpool/v2/compliance-gate'
 import { decomposeForSplit } from '@/lib/dustpool/v2/denominations'
 import { resolveTokenSymbol, splitOutputToNoteCommitment } from '@/lib/dustpool/v2/split-utils'
 import { generateSplitProof, verifySplitProofLocally, pollForLeafIndex } from '@/lib/dustpool/v2/split-proof'
@@ -26,9 +27,11 @@ const MAX_SPLIT_OUTPUTS = 8
 export type DenomSwapStatus =
   | 'idle'
   | 'decomposing'
+  | 'proving-compliance'
   | 'splitting'
   | 'confirming-split'
   | 'polling-leaves'
+  | 'proving-denom-compliance'
   | 'generating-swap-proofs'
   | 'submitting-swaps'
   | 'confirming-swaps'
@@ -116,6 +119,17 @@ export function useV2DenomSwap(keysRef: RefObject<V2Keys | null>, chainIdOverrid
 
       const inputStored = eligible[0]
       const inputNote = storedToNoteCommitment(inputStored)
+
+      // Compliance gate: prove input note is not from a sanctioned source
+      if (!publicClient) throw new Error('Public client not available')
+      setStatus('proving-compliance')
+      await ensureComplianceProved(
+        [{ commitment: inputNote.commitment, leafIndex: inputNote.leafIndex, complianceStatus: inputStored.complianceStatus }],
+        keys.nullifierKey,
+        chainId,
+        publicClient,
+      )
+
       const relayer = createRelayerClient()
 
       // ── Step 2: Split — break note into denomination-sized notes ───────
@@ -187,6 +201,7 @@ export function useV2DenomSwap(keysRef: RefObject<V2Keys | null>, chainIdOverrid
         leafIndex: -1,
         spent: false,
         createdAt: now,
+        complianceStatus: 'inherited' as const,
       }))
       await markSpentAndSaveMultiple(db, inputStored.id, outputStored, encKey)
 
@@ -210,6 +225,18 @@ export function useV2DenomSwap(keysRef: RefObject<V2Keys | null>, chainIdOverrid
         const changeLeaf = await pollForLeafIndex(relayer, changeHex, chainId)
         await updateNoteLeafIndex(db, changeHex, changeLeaf)
       }
+
+      // ── Step 4b: Compliance gate for denomination notes before swaps ──
+      setStatus('proving-denom-compliance')
+      await ensureComplianceProved(
+        denomNotes.map((note, i) => ({
+          commitment: note.commitment,
+          leafIndex: denomLeafIndices[i],
+        })),
+        keys.nullifierKey,
+        chainId,
+        publicClient,
+      )
 
       // ── Step 5: Generate swap proofs for each denomination note ────────
       setStatus('generating-swap-proofs')
@@ -310,6 +337,7 @@ export function useV2DenomSwap(keysRef: RefObject<V2Keys | null>, chainIdOverrid
           const outputStoredNote: StoredNoteV2 = {
             id: outputCommitmentHex,
             walletAddress: address.toLowerCase(),
+            complianceStatus: 'unverified',
             chainId,
             commitment: outputCommitmentHex,
             owner: bigintToHex(ownerPubKey),

@@ -12,6 +12,7 @@ import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { generateV2Proof, verifyV2ProofLocally } from '@/lib/dustpool/v2/proof'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
 import { extractRelayerError } from '@/lib/dustpool/v2/errors'
+import { ensureComplianceProved } from '@/lib/dustpool/v2/compliance-gate'
 import type { V2Keys } from '@/lib/dustpool/v2/types'
 
 const RECEIPT_TIMEOUT_MS = 30_000
@@ -68,6 +69,17 @@ export function useV2Withdraw(keysRef: RefObject<V2Keys | null>, chainIdOverride
 
       const inputStored = eligible[0]
       const inputNote = storedToNoteCommitment(inputStored)
+
+      // Compliance gate: prove note is not from a sanctioned source
+      if (!publicClient) throw new Error('Public client not available')
+      setStatus('Proving compliance...')
+      await ensureComplianceProved(
+        [{ commitment: inputNote.commitment, leafIndex: inputNote.leafIndex, complianceStatus: inputStored.complianceStatus }],
+        keys.nullifierKey,
+        chainId,
+        publicClient,
+        setStatus,
+      )
 
       const relayer = createRelayerClient()
 
@@ -143,6 +155,7 @@ export function useV2Withdraw(keysRef: RefObject<V2Keys | null>, chainIdOverride
           leafIndex: -1,
           spent: false,
           createdAt: Date.now(),
+          complianceStatus: 'inherited',
         }
       }
       await markSpentAndSaveChange(db, inputStored.id, changeStored, encKey)

@@ -13,6 +13,7 @@ import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { generateV2Proof, verifyV2ProofLocally } from '@/lib/dustpool/v2/proof'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
 import { extractRelayerError } from '@/lib/dustpool/v2/errors'
+import { ensureComplianceProved } from '@/lib/dustpool/v2/compliance-gate'
 import { decomposeForSplit } from '@/lib/dustpool/v2/denominations'
 import { resolveTokenSymbol, splitOutputToNoteCommitment } from '@/lib/dustpool/v2/split-utils'
 import { generateSplitProof, verifySplitProofLocally, pollForLeafIndex } from '@/lib/dustpool/v2/split-proof'
@@ -89,6 +90,17 @@ export function useV2Split(keysRef: RefObject<V2Keys | null>, chainIdOverride?: 
 
       const inputStored = eligible[0]
       const inputNote = storedToNoteCommitment(inputStored)
+
+      // Compliance gate: prove input note is not from a sanctioned source
+      if (!publicClient) throw new Error('Public client not available')
+      setStatus('Proving compliance...')
+      await ensureComplianceProved(
+        [{ commitment: inputNote.commitment, leafIndex: inputNote.leafIndex, complianceStatus: inputStored.complianceStatus }],
+        keys.nullifierKey,
+        chainId,
+        publicClient,
+        setStatus,
+      )
 
       const relayer = createRelayerClient()
 
@@ -168,6 +180,7 @@ export function useV2Split(keysRef: RefObject<V2Keys | null>, chainIdOverride?: 
         leafIndex: -1,
         spent: false,
         createdAt: now,
+        complianceStatus: 'inherited' as const,
       }))
       await markSpentAndSaveMultiple(db, inputStored.id, outputStored, encKey)
 
@@ -195,6 +208,21 @@ export function useV2Split(keysRef: RefObject<V2Keys | null>, chainIdOverride?: 
         const changeLeaf = await pollForLeafIndex(relayer, changeHex, chainId)
         await updateNoteLeafIndex(db, changeHex, changeLeaf)
       }
+
+      // ──────────────────────────────────────────────────────────────────────
+      // Step 3b: Compliance gate for denomination notes before withdrawal
+      // ──────────────────────────────────────────────────────────────────────
+      setStatus('Proving denomination compliance...')
+      await ensureComplianceProved(
+        denomNotes.map((note, i) => ({
+          commitment: note.commitment,
+          leafIndex: denomLeafIndices[i],
+        })),
+        keys.nullifierKey,
+        chainId,
+        publicClient,
+        setStatus
+      )
 
       // ──────────────────────────────────────────────────────────────────────
       // Step 4: Batch-withdraw — generate standard 2-in-2-out proofs for
