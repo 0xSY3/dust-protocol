@@ -167,10 +167,12 @@ export async function generateV2Proof(
   return new Promise((resolve, reject) => {
     workerPromises.set(id, { resolve, reject, onProgress })
 
+    const absoluteWasmPath = new URL(WASM_PATH, window.location.origin).href
+
     worker.postMessage({
       type: 'generate',
       id,
-      data: { circuitInputs, zkeyPath: ZKEY_PATH },
+      data: { circuitInputs, zkeyPath: ZKEY_PATH, wasmPath: absoluteWasmPath },
     })
 
     setTimeout(() => {

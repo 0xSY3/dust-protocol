@@ -3,7 +3,6 @@
 
 import { fflonk } from 'snarkjs'
 
-const WASM_PATH = '/circuits/v2/DustV2Transaction.wasm'
 const FALLBACK_ZKEY_PATH = 'https://pub-79a49cd9d00544bdbf2c2dd393b47a1f.r2.dev/v2/DustV2Transaction.zkey?v=2'
 
 export interface WorkerMessage {
@@ -15,6 +14,7 @@ export interface WorkerMessage {
     publicSignals?: string[]
     vKey?: unknown
     zkeyPath?: string
+    wasmPath?: string
   }
 }
 
@@ -38,13 +38,14 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     if (type === 'generate') {
       sendProgress('Preparing inputs', 0.1)
 
-      const { circuitInputs, zkeyPath } = data
+      const { circuitInputs, zkeyPath, wasmPath } = data
       if (!circuitInputs) throw new Error('Missing circuitInputs')
+      if (!wasmPath) throw new Error('Missing wasmPath — main thread must supply absolute URL')
 
       sendProgress('Loading circuit files', 0.2)
       sendProgress('Generating witness + proof', 0.3)
 
-      const result = await fflonk.fullProve(circuitInputs, WASM_PATH, zkeyPath || FALLBACK_ZKEY_PATH)
+      const result = await fflonk.fullProve(circuitInputs, wasmPath, zkeyPath || FALLBACK_ZKEY_PATH)
 
       sendProgress('Formatting calldata', 0.8)
 
