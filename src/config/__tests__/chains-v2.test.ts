@@ -32,8 +32,8 @@ describe('Chain config: V2 fields present', () => {
     expect(key).not.toBeNull()
     expect(key!.currency0).toBe('0x0000000000000000000000000000000000000000')
     expect(key!.currency1).toBe('0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238')
-    expect(key!.fee).toBe(3000)
-    expect(key!.tickSpacing).toBe(60)
+    expect(key!.fee).toBe(500)
+    expect(key!.tickSpacing).toBe(10)
     expect(key!.hooks).toBe('0x0000000000000000000000000000000000000000')
   })
 

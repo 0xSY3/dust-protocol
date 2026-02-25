@@ -51,10 +51,10 @@ export const MAX_DEPOSITS = 2 ** MERKLE_TREE_DEPTH
 // Relayer fee: 2% = 200 basis points
 export const RELAYER_FEE_BPS = 200
 
-// Uniswap V4 pool fee tier for ETH/USDC (0.30%)
-export const POOL_FEE = 3000
+// Uniswap V4 pool fee tier for ETH/USDC (0.05%)
+export const POOL_FEE = 500
 
-export const POOL_TICK_SPACING = 60
+export const POOL_TICK_SPACING = 10
 
 // ─── Transaction / Gas Constants ─────────────────────────────────────────────
 

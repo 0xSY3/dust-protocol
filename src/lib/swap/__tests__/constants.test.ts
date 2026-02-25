@@ -95,12 +95,12 @@ describe('pool config constants', () => {
     expect(RELAYER_FEE_BPS).toBe(200)
   })
 
-  it('POOL_FEE is 3000 (0.30%)', () => {
-    expect(POOL_FEE).toBe(3000)
+  it('POOL_FEE is 500 (0.05%)', () => {
+    expect(POOL_FEE).toBe(500)
   })
 
-  it('POOL_TICK_SPACING is 60', () => {
-    expect(POOL_TICK_SPACING).toBe(60)
+  it('POOL_TICK_SPACING is 10', () => {
+    expect(POOL_TICK_SPACING).toBe(10)
   })
 
   it('MERKLE_TREE_DEPTH is 20', () => {

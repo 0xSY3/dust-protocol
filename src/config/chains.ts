@@ -176,8 +176,8 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
     dustSwapVanillaPoolKey: {
       currency0: '0x0000000000000000000000000000000000000000',
       currency1: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
-      fee: 3000,
-      tickSpacing: 60,
+      fee: 500,
+      tickSpacing: 10,
       hooks: '0x0000000000000000000000000000000000000000',
     },
   },

@@ -388,9 +388,6 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
   const getButtonContent = () => {
     if (!isConnected) return "Connect Wallet";
     if (!swapSupported) return "Swaps Not Available";
-    if (!hasKeys && showPinInput) return "Enter PIN to Unlock";
-    if (!hasKeys) return "Unlock & Swap";
-    if (balanceLoading) return "Loading Balances...";
     if (isQuoteLoading && amountValid) return "Getting Quote...";
     if (activeIsPending) {
       if (shouldUseDenomSwap) {
@@ -404,10 +401,12 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     if (activeStatus === "done") return "Swap Complete!";
     if (activeStatus === "error") return "Try Again";
     if (!amountStr || !amountValid) return "Enter Amount";
-    if (insufficientBalance) return "Insufficient Balance";
-    // Coupled to quoteError strings from useSwapQuote — update if error messages change
     if (quoteError?.includes('liquidity') || quoteError === 'Pool not available') return "No Liquidity";
     if (quotedAmountOut <= 0n && amountValid && !isQuoteLoading) return quoteError ? "Quote Unavailable" : "No Liquidity";
+    if (!hasKeys && showPinInput) return "Enter PIN to Unlock";
+    if (!hasKeys) return "Unlock & Swap";
+    if (balanceLoading) return "Loading Balances...";
+    if (insufficientBalance) return "Insufficient Balance";
     return shouldUseDenomSwap && denomChunks.length > 1 ? `Swap (${denomChunks.length} chunks)` : "Swap";
   };
 
@@ -685,12 +684,24 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
                 ) : (
                   <>
                     <span className={`text-2xl font-bold font-mono leading-none ${
-                      toAmountFormatted ? "text-[#00FF41]" : "text-[rgba(255,255,255,0.12)]"
+                      toAmountFormatted
+                        ? "text-[#00FF41]"
+                        : amountValid && quoteError
+                        ? "text-[rgba(239,68,68,0.5)]"
+                        : "text-[rgba(255,255,255,0.12)]"
                     }`}>
                       {toAmountFormatted || "\u2014"}
                     </span>
-                    <span className="text-[9px] text-[rgba(255,255,255,0.25)] font-mono mt-1">
-                      {toAmountFormatted ? "Estimated output" : "Enter amount above"}
+                    <span className={`text-[9px] font-mono mt-1 ${
+                      amountValid && quoteError
+                        ? "text-[rgba(239,68,68,0.6)]"
+                        : "text-[rgba(255,255,255,0.25)]"
+                    }`}>
+                      {toAmountFormatted
+                        ? "Estimated output"
+                        : amountValid && quoteError
+                        ? "No liquidity"
+                        : "Enter amount above"}
                     </span>
                   </>
                 )}
