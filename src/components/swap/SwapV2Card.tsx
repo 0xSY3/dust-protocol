@@ -403,8 +403,7 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     if (!amountStr || !amountValid) return "Enter Amount";
     if (quoteError?.includes('liquidity') || quoteError === 'Pool not available') return "No Liquidity";
     if (quotedAmountOut <= 0n && amountValid && !isQuoteLoading) return quoteError ? "Quote Unavailable" : "No Liquidity";
-    if (!hasKeys && showPinInput) return "Enter PIN to Unlock";
-    if (!hasKeys) return "Unlock & Swap";
+    if (!hasKeys) return "Enter PIN Above";
     if (balanceLoading) return "Loading Balances...";
     if (insufficientBalance) return "Insufficient Balance";
     return shouldUseDenomSwap && denomChunks.length > 1 ? `Swap (${denomChunks.length} chunks)` : "Swap";
@@ -521,13 +520,49 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
             </div>
           )}
 
-          {/* Keys status indicator */}
-          {isConnected && swapSupported && (
+          {/* Keys status + inline PIN unlock */}
+          {isConnected && swapSupported && !hasKeys && (
+            <div className="mb-4 p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
+              <div className="flex items-center gap-2 mb-2.5">
+                <LockIcon size={12} color="#f59e0b" />
+                <span className="text-[11px] text-amber-400 font-mono font-bold">
+                  {hasPin ? "Enter PIN to unlock" : "Set 6-digit PIN"}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && pinInput.length === 6) handlePinSubmit();
+                  }}
+                  placeholder="------"
+                  className="flex-1 px-3 py-2 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-sm text-center tracking-[0.3em] focus:outline-none focus:border-amber-400/50 transition-all placeholder-[rgba(255,255,255,0.15)]"
+                />
+                <button
+                  onClick={handlePinSubmit}
+                  disabled={pinInput.length !== 6 || isDeriving}
+                  className="px-4 py-2 rounded-sm bg-[rgba(245,158,11,0.12)] border border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.2)] text-xs font-bold text-amber-400 font-mono disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  {isDeriving ? (
+                    <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    "UNLOCK"
+                  )}
+                </button>
+              </div>
+              {keyError && (
+                <p className="mt-2 text-[10px] text-red-400 font-mono">{keyError}</p>
+              )}
+            </div>
+          )}
+          {isConnected && swapSupported && hasKeys && (
             <div className="mb-4 flex items-center gap-1.5">
-              <div className={`w-1.5 h-1.5 rounded-full ${hasKeys ? "bg-[#00FF41]" : "bg-[rgba(255,255,255,0.2)]"}`} />
-              <span className={`text-[10px] font-mono ${hasKeys ? "text-[#00FF41]" : "text-[rgba(255,255,255,0.3)]"}`}>
-                {hasKeys ? "V2 keys active" : "Keys locked"}
-              </span>
+              <div className="w-1.5 h-1.5 rounded-full bg-[#00FF41]" />
+              <span className="text-[10px] font-mono text-[#00FF41]">V2 keys active</span>
             </div>
           )}
 
@@ -556,10 +591,7 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
                 {hasKeys ? (
                   <>Balance: <span className="text-[rgba(255,255,255,0.6)]">{displayFromBalance}</span> {fromToken.symbol}</>
                 ) : (
-                  <span className="flex items-center gap-1">
-                    <LockIcon size={9} color="rgba(255,255,255,0.3)" />
-                    Balance locked
-                  </span>
+                  <span className="text-[rgba(255,255,255,0.25)]">&mdash;</span>
                 )}
               </span>
             </div>
@@ -980,46 +1012,7 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
             </div>
           )}
 
-          {/* Inline PIN prompt — shown when user tries to swap without keys */}
-          {showPinInput && !hasKeys && (
-            <div className="mt-4 p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
-              <div className="flex items-center gap-2 mb-2.5">
-                <LockIcon size={12} color="#f59e0b" />
-                <span className="text-[11px] text-amber-400 font-mono font-bold">
-                  {hasPin ? "Enter PIN to unlock" : "Set 6-digit PIN"}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && pinInput.length === 6) handlePinSubmit();
-                  }}
-                  placeholder="------"
-                  autoFocus
-                  className="flex-1 px-3 py-2 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.1)] text-white font-mono text-sm text-center tracking-[0.3em] focus:outline-none focus:border-amber-400/50 transition-all placeholder-[rgba(255,255,255,0.15)]"
-                />
-                <button
-                  onClick={handlePinSubmit}
-                  disabled={pinInput.length !== 6 || isDeriving}
-                  className="px-4 py-2 rounded-sm bg-[rgba(245,158,11,0.12)] border border-[rgba(245,158,11,0.3)] hover:bg-[rgba(245,158,11,0.2)] text-xs font-bold text-amber-400 font-mono disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                >
-                  {isDeriving ? (
-                    <div className="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    "UNLOCK"
-                  )}
-                </button>
-              </div>
-              {keyError && (
-                <p className="mt-2 text-[10px] text-red-400 font-mono">{keyError}</p>
-              )}
-            </div>
-          )}
+          {/* PIN prompt moved to top of card — no longer inline here */}
 
           {/* Swap / Reset Button */}
           <button
