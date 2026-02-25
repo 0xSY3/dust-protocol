@@ -5,6 +5,7 @@ import { DEFAULT_CHAIN_ID } from '@/config/chains'
 import { getDustPoolV2Address } from '@/lib/dustpool/v2/contracts'
 import { getTreeSnapshot } from '@/lib/dustpool/v2/relayer-tree'
 import { toBytes32Hex } from '@/lib/dustpool/poseidon'
+import { runDepositScreenerCycle } from '@/lib/dustpool/v2/deposit-screener'
 
 export const maxDuration = 30
 
@@ -67,6 +68,14 @@ export async function GET(req: Request) {
 
     const ok = rootMatch && syncGap <= 100
 
+    // Run deposit screener cycle (non-blocking — errors logged, not propagated)
+    let screener: { lastBlock: number; flaggedCount: number; newFlagged: number; eventsProcessed: number } | null = null
+    try {
+      screener = await runDepositScreenerCycle(chainId)
+    } catch (e) {
+      console.error('[V2/health] Screener cycle error:', e instanceof Error ? e.message : e)
+    }
+
     const body = {
       ok,
       chainId,
@@ -82,6 +91,7 @@ export async function GET(req: Request) {
       rootMatch,
       latestBlock,
       syncGap,
+      ...(screener && { screener }),
     }
 
     return NextResponse.json(body, {

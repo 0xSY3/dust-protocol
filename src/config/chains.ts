@@ -25,6 +25,8 @@ export interface ChainContracts {
   dustPoolV2: string | null;
   dustPoolV2Verifier: string | null;
   dustPoolV2SplitVerifier: string | null;
+  // ZK exclusion compliance verifier
+  dustPoolV2ComplianceVerifier: string | null;
   // DustSwap V2 adapter (standalone, no Uniswap V4 dependency)
   dustSwapAdapterV2: string | null;
   dustSwapVanillaPoolKey: {
@@ -100,6 +102,7 @@ const THANOS_SEPOLIA_CONFIG: ChainConfig = {
     dustPoolV2: '0x130eEBe65DC1B3f9639308C253F3F9e4F0bbDC29',
     dustPoolV2Verifier: '0x3a8D53179862a2a7Ede73F42c021056B06364dda',
     dustPoolV2SplitVerifier: '0xbcb3FDB42C2bAEA700B840e25e32da25f2C78Ef7',
+    dustPoolV2ComplianceVerifier: null,
     dustSwapAdapterV2: null,
     dustSwapVanillaPoolKey: null,
   },
@@ -168,6 +171,7 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
     dustPoolV2: '0x3cbf3459e7E0E9Fd2fd86a28c426CED2a60f023f',
     dustPoolV2Verifier: '0xd0f5aB15Ef3C882EB4341D38A3183Cc1FDcCFD8a',
     dustPoolV2SplitVerifier: '0x472CBA068f19738eB514B7f0b846a63E7E502120',
+    dustPoolV2ComplianceVerifier: null,
     dustSwapAdapterV2: '0xe2bE4d7b5C1952B3DDB210499800A45aa0DD097C',
     dustSwapVanillaPoolKey: {
       currency0: '0x0000000000000000000000000000000000000000',
