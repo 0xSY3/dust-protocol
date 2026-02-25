@@ -1,6 +1,9 @@
 import { useState, useCallback, type RefObject } from 'react'
 import { useAccount, useChainId } from 'wagmi'
-import { deriveViewKey, serializeViewKey, type ViewKey } from '@/lib/dustpool/v2/viewkey'
+import {
+  deriveViewKey, serializeViewKey, serializeScopedViewKey,
+  type ViewKey, type ScopedViewKey,
+} from '@/lib/dustpool/v2/viewkey'
 import {
   generateDisclosureReport,
   verifyDisclosureReport,
@@ -20,11 +23,13 @@ type ExportFormat = 'json' | 'csv'
 interface UseV2DisclosureReturn {
   viewKey: ViewKey | null
   viewKeyString: string | null
+  scopedViewKeyString: string | null
   report: DisclosureReport | null
   verification: VerificationResult | null
   isGenerating: boolean
   error: string | null
   deriveAndSetViewKey: () => Promise<boolean>
+  generateScopedViewKey: (startBlock: number, endBlock: number) => Promise<boolean>
   generateReport: (options?: DisclosureOptions) => Promise<DisclosureReport | null>
   verifyReport: (report: DisclosureReport) => Promise<VerificationResult>
   exportReport: (format: ExportFormat) => string | null
@@ -41,6 +46,7 @@ export function useV2Disclosure(
 
   const [viewKey, setViewKey] = useState<ViewKey | null>(null)
   const [viewKeyString, setViewKeyString] = useState<string | null>(null)
+  const [scopedViewKeyString, setScopedViewKeyString] = useState<string | null>(null)
   const [report, setReport] = useState<DisclosureReport | null>(null)
   const [verification, setVerification] = useState<VerificationResult | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -61,6 +67,31 @@ export function useV2Disclosure(
       return true
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'View key derivation failed'
+      setError(msg)
+      return false
+    }
+  }, [keysRef])
+
+  const generateScopedViewKey = useCallback(async (
+    startBlock: number,
+    endBlock: number
+  ): Promise<boolean> => {
+    const keys = keysRef.current
+    if (!keys) {
+      setError('Keys not available — verify PIN first')
+      return false
+    }
+
+    try {
+      const vk = await deriveViewKey(keys)
+      const svk: ScopedViewKey = { ...vk, startBlock, endBlock }
+      setViewKey(svk)
+      setViewKeyString(serializeViewKey(vk))
+      setScopedViewKeyString(serializeScopedViewKey(svk))
+      setError(null)
+      return true
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Scoped view key derivation failed'
       setError(msg)
       return false
     }
@@ -153,6 +184,7 @@ export function useV2Disclosure(
   const clearDisclosure = useCallback(() => {
     setViewKey(null)
     setViewKeyString(null)
+    setScopedViewKeyString(null)
     setReport(null)
     setVerification(null)
     setError(null)
@@ -162,11 +194,13 @@ export function useV2Disclosure(
   return {
     viewKey,
     viewKeyString,
+    scopedViewKeyString,
     report,
     verification,
     isGenerating,
     error,
     deriveAndSetViewKey,
+    generateScopedViewKey,
     generateReport,
     verifyReport,
     exportReport,

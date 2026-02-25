@@ -21,6 +21,12 @@ export interface ViewKey {
   nullifierKey: bigint
 }
 
+/** ViewKey scoped to a block range — limits auditor visibility to a specific window */
+export interface ScopedViewKey extends ViewKey {
+  startBlock: number
+  endBlock: number
+}
+
 /**
  * Derive a read-only ViewKey from full V2Keys.
  * The ViewKey grants note visibility but not spending authority.
@@ -46,19 +52,34 @@ export function serializeViewKey(vk: ViewKey): string {
 }
 
 /**
- * Deserialize a ViewKey from its string representation.
- * Throws if format is invalid.
+ * Deserialize a ViewKey or ScopedViewKey from its string representation.
+ * Detects version prefix (dvk1 vs dvk2) and dispatches accordingly.
  */
-export function deserializeViewKey(encoded: string): ViewKey {
+export function deserializeViewKey(encoded: string): ViewKey | ScopedViewKey {
   const parts = encoded.split(':')
-  if (parts.length !== 3) {
-    throw new Error('Invalid view key format: expected 3 colon-separated parts')
+  if (parts.length < 3) {
+    throw new Error('Invalid view key format: expected at least 3 colon-separated parts')
   }
 
-  const [prefix, ownerHex, nullifierHex] = parts
-  if (prefix !== `${VIEW_KEY_PREFIX}${VIEW_KEY_VERSION}`) {
-    throw new Error(`Unsupported view key version: ${prefix}`)
+  const prefix = parts[0]
+
+  if (prefix === `${VIEW_KEY_PREFIX}2`) {
+    return deserializeScopedViewKey(encoded)
   }
+
+  if (prefix === `${VIEW_KEY_PREFIX}${VIEW_KEY_VERSION}`) {
+    return deserializeV1ViewKey(parts)
+  }
+
+  throw new Error(`Unsupported view key version: ${prefix}`)
+}
+
+function deserializeV1ViewKey(parts: string[]): ViewKey {
+  if (parts.length !== 3) {
+    throw new Error('Invalid dvk1 view key: expected 3 colon-separated parts')
+  }
+
+  const [, ownerHex, nullifierHex] = parts
 
   if (!/^[0-9a-f]{64}$/i.test(ownerHex) || !/^[0-9a-f]{64}$/i.test(nullifierHex)) {
     throw new Error('Invalid view key: hex fields must be 64 characters')
@@ -68,4 +89,60 @@ export function deserializeViewKey(encoded: string): ViewKey {
     ownerPubKey: BigInt('0x' + ownerHex),
     nullifierKey: BigInt('0x' + nullifierHex),
   }
+}
+
+// ── Scoped View Key ─────────────────────────────────────────────────────────
+
+/**
+ * Serialize a ScopedViewKey to a portable string format.
+ * Format: dvk2:<ownerPubKey_hex>:<nullifierKey_hex>:<startBlock>:<endBlock>
+ */
+export function serializeScopedViewKey(svk: ScopedViewKey): string {
+  const ownerHex = svk.ownerPubKey.toString(16).padStart(64, '0')
+  const nullifierHex = svk.nullifierKey.toString(16).padStart(64, '0')
+  return `${VIEW_KEY_PREFIX}2:${ownerHex}:${nullifierHex}:${svk.startBlock}:${svk.endBlock}`
+}
+
+/**
+ * Deserialize a ScopedViewKey from its string representation.
+ * Format: dvk2:<ownerPubKey_hex>:<nullifierKey_hex>:<startBlock>:<endBlock>
+ */
+export function deserializeScopedViewKey(encoded: string): ScopedViewKey {
+  const parts = encoded.split(':')
+  if (parts.length !== 5) {
+    throw new Error('Invalid scoped view key: expected 5 colon-separated parts')
+  }
+
+  const [prefix, ownerHex, nullifierHex, startBlockStr, endBlockStr] = parts
+  if (prefix !== `${VIEW_KEY_PREFIX}2`) {
+    throw new Error(`Expected dvk2 prefix, got: ${prefix}`)
+  }
+
+  if (!/^[0-9a-f]{64}$/i.test(ownerHex) || !/^[0-9a-f]{64}$/i.test(nullifierHex)) {
+    throw new Error('Invalid scoped view key: hex fields must be 64 characters')
+  }
+
+  const startBlock = Number(startBlockStr)
+  const endBlock = Number(endBlockStr)
+  if (!Number.isInteger(startBlock) || !Number.isInteger(endBlock)) {
+    throw new Error('Invalid scoped view key: block numbers must be integers')
+  }
+  if (startBlock < 0 || endBlock < 0) {
+    throw new Error('Invalid scoped view key: block numbers must be non-negative')
+  }
+  if (startBlock > endBlock) {
+    throw new Error('Invalid scoped view key: startBlock must be <= endBlock')
+  }
+
+  return {
+    ownerPubKey: BigInt('0x' + ownerHex),
+    nullifierKey: BigInt('0x' + nullifierHex),
+    startBlock,
+    endBlock,
+  }
+}
+
+/** Type guard: checks if a ViewKey is block-range scoped */
+export function isScopedViewKey(vk: ViewKey | ScopedViewKey): vk is ScopedViewKey {
+  return 'startBlock' in vk && 'endBlock' in vk
 }

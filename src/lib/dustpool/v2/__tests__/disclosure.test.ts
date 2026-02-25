@@ -72,8 +72,8 @@ describe('ViewKey', () => {
   })
 
   it('throws on invalid view key format', () => {
-    expect(() => deserializeViewKey('bad')).toThrow('expected 3 colon-separated parts')
-    expect(() => deserializeViewKey('dvk2:aa:bb')).toThrow('Unsupported view key version')
+    expect(() => deserializeViewKey('bad')).toThrow('expected at least 3 colon-separated parts')
+    expect(() => deserializeViewKey('dvk3:aa:bb')).toThrow('Unsupported view key version')
     expect(() => deserializeViewKey('dvk1:short:also')).toThrow('hex fields must be 64 characters')
   })
 })

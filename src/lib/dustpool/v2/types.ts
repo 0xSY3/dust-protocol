@@ -23,6 +23,8 @@ export interface NoteCommitmentV2 {
   spent: boolean
   /** Unix timestamp of note creation */
   createdAt: number
+  /** Block number when note was included on-chain (for scoped view keys) */
+  blockNumber?: number
 }
 
 export interface V2Keys {

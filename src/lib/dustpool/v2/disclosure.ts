@@ -24,6 +24,7 @@ export interface DisclosureNote {
   leafIndex: number
   spent: boolean
   createdAt: number
+  blockNumber?: number
 }
 
 export interface DisclosureReport {
@@ -35,11 +36,14 @@ export interface DisclosureReport {
   totalSpent: string
   totalUnspent: string
   dateRange: { from: number; to: number } | null
+  blockRange: { startBlock: number; endBlock: number } | null
   generatedAt: number
 }
 
 export interface DisclosureOptions {
   dateRange?: { from: number; to: number }
+  /** Filter notes by on-chain block number range (for scoped view keys) */
+  blockRange?: { startBlock: number; endBlock: number }
   includeSpent?: boolean
   assetFilter?: bigint
 }
@@ -71,7 +75,7 @@ export function generateDisclosureReport(
   chainId: number,
   options: DisclosureOptions = {}
 ): DisclosureReport {
-  const { dateRange, includeSpent = true, assetFilter } = options
+  const { dateRange, blockRange, includeSpent = true, assetFilter } = options
 
   let filtered = notes.filter(n => n.note.owner === viewKey.ownerPubKey)
 
@@ -79,6 +83,13 @@ export function generateDisclosureReport(
     filtered = filtered.filter(
       n => n.createdAt >= dateRange.from && n.createdAt <= dateRange.to
     )
+  }
+
+  if (blockRange) {
+    filtered = filtered.filter(n => {
+      if (n.blockNumber === undefined) return false
+      return n.blockNumber >= blockRange.startBlock && n.blockNumber <= blockRange.endBlock
+    })
   }
 
   if (!includeSpent) {
@@ -113,6 +124,7 @@ export function generateDisclosureReport(
       leafIndex: n.leafIndex,
       spent: n.spent,
       createdAt: n.createdAt,
+      blockNumber: n.blockNumber,
     }
   })
 
@@ -125,6 +137,7 @@ export function generateDisclosureReport(
     totalSpent: totalSpent.toString(),
     totalUnspent: totalUnspent.toString(),
     dateRange: dateRange ?? null,
+    blockRange: blockRange ?? null,
     generatedAt: Date.now(),
   }
 }
