@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { formatUnits, parseUnits, type Address, zeroAddress } from "viem";
+import { formatUnits, parseUnits, zeroAddress } from "viem";
 import { ChevronDownIcon } from "lucide-react";
 import { SUPPORTED_TOKENS, type SwapToken, isSwapSupported, RELAYER_FEE_BPS, getUSDCAddress } from "@/lib/swap/constants";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
@@ -13,7 +13,6 @@ import { useV2DenomSwap, type DenomSwapStatus } from "@/hooks/swap/v2/useV2Denom
 import { useSwapQuote } from "@/hooks/swap";
 import { computeAssetId } from "@/lib/dustpool/v2/commitment";
 import { decomposeForSplit, formatChunks, suggestRoundedAmounts } from "@/lib/dustpool/v2/denominations";
-import { resolveTokenSymbol } from "@/lib/dustpool/v2/split-utils";
 import { getExplorerBase } from "@/lib/design/tokens";
 import { AlertCircleIcon, LockIcon, TokenIcon, ShieldIcon } from "@/components/stealth/icons";
 import { V2DepositModal } from "@/components/dustpool/V2DepositModal";
@@ -26,7 +25,7 @@ const SLIPPAGE_OPTIONS = [
 
 const DEFAULT_SLIPPAGE_BPS = 50;
 
-const STATUS_STEPS: SwapStatus[] = [
+export const STATUS_STEPS: SwapStatus[] = [
   "selecting-note",
   "proving-compliance",
   "generating-proof",
@@ -35,7 +34,7 @@ const STATUS_STEPS: SwapStatus[] = [
   "saving-note",
 ];
 
-const STATUS_LABELS: Record<SwapStatus, string> = {
+export const STATUS_LABELS: Record<SwapStatus, string> = {
   idle: "",
   "selecting-note": "Selecting optimal note...",
   "proving-compliance": "Proving compliance...",
@@ -47,7 +46,7 @@ const STATUS_LABELS: Record<SwapStatus, string> = {
   error: "Swap failed",
 };
 
-const DENOM_STATUS_STEPS: DenomSwapStatus[] = [
+export const DENOM_STATUS_STEPS: DenomSwapStatus[] = [
   "decomposing",
   "proving-compliance",
   "splitting",
@@ -56,10 +55,11 @@ const DENOM_STATUS_STEPS: DenomSwapStatus[] = [
   "proving-denom-compliance",
   "generating-swap-proofs",
   "submitting-swaps",
+  "confirming-swaps",
   "saving-notes",
 ];
 
-const DENOM_STATUS_LABELS: Record<DenomSwapStatus, string> = {
+export const DENOM_STATUS_LABELS: Record<DenomSwapStatus, string> = {
   idle: "",
   decomposing: "Decomposing into denominations...",
   "proving-compliance": "Proving compliance...",
@@ -75,18 +75,22 @@ const DENOM_STATUS_LABELS: Record<DenomSwapStatus, string> = {
   error: "Denomination swap failed",
 };
 
+export function formatExchangeRate(rate: number): string {
+  if (rate <= 0) return '\u2014';
+  if (rate >= 1) return rate.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  if (rate >= 0.000001) return rate.toFixed(6);
+  return '~0';
+}
+
 export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () => void; oraclePrice?: number | null }) {
   const { isConnected, activeChainId } = useAuth();
   const swapSupported = isSwapSupported(activeChainId);
   const { switchChain } = useSwitchChain();
 
-  // V2 keys (PIN-based)
   const { keysRef, hasKeys, hasPin, isDeriving, error: keyError, deriveKeys } = useV2Keys();
 
-  // V2 balance
   const { balances, pendingDeposits, isLoading: balanceLoading, refreshBalances } = useV2Balance(keysRef, activeChainId);
 
-  // Token state
   const [fromToken, setFromToken] = useState<SwapToken>(SUPPORTED_TOKENS.ETH);
   const [toToken, setToToken] = useState<SwapToken>(SUPPORTED_TOKENS.USDC);
   const [amountStr, setAmountStr] = useState("");
@@ -99,11 +103,9 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
   const [showPinInput, setShowPinInput] = useState(false);
   const [pendingSwapAfterPin, setPendingSwapAfterPin] = useState(false);
 
-  // Token dropdown
   const [showFromTokenDropdown, setShowFromTokenDropdown] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
 
-  // V2 Swap hooks
   const { swap, isPending, status, txHash, error: swapError, outputNote, clearError } = useV2Swap(keysRef, activeChainId);
   const {
     denomSwap,
@@ -124,13 +126,12 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     isLoading: isQuoteLoading,
     error: quoteError,
   } = useSwapQuote({
-    fromToken: fromToken.address as Address,
-    toToken: toToken.address as Address,
+    fromToken: fromToken.address,
+    toToken: toToken.address,
     amountIn: amountStr,
     chainId: activeChainId,
   });
 
-  // Compute per-token V2 balances
   const [ethAssetId, setEthAssetId] = useState<bigint | null>(null);
   const [usdcAssetId, setUsdcAssetId] = useState<bigint | null>(null);
 
@@ -141,15 +142,15 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
         const ethId = await computeAssetId(activeChainId, zeroAddress);
         if (cancelled) return;
         setEthAssetId(ethId);
-      } catch { /* chain may not have USDC */ }
+      } catch (err) { console.error('Failed to compute ETH asset ID:', err); }
       try {
         const usdcAddr = getUSDCAddress(activeChainId);
         const usdcId = await computeAssetId(activeChainId, usdcAddr);
         if (cancelled) return;
         setUsdcAssetId(usdcId);
-      } catch { /* ok */ }
+      } catch { /* USDC may not be deployed on this chain */ }
     }
-    computeIds();
+    computeIds().catch(console.error);
     return () => { cancelled = true; };
   }, [activeChainId]);
 
@@ -168,7 +169,6 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
   const formattedFromBalance = formatUnits(fromBalance, fromToken.decimals);
   const displayFromBalance = parseFloat(formattedFromBalance).toFixed(fromToken.decimals > 6 ? 4 : 2);
 
-  // Derived amounts
   const parsedAmount = parseFloat(amountStr);
   const amountValid = !isNaN(parsedAmount) && parsedAmount > 0;
   const amountInWei = amountValid
@@ -182,9 +182,10 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
   }, [quotedAmountOut, toToken.decimals]);
 
   const exchangeRate = useMemo(() => {
-    if (!amountValid || !toAmountFormatted) return 0;
-    return parseFloat(toAmountFormatted) / parsedAmount;
-  }, [amountValid, parsedAmount, toAmountFormatted]);
+    if (!amountValid || quotedAmountOut <= 0n) return 0;
+    const rawOut = parseFloat(formatUnits(quotedAmountOut, toToken.decimals));
+    return rawOut / parsedAmount;
+  }, [amountValid, parsedAmount, quotedAmountOut, toToken.decimals]);
 
   // Price impact: compare effective rate to oracle spot price
   const priceImpactPct = useMemo(() => {
@@ -208,12 +209,12 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     return parseFloat(formatted).toFixed(toToken.decimals > 6 ? 6 : 2);
   }, [minAmountOut, toToken.decimals]);
 
-  // Denomination chunks preview
   const denomChunks = useMemo(() => {
     if (!amountValid || amountInWei <= 0n) return [];
     try {
       return decomposeForSplit(amountInWei, fromToken.symbol, 7);
-    } catch {
+    } catch (err) {
+      console.error('Denomination decomposition failed:', err);
       return [];
     }
   }, [amountInWei, amountValid, fromToken.symbol]);
@@ -232,10 +233,8 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     }
   }, [amountInWei, amountValid, denomChunks.length, fromToken.symbol]);
 
-  // Whether to actually use denom swap (toggle on + more than 1 chunk)
   const shouldUseDenomSwap = useDenomSwap && denomChunks.length > 1;
 
-  // Combined status from whichever swap mode is active
   const activeStatus = shouldUseDenomSwap ? denomStatus : status;
   const activeIsPending = shouldUseDenomSwap ? isDenomPending : isPending;
   const activeError = shouldUseDenomSwap ? denomError : swapError;
@@ -243,8 +242,8 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     ? (denomTxHashes.length > 0 ? denomTxHashes[0] : null)
     : txHash;
 
-  // Insufficient balance check
-  const insufficientBalance = amountInWei > 0n && amountInWei > fromBalance;
+  // Insufficient balance check — only meaningful when keys are unlocked
+  const insufficientBalance = hasKeys && amountInWei > 0n && amountInWei > fromBalance;
 
   // canSwap requires keys; canAttemptSwap allows triggering PIN prompt
   const canSwap =
@@ -267,7 +266,6 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     !isQuoteLoading &&
     swapSupported;
 
-  // Handlers
   const handleFlipTokens = useCallback(() => {
     setFromToken(toToken);
     setToToken(fromToken);
@@ -279,8 +277,8 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     if (shouldUseDenomSwap) {
       await denomSwap(
         amountInWei,
-        fromToken.address as Address,
-        toToken.address as Address,
+        fromToken.address,
+        toToken.address,
         minAmountOut,
         slippageBps,
         RELAYER_FEE_BPS
@@ -288,8 +286,8 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     } else {
       await swap(
         amountInWei,
-        fromToken.address as Address,
-        toToken.address as Address,
+        fromToken.address,
+        toToken.address,
         minAmountOut,
         RELAYER_FEE_BPS
       );
@@ -304,14 +302,15 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
   }, [clearError, clearDenomError, refreshBalances]);
 
   const handlePinSubmit = async () => {
-    const ok = await deriveKeys(pinInput);
-    if (ok) {
-      setPinInput("");
-      setShowPinInput(false);
-      await refreshBalances();
-      if (pendingSwapAfterPin) {
-        setPendingSwapAfterPin(false);
+    try {
+      const ok = await deriveKeys(pinInput);
+      if (ok) {
+        setPinInput("");
+        setShowPinInput(false);
+        await refreshBalances();
       }
+    } catch (err) {
+      console.error('PIN derivation failed:', err);
     }
   };
 
@@ -355,7 +354,6 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     setAmountStr(trimmed || '0');
   };
 
-  // Auto-switch chain
   useEffect(() => {
     if (isConnected && !swapSupported && switchChain) {
       const timer = setTimeout(() => {
@@ -365,19 +363,24 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     }
   }, [isConnected, swapSupported, switchChain]);
 
-  // Refresh balances when swap completes
   useEffect(() => {
     if (activeStatus === "done") {
       refreshBalances();
     }
   }, [activeStatus, refreshBalances]);
 
-  // Auto-refresh balances every 30s to pick up background sync changes
   useEffect(() => {
     if (!hasKeys) return;
     const interval = setInterval(refreshBalances, 30_000);
     return () => clearInterval(interval);
   }, [hasKeys, refreshBalances]);
+
+  useEffect(() => {
+    if (pendingSwapAfterPin && hasKeys) {
+      setPendingSwapAfterPin(false);
+      handleSwap();
+    }
+  }, [pendingSwapAfterPin, hasKeys, handleSwap]);
 
   const explorerBase = getExplorerBase(activeChainId);
   const isProcessing = activeIsPending || (activeStatus !== "idle" && activeStatus !== "done" && activeStatus !== "error");
@@ -402,8 +405,9 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     if (activeStatus === "error") return "Try Again";
     if (!amountStr || !amountValid) return "Enter Amount";
     if (insufficientBalance) return "Insufficient Balance";
-    if (quotedAmountOut <= 0n && amountValid && !isQuoteLoading && !quoteError) return "No Liquidity";
-    if (quoteError) return "Quote Unavailable";
+    // Coupled to quoteError strings from useSwapQuote — update if error messages change
+    if (quoteError?.includes('liquidity') || quoteError === 'Pool not available') return "No Liquidity";
+    if (quotedAmountOut <= 0n && amountValid && !isQuoteLoading) return quoteError ? "Quote Unavailable" : "No Liquidity";
     return shouldUseDenomSwap && denomChunks.length > 1 ? `Swap (${denomChunks.length} chunks)` : "Swap";
   };
 
@@ -629,7 +633,10 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
                       type="button"
                       onClick={() => {
                         const bal = fromBalance * BigInt(pct) / 100n;
-                        setAmountStr(formatUnits(bal, fromToken.decimals));
+                        const formatted = formatUnits(bal, fromToken.decimals);
+                        const maxDecimals = fromToken.decimals > 6 ? 8 : 4;
+                        const trimmed = parseFloat(formatted).toFixed(maxDecimals).replace(/\.?0+$/, '');
+                        setAmountStr(trimmed || '0');
                       }}
                       className="flex-1 px-2 py-[5px] rounded-sm text-[10px] font-bold font-mono bg-[rgba(0,255,65,0.06)] text-[#00FF41] border border-[rgba(0,255,65,0.12)] cursor-pointer transition-all text-center hover:bg-[rgba(0,255,65,0.12)] hover:border-[rgba(0,255,65,0.25)]"
                     >
@@ -776,9 +783,7 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
                   <span className="text-[rgba(255,255,255,0.35)] font-mono">RATE</span>
                   <span className="font-mono text-[rgba(255,255,255,0.7)]">
                     1 {fromToken.symbol} &asymp;{" "}
-                    {exchangeRate >= 1
-                      ? exchangeRate.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                      : exchangeRate.toFixed(6)}{" "}
+                    {formatExchangeRate(exchangeRate)}{" "}
                     {toToken.symbol}
                   </span>
                 </div>
@@ -889,10 +894,16 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
 
               {(outputNote || denomTxHashes.length > 0) && (
                 <div className="text-[11px] text-[rgba(255,255,255,0.5)] font-mono mb-2">
-                  Received {outputNote
-                    ? parseFloat(formatUnits(BigInt(`0x${outputNote.amount.replace('0x', '')}`), toToken.decimals)).toFixed(toToken.decimals > 6 ? 6 : 2)
-                    : toAmountFormatted
-                  } {toToken.symbol} as shielded UTXO{denomTxHashes.length > 1 ? "s" : ""}
+                  Received {(() => {
+                    if (outputNote) {
+                      const rawHex = outputNote.amount.replace('0x', '');
+                      const amountBigint = rawHex ? BigInt(`0x${rawHex}`) : 0n;
+                      if (amountBigint > 0n) {
+                        return parseFloat(formatUnits(amountBigint, toToken.decimals)).toFixed(toToken.decimals > 6 ? 6 : 2);
+                      }
+                    }
+                    return toAmountFormatted;
+                  })()} {toToken.symbol} as shielded UTXO{denomTxHashes.length > 1 ? "s" : ""}
                 </div>
               )}
 
@@ -930,33 +941,31 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
             </div>
           )}
 
-          {/* High price impact warning */}
-          {priceImpactPct !== null && priceImpactPct > 50 && !isProcessing && (
-            <div className="mt-3 p-2 rounded-sm bg-[rgba(239,68,68,0.08)] border border-[rgba(239,68,68,0.2)]">
-              <div className="flex items-center gap-2">
-                <AlertCircleIcon size={12} color="rgb(239,68,68)" />
-                <span className="text-[10px] text-red-400 font-mono">
-                  Extreme price impact ({priceImpactPct > 99 ? ">99" : priceImpactPct.toFixed(0)}%). Pool liquidity is too low for this amount.
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Insufficient balance warning */}
-          {insufficientBalance && !isProcessing && (
-            <div className="mt-3 p-2 rounded-sm bg-[rgba(239,68,68,0.06)] border border-[rgba(239,68,68,0.1)]">
-              <div className="flex items-center gap-2">
-                <AlertCircleIcon size={12} color="rgb(239,68,68)" />
-                <span className="text-[10px] text-[rgba(239,68,68,0.8)] font-mono">
-                  Insufficient shielded {fromToken.symbol} balance.{" "}
-                  <button
-                    className="text-[#00FF41] underline font-bold hover:opacity-80 transition-opacity"
-                    onClick={() => setShowDepositModal(true)}
-                  >
-                    Deposit now
-                  </button>
-                </span>
-              </div>
+          {/* Inline warnings — compact, no layout expansion */}
+          {!isProcessing && ((priceImpactPct !== null && priceImpactPct > 50) || insufficientBalance) && (
+            <div className="mt-2 flex flex-col gap-1">
+              {priceImpactPct !== null && priceImpactPct > 50 && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm bg-[rgba(239,68,68,0.06)]">
+                  <AlertCircleIcon size={10} color="rgb(239,68,68)" />
+                  <span className="text-[9px] text-red-400 font-mono">
+                    Price impact {priceImpactPct > 99 ? ">99" : priceImpactPct.toFixed(0)}% — low liquidity
+                  </span>
+                </div>
+              )}
+              {insufficientBalance && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm bg-[rgba(239,68,68,0.04)]">
+                  <AlertCircleIcon size={10} color="rgb(239,68,68)" />
+                  <span className="text-[9px] text-[rgba(239,68,68,0.8)] font-mono">
+                    Insufficient {fromToken.symbol}.{" "}
+                    <button
+                      className="text-[#00FF41] underline font-bold hover:opacity-80 transition-opacity"
+                      onClick={() => setShowDepositModal(true)}
+                    >
+                      Deposit
+                    </button>
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -1004,9 +1013,7 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
           {/* Swap / Reset Button */}
           <button
             onClick={
-              activeStatus === "done"
-                ? handleReset
-                : activeStatus === "error"
+              activeStatus === "done" || activeStatus === "error"
                 ? handleReset
                 : buttonDisabled
                 ? undefined
