@@ -45,12 +45,12 @@ export function PoolComposition({ ethReserve, usdcReserve, shieldedEth, shielded
         <div className="hidden md:flex flex-1 flex-col items-center gap-2">
           <div className="relative w-7 flex-1 min-h-[100px] rounded-full overflow-hidden bg-[rgba(255,255,255,0.05)] flex flex-col-reverse">
             <div
-              className="w-full bg-[#00FF41] opacity-60 transition-all duration-700 ease-out"
+              className="w-full bg-[#627EEA] opacity-80 transition-all duration-700 ease-out"
               style={{ height: `${ethPct}%` }}
             />
             <div className="w-full h-[2px] bg-[#06080F] z-10 shrink-0" />
             <div
-              className="w-full bg-[rgba(255,255,255,0.2)] transition-all duration-700 ease-out"
+              className="w-full bg-[#2775CA] opacity-80 transition-all duration-700 ease-out"
               style={{ height: `${usdcPct}%` }}
             />
           </div>
@@ -59,11 +59,11 @@ export function PoolComposition({ ethReserve, usdcReserve, shieldedEth, shielded
         <div className="md:hidden flex flex-col gap-2 w-full">
           <div className="flex gap-0.5 h-2.5 w-full rounded-full overflow-hidden bg-[rgba(255,255,255,0.05)]">
             <div
-              className="bg-[#00FF41] opacity-60 transition-all duration-700 ease-out rounded-l-full"
+              className="bg-[#627EEA] opacity-80 transition-all duration-700 ease-out rounded-l-full"
               style={{ width: `${ethPct}%` }}
             />
             <div
-              className="bg-[rgba(255,255,255,0.2)] transition-all duration-700 ease-out rounded-r-full"
+              className="bg-[#2775CA] opacity-80 transition-all duration-700 ease-out rounded-r-full"
               style={{ width: `${usdcPct}%` }}
             />
           </div>
@@ -71,14 +71,14 @@ export function PoolComposition({ ethReserve, usdcReserve, shieldedEth, shielded
 
         <div className="flex md:flex-col gap-2 md:gap-1.5 mt-2.5 text-[10px] font-mono">
           <div className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00FF41] opacity-60 shrink-0" />
+            <span className="w-2.5 h-1.5 rounded-[2px] bg-[#627EEA] opacity-80 shrink-0" />
             <ETHIcon size={12} />
             <span className="text-[rgba(255,255,255,0.6)] font-bold">
               {formatReserve(totalEth, false)}
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[rgba(255,255,255,0.2)] shrink-0" />
+            <span className="w-2.5 h-1.5 rounded-[2px] bg-[#2775CA] opacity-80 shrink-0" />
             <USDCIcon size={12} />
             <span className="text-[rgba(255,255,255,0.6)] font-bold">
               {formatReserve(totalUsdc, true)}

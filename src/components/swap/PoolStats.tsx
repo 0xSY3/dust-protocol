@@ -76,11 +76,11 @@ export function PoolStats({
           </div>
           <div className="flex gap-0.5 h-1.5 w-full rounded-full overflow-hidden bg-[rgba(255,255,255,0.08)]">
             <div
-              className="bg-[#00FF41] opacity-70 transition-all duration-500"
+              className="bg-[#627EEA] opacity-80 transition-all duration-500"
               style={{ width: `${ethPercent.toFixed(1)}%` }}
             />
             <div
-              className="bg-[rgba(255,255,255,0.25)] transition-all duration-500"
+              className="bg-[#2775CA] opacity-80 transition-all duration-500"
               style={{ width: `${(100 - ethPercent).toFixed(1)}%` }}
             />
           </div>
