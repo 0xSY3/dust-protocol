@@ -1,6 +1,6 @@
 'use client'
 
-import { DollarSignIcon, ShieldIcon, BarChart3Icon } from 'lucide-react'
+import { DollarSignIcon, ShieldIcon, BarChart3Icon, DatabaseIcon, LayersIcon, ActivityIcon, GlobeIcon } from 'lucide-react'
 import { ETHIcon, USDCIcon } from '@/components/stealth/icons'
 
 interface PoolStatsProps {
@@ -12,6 +12,7 @@ interface PoolStatsProps {
   isLoading: boolean
   poolTick?: number
   priceSource?: 'chainlink' | 'pool'
+  liquidity?: bigint
 }
 
 export function formatNumber(num: number, decimals: number = 2): string {
@@ -32,6 +33,7 @@ export function PoolStats({
   isLoading,
   poolTick,
   priceSource,
+  liquidity,
 }: PoolStatsProps) {
   const shieldedEthValue = currentPrice !== null ? shieldedEth * currentPrice : 0
   const shieldedTotal = currentPrice !== null ? shieldedEthValue + shieldedUsdc : 0
@@ -117,6 +119,85 @@ export function PoolStats({
               tick {poolTick}
             </span>
           )}
+        </div>
+
+        <div className="h-px bg-[rgba(255,255,255,0.04)]" />
+
+        <div className="flex flex-col gap-1.5 group">
+          <div className="flex items-center gap-1.5">
+            <DatabaseIcon className="w-3.5 h-3.5 text-[rgba(255,255,255,0.35)] group-hover:text-[#00FF41] transition-colors" />
+            <span className="text-[10px] text-[rgba(255,255,255,0.45)] uppercase tracking-wider font-mono">Pool Info</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <div className="flex justify-between text-[10px] font-mono">
+              <span className="text-[rgba(255,255,255,0.35)]">Fee tier</span>
+              <span className="text-[rgba(255,255,255,0.6)]">0.05%</span>
+            </div>
+            <div className="flex justify-between text-[10px] font-mono">
+              <span className="text-[rgba(255,255,255,0.35)]">Relayer</span>
+              <span className="text-[rgba(255,255,255,0.6)]">2%</span>
+            </div>
+            <div className="flex justify-between text-[10px] font-mono">
+              <span className="text-[rgba(255,255,255,0.35)]">Proof</span>
+              <span className="text-[rgba(255,255,255,0.6)]">FFLONK</span>
+            </div>
+            <div className="flex justify-between text-[10px] font-mono">
+              <span className="text-[rgba(255,255,255,0.35)]">Tree</span>
+              <span className="text-[rgba(255,255,255,0.6)]">depth 20</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="h-px bg-[rgba(255,255,255,0.04)]" />
+
+        <div className="flex flex-col gap-1.5 group">
+          <div className="flex items-center gap-1.5">
+            <LayersIcon className="w-3.5 h-3.5 text-[rgba(255,255,255,0.35)] group-hover:text-[#00FF41] transition-colors" />
+            <span className="text-[10px] text-[rgba(255,255,255,0.45)] uppercase tracking-wider font-mono">Capacity</span>
+          </div>
+          <div className="flex gap-0.5 h-1 w-full rounded-full overflow-hidden bg-[rgba(255,255,255,0.08)]">
+            <div
+              className="bg-[#00FF41] opacity-60 transition-all duration-500"
+              style={{ width: `${Math.max((noteCount / 1_048_576) * 100, 0.1)}%` }}
+            />
+          </div>
+          <span className="text-[9px] text-[rgba(255,255,255,0.25)] font-mono">
+            {noteCount.toLocaleString()} / 1.05M slots
+          </span>
+        </div>
+
+        <div className="h-px bg-[rgba(255,255,255,0.04)]" />
+
+        <div className="flex flex-col gap-1 group">
+          <div className="flex items-center gap-1.5">
+            <ActivityIcon className="w-3.5 h-3.5 text-[rgba(255,255,255,0.35)] group-hover:text-[#00FF41] transition-colors" />
+            <span className="text-[10px] text-[rgba(255,255,255,0.45)] uppercase tracking-wider font-mono">Liquidity</span>
+          </div>
+          <span className="text-xs font-bold text-white font-mono">
+            {liquidity != null && liquidity > 0n ? formatNumber(Number(liquidity)) : '\u2014'}
+          </span>
+        </div>
+
+        <div className="h-px bg-[rgba(255,255,255,0.04)]" />
+
+        <div className="flex flex-col gap-1.5 group">
+          <div className="flex items-center gap-1.5">
+            <GlobeIcon className="w-3.5 h-3.5 text-[rgba(255,255,255,0.35)] group-hover:text-[#00FF41] transition-colors" />
+            <span className="text-[10px] text-[rgba(255,255,255,0.45)] uppercase tracking-wider font-mono">Networks</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#00FF41]" />
+              <span className="text-[10px] text-[rgba(255,255,255,0.6)] font-mono">Eth Sepolia</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-[rgba(255,255,255,0.2)]" />
+              <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">Thanos Sepolia</span>
+            </div>
+          </div>
+          <span className="text-[9px] text-[rgba(255,255,255,0.2)] font-mono italic">
+            More L2s coming
+          </span>
         </div>
       </div>
     </div>

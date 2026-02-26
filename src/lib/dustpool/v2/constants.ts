@@ -12,3 +12,6 @@ export const MAX_AMOUNT = (1n << 64n) - 1n
 
 /** Empty leaf value in Merkle tree */
 export const ZERO_VALUE = 0n
+
+/** USD threshold for compliance cooldown enforcement (BSA/AML reporting standard) */
+export const COMPLIANCE_COOLDOWN_THRESHOLD_USD = 10_000

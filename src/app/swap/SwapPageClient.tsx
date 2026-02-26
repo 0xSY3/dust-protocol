@@ -15,6 +15,7 @@ export default function SwapPageClient() {
     shieldedUsdc,
     noteCount,
     combinedTvl,
+    liquidity,
     isLoading,
     tick,
     refetch,
@@ -34,6 +35,7 @@ export default function SwapPageClient() {
     isLoading,
     poolTick: tick !== undefined ? tick : undefined,
     priceSource: chainlinkPrice != null ? 'chainlink' as const : poolPrice != null ? 'pool' as const : undefined,
+    liquidity,
   };
 
   return (

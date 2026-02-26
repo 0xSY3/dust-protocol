@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { formatUnits, parseUnits, zeroAddress } from "viem";
 import { ChevronDownIcon } from "lucide-react";
 import { SUPPORTED_TOKENS, type SwapToken, isSwapSupported, RELAYER_FEE_BPS, getUSDCAddress } from "@/lib/swap/constants";
+import { COMPLIANCE_COOLDOWN_THRESHOLD_USD } from "@/lib/dustpool/v2/constants";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { useSwitchChain } from "wagmi";
 import { useAuth } from "@/contexts/AuthContext";
@@ -953,9 +954,15 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
                 </div>
               )}
 
-              <div className="text-[10px] text-[rgba(255,176,0,0.8)] font-mono mb-3">
-                Available after 1hr compliance cooldown
-              </div>
+              {(() => {
+                const humanAmt = parseFloat(formatUnits(amountInWei, fromToken.decimals));
+                const usd = fromToken.symbol === 'ETH' ? humanAmt * (oraclePrice ?? 0) : humanAmt;
+                return usd >= COMPLIANCE_COOLDOWN_THRESHOLD_USD;
+              })() && (
+                <div className="text-[10px] text-[rgba(255,176,0,0.8)] font-mono mb-3">
+                  Available after 1hr compliance cooldown
+                </div>
+              )}
 
               {activeTxHash && (
                 <a

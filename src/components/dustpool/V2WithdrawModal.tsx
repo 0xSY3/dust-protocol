@@ -6,6 +6,8 @@ import { parseEther, formatEther, isAddress, type Address } from "viem";
 import { useAccount } from "wagmi";
 import { useV2Withdraw, useV2Notes, useV2Split } from "@/hooks/dustpool/v2";
 import { useV2Compliance } from "@/hooks/dustpool/v2/useV2Compliance";
+import { useChainlinkPrice } from "@/hooks/swap/useChainlinkPrice";
+import { COMPLIANCE_COOLDOWN_THRESHOLD_USD } from "@/lib/dustpool/v2/constants";
 import {
   ShieldCheckIcon,
   AlertCircleIcon,
@@ -37,6 +39,7 @@ export function V2WithdrawModal({
   const { split, isPending: isSplitPending, status: splitStatus, error: splitError, clearError: clearSplitError } = useV2Split(keysRef, chainId);
   const { unspentNotes } = useV2Notes(keysRef, chainId);
   const { checkCooldown, cooldown } = useV2Compliance(chainId);
+  const { price: chainlinkPrice } = useChainlinkPrice();
 
   const [amount, setAmount] = useState("");
   const [recipient, setRecipient] = useState("");
@@ -115,7 +118,12 @@ export function V2WithdrawModal({
   const recipientMatchesOriginator = cooldownOriginator
     ? recipient.toLowerCase() === cooldownOriginator.toLowerCase()
     : false;
-  const cooldownBlocksSubmit = cooldownActive && !recipientMatchesOriginator;
+
+  // Only enforce compliance cooldown for amounts >= $10K USD (BSA/AML threshold)
+  const amountExceedsThreshold = parsedAmount !== null && chainlinkPrice != null
+    ? (parseFloat(formatEther(parsedAmount)) * chainlinkPrice) >= COMPLIANCE_COOLDOWN_THRESHOLD_USD
+    : parsedAmount !== null;
+  const cooldownBlocksSubmit = cooldownActive && !recipientMatchesOriginator && amountExceedsThreshold;
 
   const formatCooldownTime = (seconds: number): string => {
     const m = Math.floor(seconds / 60);
@@ -331,8 +339,8 @@ export function V2WithdrawModal({
                     </p>
                   </div>
 
-                  {/* Cooldown warning */}
-                  {cooldownActive && consumedNote && (
+                  {/* Cooldown warning — only for amounts >= $10K USD */}
+                  {cooldownActive && consumedNote && amountExceedsThreshold && (
                     <div className="p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
                       <div className="flex items-start gap-2">
                         <div className="flex-shrink-0 mt-0.5">
