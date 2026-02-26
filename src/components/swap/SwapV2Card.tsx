@@ -244,8 +244,8 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     ? (denomTxHashes.length > 0 ? denomTxHashes[0] : null)
     : txHash;
 
-  // Insufficient balance check — only meaningful when keys are unlocked
-  const insufficientBalance = hasKeys && amountInWei > 0n && amountInWei > fromBalance;
+  // Insufficient balance check — skip when swap is complete (balance just changed)
+  const insufficientBalance = hasKeys && activeStatus !== "done" && amountInWei > 0n && amountInWei > fromBalance;
 
   // canSwap requires keys; canAttemptSwap allows triggering PIN prompt
   const canSwap =
