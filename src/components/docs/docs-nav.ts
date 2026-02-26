@@ -24,6 +24,21 @@ export const docsNav = [
     ],
   },
   {
+    group: "App Guide",
+    items: [
+      { href: "/docs/app-guide/dashboard", label: "Dashboard" },
+      { href: "/docs/app-guide/deposits", label: "Deposits" },
+      { href: "/docs/app-guide/withdrawals", label: "Withdrawals" },
+      { href: "/docs/app-guide/transfers", label: "Transfers" },
+      { href: "/docs/app-guide/swaps", label: "Privacy Swaps" },
+      { href: "/docs/app-guide/pool-overview", label: "Pool Overview" },
+      { href: "/docs/app-guide/onboarding", label: "Onboarding & PIN" },
+      { href: "/docs/app-guide/wallet", label: "Wallet" },
+      { href: "/docs/app-guide/settings", label: "Settings" },
+      { href: "/docs/app-guide/payment-links", label: "Payment Links" },
+    ],
+  },
+  {
     group: "Technical Reference",
     items: [
       { href: "/docs/contracts", label: "Smart Contracts" },
