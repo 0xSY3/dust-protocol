@@ -201,7 +201,8 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
 
   const minAmountOut = useMemo(() => {
     if (quotedAmountOut <= 0n) return 0n;
-    return quotedAmountOut - (quotedAmountOut * BigInt(slippageBps) / 10000n);
+    const afterFee = quotedAmountOut - (quotedAmountOut * BigInt(RELAYER_FEE_BPS) / 10000n);
+    return afterFee - (afterFee * BigInt(slippageBps) / 10000n);
   }, [quotedAmountOut, slippageBps]);
 
   const minReceivedFormatted = useMemo(() => {
