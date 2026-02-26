@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useAccount, useChainId } from "wagmi";
-import { formatEther } from "viem";
+import { formatEther, formatUnits, zeroAddress } from "viem";
 import { useV2Balance, useV2Keys } from "@/hooks/dustpool/v2";
-import { ShieldIcon, LockIcon, ETHIcon } from "@/components/stealth/icons";
+import { computeAssetId } from "@/lib/dustpool/v2/commitment";
+import { getChainConfig } from "@/config/chains";
+import { ShieldIcon, LockIcon, ETHIcon, USDCIcon } from "@/components/stealth/icons";
 import { V2DepositModal } from "./V2DepositModal";
 import { V2WithdrawModal } from "./V2WithdrawModal";
 import { V2TransferModal } from "./V2TransferModal";
@@ -21,10 +23,30 @@ export function V2PoolCard({ chainId: chainIdOverride }: V2PoolCardProps) {
   const wagmiChainId = useChainId();
   const chainId = chainIdOverride ?? wagmiChainId;
   const { keysRef, hasKeys, hasPin, isDeriving, error: keyError, deriveKeys } = useV2Keys();
-  const { totalEthBalance, notes, isLoading, refreshBalances } = useV2Balance(keysRef, chainId);
+  const { balances, totalEthBalance, notes, isLoading, refreshBalances } = useV2Balance(keysRef, chainId);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [pinInput, setPinInput] = useState("");
   const [showPinInput, setShowPinInput] = useState(false);
+
+  // Resolve USDC assetId for this chain to display secondary balance
+  const [usdcAssetId, setUsdcAssetId] = useState<bigint | null>(null);
+  const usdcAddress = useMemo(() => {
+    try {
+      return getChainConfig(chainId).contracts.dustSwapVanillaPoolKey?.currency1 ?? null;
+    } catch {
+      return null;
+    }
+  }, [chainId]);
+
+  useEffect(() => {
+    if (!usdcAddress) { setUsdcAssetId(null); return; }
+    let cancelled = false;
+    computeAssetId(chainId, usdcAddress).then(id => { if (!cancelled) setUsdcAssetId(id); });
+    return () => { cancelled = true; };
+  }, [chainId, usdcAddress]);
+
+  const usdcBalance = usdcAssetId !== null ? (balances.get(usdcAssetId) ?? 0n) : 0n;
+  const hasAnyBalance = balances.size > 0 && Array.from(balances.values()).some(v => v > 0n);
 
   const unspentCount = notes.filter(n => !n.spent).length;
   const formattedBalance = formatEther(totalEthBalance);
@@ -95,18 +117,31 @@ export function V2PoolCard({ chainId: chainIdOverride }: V2PoolCardProps) {
         </div>
 
         {/* Balance */}
-        <div className="flex items-baseline gap-3 mb-5">
-          <span className="text-2xl font-bold text-white font-mono tracking-tight">
-            {isLoading ? "-.----" : displayBalance}
-          </span>
-          <div className="flex items-center gap-1.5">
-            <ETHIcon size={16} />
-            <span className="text-sm text-[rgba(255,255,255,0.4)] font-mono">ETH</span>
-          </div>
-          {unspentCount > 0 && (
-            <span className="text-[10px] text-[#00FF41] font-mono">
-              {unspentCount} note{unspentCount !== 1 ? "s" : ""}
+        <div className="flex flex-col gap-1.5 mb-5">
+          <div className="flex items-baseline gap-3">
+            <span className="text-2xl font-bold text-white font-mono tracking-tight">
+              {isLoading ? "-.----" : displayBalance}
             </span>
+            <div className="flex items-center gap-1.5">
+              <ETHIcon size={16} />
+              <span className="text-sm text-[rgba(255,255,255,0.4)] font-mono">ETH</span>
+            </div>
+            {unspentCount > 0 && (
+              <span className="text-[10px] text-[#00FF41] font-mono">
+                {unspentCount} note{unspentCount !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          {usdcBalance > 0n && (
+            <div className="flex items-baseline gap-2">
+              <span className="text-base font-bold text-white font-mono tracking-tight">
+                {parseFloat(formatUnits(usdcBalance, 6)).toFixed(2)}
+              </span>
+              <div className="flex items-center gap-1">
+                <USDCIcon size={14} />
+                <span className="text-xs text-[rgba(255,255,255,0.4)] font-mono">USDC</span>
+              </div>
+            </div>
           )}
         </div>
 
@@ -180,14 +215,14 @@ export function V2PoolCard({ chainId: chainIdOverride }: V2PoolCardProps) {
           </button>
           <button
             onClick={() => setActiveModal("withdraw")}
-            disabled={!hasKeys || totalEthBalance === 0n}
+            disabled={!hasKeys || !hasAnyBalance}
             className="py-2.5 px-2 rounded-sm border border-[rgba(255,255,255,0.1)] hover:border-[#00FF41] hover:bg-[rgba(0,255,65,0.05)] transition-all text-xs font-bold text-white hover:text-[#00FF41] font-mono disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-[rgba(255,255,255,0.1)] disabled:hover:bg-transparent disabled:hover:text-white"
           >
             [ WITHDRAW ]
           </button>
           <button
             onClick={() => setActiveModal("transfer")}
-            disabled={!hasKeys || totalEthBalance === 0n}
+            disabled={!hasKeys || !hasAnyBalance}
             className="py-2.5 px-2 rounded-sm border border-[rgba(255,255,255,0.1)] hover:border-[#00FF41] hover:bg-[rgba(0,255,65,0.05)] transition-all text-xs font-bold text-white hover:text-[#00FF41] font-mono disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-[rgba(255,255,255,0.1)] disabled:hover:bg-transparent disabled:hover:text-white"
           >
             [ TRANSFER ]
@@ -214,7 +249,7 @@ export function V2PoolCard({ chainId: chainIdOverride }: V2PoolCardProps) {
         onClose={handleModalClose}
         keysRef={keysRef}
         chainId={chainId}
-        shieldedBalance={totalEthBalance}
+        balances={balances}
       />
       <V2TransferModal
         isOpen={activeModal === "transfer"}
