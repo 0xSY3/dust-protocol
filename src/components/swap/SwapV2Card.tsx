@@ -782,8 +782,8 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
                       </span>
                     ))}
                   </div>
-                  <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
-                    {denomChunks.length} chunks — each swapped separately for privacy
+                  <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono leading-relaxed">
+                    Splits into {denomChunks.length} common-sized chunks to hide your exact amount. Each chunk is swapped in a separate transaction with random delays.
                   </span>
 
                   {denomSuggestions.length > 0 && (
@@ -808,14 +808,14 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
               )}
 
               {useDenomSwap && denomChunks.length === 1 && (
-                <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
-                  Amount matches a denomination — single swap
+                <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono leading-relaxed">
+                  Amount already matches a standard denomination. Your swap blends in with others of the same size.
                 </span>
               )}
 
               {!useDenomSwap && (
-                <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono">
-                  Single swap — amount visible on-chain
+                <span className="text-[10px] text-[rgba(255,255,255,0.3)] font-mono leading-relaxed">
+                  Off — your exact swap amount is visible on-chain. Enable to split into common denominations that blend in with other users.
                 </span>
               )}
             </div>
