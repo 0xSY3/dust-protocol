@@ -49,7 +49,7 @@ export function V2WithdrawModal({
   const { address } = useAccount();
   const { withdraw, isPending, status, txHash, error, clearError } = useV2Withdraw(keysRef, chainId);
   const { split, isPending: isSplitPending, status: splitStatus, error: splitError, clearError: clearSplitError } = useV2Split(keysRef, chainId);
-  const { unspentNotes } = useV2Notes(keysRef, chainId);
+  const { unspentNotes, refreshNotes } = useV2Notes(keysRef, chainId);
   const { checkCooldown, cooldown } = useV2Compliance(chainId);
   const { price: chainlinkPrice } = useChainlinkPrice();
 
@@ -119,14 +119,15 @@ export function V2WithdrawModal({
   const selectedAsset = availableAssets[selectedAssetIdx] ?? availableAssets[0] ?? null;
   const selectedBalance = selectedAsset ? (balances.get(selectedAsset.assetId) ?? 0n) : 0n;
 
-  // Reset state when modal opens or asset changes
+  // Reset state and refresh notes when modal opens
   useEffect(() => {
     if (isOpen) {
       setAmount("");
       setRecipient(address ?? "");
       setSelectedAssetIdx(0);
+      refreshNotes();
     }
-  }, [isOpen, address]);
+  }, [isOpen, address, refreshNotes]);
 
   // Clear amount when switching assets
   const handleAssetSelect = (idx: number) => {

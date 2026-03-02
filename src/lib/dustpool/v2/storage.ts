@@ -28,6 +28,7 @@ export function bigintToHex(val: bigint): string {
 
 /** Convert a hex string (with 0x prefix) back to bigint */
 export function hexToBigint(hex: string): bigint {
+  if (!hex) return 0n
   return BigInt(hex)
 }
 
