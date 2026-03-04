@@ -4,8 +4,10 @@ import { getServerProvider, getServerSponsor, getMaxGasPrice } from '@/lib/serve
 import { isChainSupported } from '@/config/chains'
 import { getDustPoolV2Address, DUST_POOL_V2_ABI } from '@/lib/dustpool/v2/contracts'
 import { toBytes32Hex } from '@/lib/dustpool/poseidon'
+import { computeAssetId } from '@/lib/dustpool/v2/commitment'
 import { syncAndPostRoot } from '@/lib/dustpool/v2/relayer-tree'
 import { acquireNullifier, releaseNullifier } from '@/lib/dustpool/v2/pending-nullifiers'
+import { screenRecipient } from '@/lib/dustpool/v2/relayer-compliance'
 import { incrementHttp402Payment, observeGasUsed } from '@/lib/metrics'
 import type { PaymentProof, PrivacyLevel } from '@/types/http402'
 import { receiptStore } from '../receipt/route'
@@ -71,6 +73,12 @@ export async function POST(req: Request): Promise<NextResponse> {
 
       const existing = receiptStore.get(proof.nonce)
       if (existing) {
+        if (existing.txHash && existing.txHash !== proof.txHash) {
+          return NextResponse.json(
+            { error: 'txHash does not match verified receipt' },
+            { status: 400, headers: NO_STORE },
+          )
+        }
         existing.status = 'settled'
         existing.txHash = proof.txHash
         receiptStore.set(proof.nonce, existing)
@@ -111,6 +119,34 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json(
         { error: 'DustPoolV2 not deployed on this chain' },
         { status: 404, headers: NO_STORE },
+      )
+    }
+
+    // Require prior verification via the verify endpoint
+    const verified = receiptStore.get(proof.nonce)
+    if (!verified || verified.status !== 'verified') {
+      return NextResponse.json(
+        { error: 'Must call verify before settlement' },
+        { status: 400, headers: NO_STORE },
+      )
+    }
+
+    // Compliance: screen recipient against on-chain oracle
+    const screenResult = await screenRecipient(proof.recipient, proof.chainId)
+    if (screenResult.blocked) {
+      return NextResponse.json(
+        { error: 'Recipient address is sanctioned' },
+        { status: 403, headers: NO_STORE },
+      )
+    }
+
+    // Verify asset/proof consistency: Poseidon(chainId, tokenAddress) must match publicAsset signal
+    const expectedAssetId = await computeAssetId(proof.chainId, proof.asset)
+    const proofAssetId = BigInt(proof.publicSignals[6])
+    if (expectedAssetId !== proofAssetId) {
+      return NextResponse.json(
+        { error: 'Asset address does not match proof' },
+        { status: 400, headers: NO_STORE },
       )
     }
 

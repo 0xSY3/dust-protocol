@@ -519,6 +519,8 @@ contract DustPoolV2 {
     /// @param asset Token address (address(0) = native ETH)
     /// @param allowed Whether the asset is allowed for deposits
     function setAllowedAsset(address asset, bool allowed) external onlyOwner {
+        // ETH (address(0)) is always allowed — cannot be disabled
+        if (asset == address(0) && !allowed) revert AssetNotAllowed(asset);
         allowedAssets[asset] = allowed;
         emit AssetAllowed(asset, allowed);
     }

@@ -65,6 +65,7 @@ async function verifyTransparent(
 
 async function verifyStealth(
   proof: PaymentProof,
+  requirement: PaymentRequirement,
 ): Promise<{ valid: boolean; settled: boolean; txHash?: string }> {
   if (!proof.txHash) {
     return { valid: false, settled: false }
@@ -77,6 +78,17 @@ async function verifyStealth(
   const provider = getServerProvider(proof.chainId)
   const receipt = await provider.getTransactionReceipt(proof.txHash)
   if (!receipt || receipt.status !== 1) {
+    return { valid: false, settled: false }
+  }
+
+  const tx = await provider.getTransaction(proof.txHash)
+  if (!tx) {
+    return { valid: false, settled: false }
+  }
+
+  const expectedAmount = BigInt(requirement.amount)
+  const txValue = BigInt(tx.value.toString())
+  if (txValue < expectedAmount) {
     return { valid: false, settled: false }
   }
 
@@ -184,7 +196,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       )
     }
 
-    if (requirement.expiresAt && Date.now() > requirement.expiresAt) {
+    if (requirement.expiresAt && Math.floor(Date.now() / 1000) > requirement.expiresAt) {
       return NextResponse.json(
         { error: 'Payment requirement has expired' },
         { status: 400, headers: NO_STORE },
@@ -198,7 +210,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         result = await verifyTransparent(proof, requirement)
         break
       case 'stealth':
-        result = await verifyStealth(proof)
+        result = await verifyStealth(proof, requirement)
         break
       case 'private':
         result = await verifyPrivate(proof)
@@ -207,6 +219,15 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     const chainStr = String(proof.chainId)
     incrementHttp402Payment(chainStr, proof.privacy, result.valid ? 'verified' : 'failed')
+
+    // Prevent overwriting a settled receipt with the same nonce
+    const existingReceipt = receiptStore.get(proof.nonce)
+    if (existingReceipt && existingReceipt.status === 'settled') {
+      return NextResponse.json(
+        { error: 'Nonce already settled' },
+        { status: 409, headers: NO_STORE },
+      )
+    }
 
     let receipt: PaymentReceipt | undefined
     if (result.valid) {
