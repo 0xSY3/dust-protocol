@@ -745,13 +745,24 @@ export const BaseIcon = ({ size = 24 }: IconProps) => (
   </svg>
 );
 
+const ICON_BY_FAMILY: Record<string, React.FC<IconProps>> = {
+  ethereum: ETHIcon,
+  thanos: TONIcon,
+  arbitrum: ArbitrumIcon,
+  optimism: OptimismIcon,
+  base: BaseIcon,
+};
+
 export const ChainIcon = ({ size = 24, chainId }: IconProps & { chainId?: number }) => {
-  switch (chainId) {
-    case 11155111: return <ETHIcon size={size} />;
-    case 111551119090: return <TONIcon size={size} />;
-    case 421614: case 42161: return <ArbitrumIcon size={size} />;
-    case 11155420: case 10: return <OptimismIcon size={size} />;
-    case 84532: case 8453: return <BaseIcon size={size} />;
-    default: return <ETHIcon size={size} />;
+  if (chainId) {
+    try {
+      const { getChainConfig } = require('@/config/chains');
+      const config = getChainConfig(chainId);
+      const Icon = ICON_BY_FAMILY[config.iconFamily] ?? ETHIcon;
+      return <Icon size={size} />;
+    } catch {
+      // Unsupported chain — fall through to default
+    }
   }
+  return <ETHIcon size={size} />;
 };

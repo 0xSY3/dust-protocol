@@ -46,6 +46,8 @@ export interface ChainCreationCodes {
   legacyAccount: string;
 }
 
+export type ChainIconFamily = 'ethereum' | 'arbitrum' | 'optimism' | 'base' | 'thanos';
+
 export interface ChainConfig {
   id: number;
   name: string;
@@ -61,6 +63,8 @@ export interface ChainConfig {
   supportsEIP7702: boolean;
   canonicalForNaming: boolean;
   testnet: boolean;
+  isL2: boolean;
+  iconFamily: ChainIconFamily;
 }
 
 // ─── Thanos Sepolia ────────────────────────────────────────────────────────────
@@ -118,6 +122,8 @@ const THANOS_SEPOLIA_CONFIG: ChainConfig = {
   supportsEIP7702: false,
   canonicalForNaming: false,
   testnet: true,
+  isL2: false,
+  iconFamily: 'thanos',
 };
 
 // ─── Ethereum Sepolia ──────────────────────────────────────────────────────────
@@ -194,6 +200,8 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
   supportsEIP7702: true,
   canonicalForNaming: true,
   testnet: true,
+  isL2: false,
+  iconFamily: 'ethereum',
 };
 
 // ─── Arbitrum Sepolia ──────────────────────────────────────────────────────────
@@ -244,10 +252,12 @@ const ARBITRUM_SEPOLIA_CONFIG: ChainConfig = {
     legacyAccount: '',
   },
   deploymentBlock: 246396709,
-  dustPoolDeploymentBlock: 246397522,
+  dustPoolDeploymentBlock: null,
   supportsEIP7702: false,
   canonicalForNaming: false,
   testnet: true,
+  isL2: true,
+  iconFamily: 'arbitrum',
 };
 
 // ─── OP Sepolia ────────────────────────────────────────────────────────────────
@@ -298,10 +308,12 @@ const OP_SEPOLIA_CONFIG: ChainConfig = {
     legacyAccount: '',
   },
   deploymentBlock: 40332900,
-  dustPoolDeploymentBlock: 40333105,
+  dustPoolDeploymentBlock: null,
   supportsEIP7702: false,
   canonicalForNaming: false,
   testnet: true,
+  isL2: true,
+  iconFamily: 'optimism',
 };
 
 // ─── Base Sepolia ──────────────────────────────────────────────────────────────
@@ -352,10 +364,12 @@ const BASE_SEPOLIA_CONFIG: ChainConfig = {
     legacyAccount: '',
   },
   deploymentBlock: 38350029,
-  dustPoolDeploymentBlock: 38350239,
+  dustPoolDeploymentBlock: null,
   supportsEIP7702: false,
   canonicalForNaming: false,
   testnet: true,
+  isL2: true,
+  iconFamily: 'base',
 };
 
 // ─── Base Mainnet ───────────────────────────────────────────────────────────────
@@ -411,6 +425,8 @@ const BASE_MAINNET_CONFIG: ChainConfig = {
   supportsEIP7702: false,
   canonicalForNaming: false,
   testnet: false,
+  isL2: true,
+  iconFamily: 'base',
 };
 
 // ─── Registry ──────────────────────────────────────────────────────────────────
@@ -453,15 +469,20 @@ export function getCanonicalNamingChain(): ChainConfig {
   return chain;
 }
 
-// L2 chain IDs — gas is ~1000x cheaper than L1
-const L2_CHAIN_IDS = new Set([421614, 11155420, 84532, 8453]);
+export function isL2Chain(chainId: number): boolean {
+  try {
+    return getChainConfig(chainId).isL2;
+  } catch {
+    return false;
+  }
+}
 
 // Minimum balance needed to cover gas for a claim transaction (EOA only).
 // L1: 21000 gas * 1 gwei * 2x buffer ≈ 0.000042; using 0.0001.
 // L2: gas ~1000x cheaper; 0.0000001 is sufficient.
 // Sponsored wallet types (create2, account, eip7702) can claim any amount > 0.
 export function getMinClaimableBalance(chainId: number): number {
-  return L2_CHAIN_IDS.has(chainId) ? 0.0000001 : 0.0001;
+  return isL2Chain(chainId) ? 0.0000001 : 0.0001;
 }
 
 /** @deprecated Use getMinClaimableBalance(chainId) instead */

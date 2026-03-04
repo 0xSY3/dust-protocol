@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getChainConfig, getSupportedChains, isChainSupported, type ChainContracts } from '../chains'
+import { getChainConfig, getSupportedChains, isChainSupported, type ChainContracts, type ChainIconFamily } from '../chains'
 
 describe('Chain config: V1 fields removed', () => {
   it('ChainContracts type does not have V1 swap fields', () => {
@@ -77,5 +77,154 @@ describe('Chain config: core functions work', () => {
     expect(isChainSupported(84532)).toBe(true)
     expect(isChainSupported(8453)).toBe(false)
     expect(isChainSupported(1)).toBe(false)
+  })
+})
+
+// ─── HIGH-8: Chain config completeness (parameterized) ──────────────────────
+
+const VALID_ICON_FAMILIES: ChainIconFamily[] = ['ethereum', 'arbitrum', 'optimism', 'base', 'thanos']
+
+describe('Chain config completeness: all supported chains', () => {
+  const chains = getSupportedChains()
+
+  describe.each(chains.map(c => [c.name, c.id]))('%s (%i)', (_name, chainId) => {
+    const config = getChainConfig(chainId as number)
+
+    it('has non-empty rpcUrl', () => {
+      // #given a supported chain config
+      // #when checking rpcUrl
+      // #then it is a non-empty string
+      expect(config.rpcUrl).toBeTruthy()
+      expect(typeof config.rpcUrl).toBe('string')
+    })
+
+    it('has at least 1 rpcUrl in rpcUrls array', () => {
+      // #given a supported chain config
+      // #when checking rpcUrls
+      // #then array has at least one entry
+      expect(config.rpcUrls.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('has a valid viemChain with matching id', () => {
+      // #given a supported chain config
+      // #when checking viemChain.id
+      // #then it matches the config id
+      expect(config.viemChain).toBeDefined()
+      expect(config.viemChain.id).toBe(config.id)
+    })
+
+    it('has non-empty announcer address', () => {
+      // #given a supported chain's contracts
+      // #when checking announcer
+      // #then it is a non-empty string
+      expect(config.contracts.announcer).toBeTruthy()
+    })
+
+    it('has non-empty registry address', () => {
+      expect(config.contracts.registry).toBeTruthy()
+    })
+
+    it('has non-empty accountFactory address', () => {
+      expect(config.contracts.accountFactory).toBeTruthy()
+    })
+
+    it('has non-empty entryPoint address', () => {
+      expect(config.contracts.entryPoint).toBeTruthy()
+    })
+
+    it('has non-empty paymaster address', () => {
+      expect(config.contracts.paymaster).toBeTruthy()
+    })
+
+    it('has a DustPoolV2 address', () => {
+      // #given a supported chain
+      // #when checking dustPoolV2
+      // #then it is non-null and non-empty
+      expect(config.contracts.dustPoolV2).toBeTruthy()
+    })
+
+    it('has a DustPoolV2Verifier address', () => {
+      expect(config.contracts.dustPoolV2Verifier).toBeTruthy()
+    })
+
+    it('has dustPoolV2ComplianceVerifier set', () => {
+      // #given all supported chains require compliance screening
+      // #when checking dustPoolV2ComplianceVerifier
+      // #then it is non-null
+      expect(config.contracts.dustPoolV2ComplianceVerifier).not.toBeNull()
+      expect(config.contracts.dustPoolV2ComplianceVerifier).toBeTruthy()
+    })
+
+    it('has a valid iconFamily', () => {
+      // #given a supported chain config
+      // #when checking iconFamily
+      // #then it is one of the known icon families
+      expect(VALID_ICON_FAMILIES).toContain(config.iconFamily)
+    })
+  })
+})
+
+describe('Chain config completeness: chain-specific assertions', () => {
+  it('Arb Sepolia has dustSwapAdapterV2', () => {
+    // #given Arbitrum Sepolia supports DustSwap V2
+    // #when checking dustSwapAdapterV2
+    // #then it is non-null
+    const config = getChainConfig(421614)
+    expect(config.contracts.dustSwapAdapterV2).not.toBeNull()
+    expect(config.contracts.dustSwapAdapterV2).toBeTruthy()
+  })
+
+  it('Base Sepolia has dustSwapAdapterV2', () => {
+    // #given Base Sepolia supports DustSwap V2
+    // #when checking dustSwapAdapterV2
+    // #then it is non-null
+    const config = getChainConfig(84532)
+    expect(config.contracts.dustSwapAdapterV2).not.toBeNull()
+    expect(config.contracts.dustSwapAdapterV2).toBeTruthy()
+  })
+
+  it('OP Sepolia does NOT have dustSwapAdapterV2', () => {
+    // #given OP Sepolia has no Uniswap V4 deployment
+    // #when checking dustSwapAdapterV2
+    // #then it is null
+    const config = getChainConfig(11155420)
+    expect(config.contracts.dustSwapAdapterV2).toBeNull()
+  })
+
+  it('Thanos Sepolia does NOT have dustSwapAdapterV2', () => {
+    // #given Thanos Sepolia has no swap support
+    // #when checking dustSwapAdapterV2
+    // #then it is null
+    const config = getChainConfig(111551119090)
+    expect(config.contracts.dustSwapAdapterV2).toBeNull()
+  })
+
+  it('Eth Sepolia is canonicalForNaming', () => {
+    // #given Eth Sepolia is the canonical naming chain
+    // #when checking canonicalForNaming
+    // #then it is true
+    const config = getChainConfig(11155111)
+    expect(config.canonicalForNaming).toBe(true)
+  })
+
+  it('L2 chains have isL2 = true', () => {
+    // #given Arb, OP, and Base are L2 rollups
+    // #when checking isL2
+    // #then all are true
+    const l2ChainIds = [421614, 11155420, 84532]
+    for (const chainId of l2ChainIds) {
+      const config = getChainConfig(chainId)
+      expect(config.isL2).toBe(true)
+    }
+  })
+
+  it('Eth Sepolia has isL2 = false', () => {
+    const config = getChainConfig(11155111)
+    expect(config.isL2).toBe(false)
+  })
+
+  it('Thanos Sepolia has isL2 = false', () => {
+    const config = getChainConfig(111551119090)
+    expect(config.isL2).toBe(false)
   })
 })

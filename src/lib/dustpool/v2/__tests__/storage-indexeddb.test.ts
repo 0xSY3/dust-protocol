@@ -62,8 +62,7 @@ function createTestDb(): Promise<IDBDatabase> {
 
 /** Read all unspent notes (avoids compound index boolean key issue in fake-indexeddb) */
 async function readUnspent(db: IDBDatabase, wallet = WALLET): Promise<StoredNoteV2[]> {
-  const all = await getUnspentNotes(db, wallet)
-  return all.filter(n => n.chainId === CHAIN_ID)
+  return getUnspentNotes(db, wallet, CHAIN_ID)
 }
 
 /** Read ALL notes (including spent) via raw cursor */
@@ -111,7 +110,7 @@ describe('IndexedDB storage integration', () => {
 
       // #when
       await saveNoteV2(db, '0xABCDEF', note)
-      const notes = await getUnspentNotes(db, '0xabcdef')
+      const notes = await getUnspentNotes(db, '0xabcdef', CHAIN_ID)
 
       // #then
       expect(notes).toHaveLength(1)
@@ -275,7 +274,7 @@ describe('IndexedDB storage integration', () => {
 
       // #when
       await markSpentAndSaveMultiple(db, '0xinput_case', outputs)
-      const notes = await getUnspentNotes(db, '0xabcdef1234567890abcdef1234567890abcdef12')
+      const notes = await getUnspentNotes(db, '0xabcdef1234567890abcdef1234567890abcdef12', CHAIN_ID)
 
       // #then
       const out = notes.find(n => n.id === '0xout_mixed')
@@ -340,6 +339,63 @@ describe('IndexedDB storage integration', () => {
       await expect(
         updateNoteLeafIndex(db, '0xghost', 5)
       ).rejects.toThrow('Note not found')
+    })
+  })
+
+  describe('cross-chain note isolation', () => {
+    const ARB_SEPOLIA_CHAIN_ID = 421614
+
+    it('notes saved with chain A are not returned when querying chain B', async () => {
+      // #given — save notes for two different chains
+      const sepoliaNote = makeNote({ id: '0xsepolia_note', chainId: CHAIN_ID })
+      const arbNote = makeNote({ id: '0xarb_note', chainId: ARB_SEPOLIA_CHAIN_ID })
+      await saveNoteV2(db, WALLET, sepoliaNote)
+      await saveNoteV2(db, WALLET, arbNote)
+
+      // #when — query for each chain separately
+      const sepoliaNotes = await getUnspentNotes(db, WALLET, CHAIN_ID)
+      const arbNotes = await getUnspentNotes(db, WALLET, ARB_SEPOLIA_CHAIN_ID)
+
+      // #then — each query returns only its chain's notes
+      expect(sepoliaNotes).toHaveLength(1)
+      expect(sepoliaNotes[0].id).toBe('0xsepolia_note')
+      expect(sepoliaNotes[0].chainId).toBe(CHAIN_ID)
+
+      expect(arbNotes).toHaveLength(1)
+      expect(arbNotes[0].id).toBe('0xarb_note')
+      expect(arbNotes[0].chainId).toBe(ARB_SEPOLIA_CHAIN_ID)
+    })
+
+    it('same commitment on different chains produces different entries', async () => {
+      // #given — save a note with same ID prefix but different chainId
+      const sharedCommitment = '0xshared_commitment_abc'
+      const sepoliaNote = makeNote({
+        id: `${sharedCommitment}_${CHAIN_ID}`,
+        commitment: sharedCommitment,
+        chainId: CHAIN_ID,
+        amount: bigintToHex(1000000000000000000n),
+      })
+      const arbNote = makeNote({
+        id: `${sharedCommitment}_${ARB_SEPOLIA_CHAIN_ID}`,
+        commitment: sharedCommitment,
+        chainId: ARB_SEPOLIA_CHAIN_ID,
+        amount: bigintToHex(2000000000000000000n),
+      })
+      await saveNoteV2(db, WALLET, sepoliaNote)
+      await saveNoteV2(db, WALLET, arbNote)
+
+      // #when — query each chain
+      const sepoliaNotes = await getUnspentNotes(db, WALLET, CHAIN_ID)
+      const arbNotes = await getUnspentNotes(db, WALLET, ARB_SEPOLIA_CHAIN_ID)
+
+      // #then — each chain returns its own version
+      expect(sepoliaNotes).toHaveLength(1)
+      expect(sepoliaNotes[0].chainId).toBe(CHAIN_ID)
+      expect(sepoliaNotes[0].amount).toBe(bigintToHex(1000000000000000000n))
+
+      expect(arbNotes).toHaveLength(1)
+      expect(arbNotes[0].chainId).toBe(ARB_SEPOLIA_CHAIN_ID)
+      expect(arbNotes[0].amount).toBe(bigintToHex(2000000000000000000n))
     })
   })
 

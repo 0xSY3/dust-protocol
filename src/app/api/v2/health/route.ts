@@ -1,7 +1,7 @@
 import { ethers } from 'ethers'
 import { NextResponse } from 'next/server'
 import { getServerProvider, getServerSponsor } from '@/lib/server-provider'
-import { DEFAULT_CHAIN_ID } from '@/config/chains'
+import { DEFAULT_CHAIN_ID, isL2Chain } from '@/config/chains'
 import { getDustPoolV2Address } from '@/lib/dustpool/v2/contracts'
 import { getTreeSnapshot } from '@/lib/dustpool/v2/relayer-tree'
 import { toBytes32Hex } from '@/lib/dustpool/poseidon'
@@ -12,10 +12,8 @@ export const maxDuration = 30
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const
 
-// Warning threshold: alert before claims start failing (L2: 0.02 ETH, L1: 0.05 ETH)
-const L2_CHAIN_IDS = new Set([421614, 11155420, 84532])
 function getSponsorWarningThreshold(chainId: number): ethers.BigNumber {
-  return L2_CHAIN_IDS.has(chainId)
+  return isL2Chain(chainId)
     ? ethers.utils.parseEther('0.02')
     : ethers.utils.parseEther('0.05')
 }

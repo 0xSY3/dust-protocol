@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { NextResponse } from 'next/server';
 import { getChainConfig } from '@/config/chains';
-import { getServerProvider, parseChainId } from '@/lib/server-provider';
+import { getServerProvider, getServerSponsor, parseChainId } from '@/lib/server-provider';
 import { STEALTH_SUB_ACCOUNT_7702_ABI, DUST_POOL_ABI } from '@/lib/stealth/types';
 
 export const maxDuration = 60;
@@ -28,16 +28,32 @@ function checkCooldown(key: string): boolean {
 
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
+// viem WalletClient cache — reuse per chain to avoid per-request object churn + nonce conflicts
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const viemClientCache = new Map<number, { client: any; account: any }>();
+async function getViemSponsor(chainId: number) {
+  if (!SPONSOR_KEY) throw new Error('Sponsor not configured');
+  const cached = viemClientCache.get(chainId);
+  if (cached) return cached;
+  const { createWalletClient, http } = await import('viem');
+  const { privateKeyToAccount } = await import('viem/accounts');
+  const config = getChainConfig(chainId);
+  const key = SPONSOR_KEY.startsWith('0x') ? SPONSOR_KEY : `0x${SPONSOR_KEY}`;
+  const account = privateKeyToAccount(key as `0x${string}`);
+  const client = createWalletClient({ account, chain: config.viemChain, transport: http(config.rpcUrl) });
+  const entry = { client, account };
+  viemClientCache.set(chainId, entry);
+  return entry;
+}
+
 /** GET /api/delegate-7702 — returns sponsor wallet address for client-side signing */
 export async function GET() {
   try {
     if (!SPONSOR_KEY) {
       return NextResponse.json({ error: 'Sponsor not configured' }, { status: 500, headers: NO_STORE });
     }
-    const { privateKeyToAccount } = await import('viem/accounts');
-    const key = SPONSOR_KEY.startsWith('0x') ? SPONSOR_KEY : `0x${SPONSOR_KEY}`;
-    const account = privateKeyToAccount(key as `0x${string}`);
-    return NextResponse.json({ address: account.address }, { headers: NO_STORE });
+    const sponsor = getServerSponsor();
+    return NextResponse.json({ address: sponsor.address }, { headers: NO_STORE });
   } catch {
     return NextResponse.json({ error: 'Failed to derive sponsor address' }, { status: 500, headers: NO_STORE });
   }
@@ -66,18 +82,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Please wait before trying again' }, { status: 429, headers: NO_STORE });
     }
 
-    // Dynamic import viem — only used on 7702-capable chains
-    const { createWalletClient, http, encodeFunctionData } = await import('viem');
-    const { privateKeyToAccount } = await import('viem/accounts');
-
-    const sponsorKey = SPONSOR_KEY.startsWith('0x') ? SPONSOR_KEY : `0x${SPONSOR_KEY}`;
-    const sponsorAccount = privateKeyToAccount(sponsorKey as `0x${string}`);
-
-    const client = createWalletClient({
-      account: sponsorAccount,
-      chain: config.viemChain,
-      transport: http(config.rpcUrl),
-    });
+    const { encodeFunctionData, http } = await import('viem');
+    const { client, account: sponsorAccount } = await getViemSponsor(chainId);
 
     if (mode === 'drain') {
       const { drainTo, drainSig } = body;

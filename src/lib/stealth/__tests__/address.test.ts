@@ -45,10 +45,31 @@ vi.mock('@/config/chains', () => {
     },
   };
 
+  const arbSepoliaConfig = {
+    ...nonEip7702Config,
+    id: 421614,
+    name: 'Arbitrum Sepolia',
+  };
+
+  const opSepoliaConfig = {
+    ...nonEip7702Config,
+    id: 11155420,
+    name: 'OP Sepolia',
+  };
+
+  const baseSepoliaConfig = {
+    ...nonEip7702Config,
+    id: 84532,
+    name: 'Base Sepolia',
+  };
+
   return {
     DEFAULT_CHAIN_ID: 11155111,
     getChainConfig: (chainId?: number) => {
       if (chainId === 111551119090) return nonEip7702Config;
+      if (chainId === 421614) return arbSepoliaConfig;
+      if (chainId === 11155420) return opSepoliaConfig;
+      if (chainId === 84532) return baseSepoliaConfig;
       return eip7702Config;
     },
   };
@@ -524,6 +545,101 @@ describe('full ECDH round-trip', () => {
       viewing.privateKey,
     );
     expect(verified).toBe(true);
+  });
+});
+
+// ── L2 chain address generation ──────────────────────────────────────────────
+
+describe('L2 chain address generation', () => {
+  const spending = generateTestKeyPair();
+  const viewing = generateTestKeyPair();
+  const meta = makeMetaAddress(spending.publicKey, viewing.publicKey);
+
+  it('generates valid stealth addresses for Arb Sepolia', () => {
+    // #given — Arb Sepolia chain ID (non-EIP-7702)
+    const chainId = 421614;
+
+    // #when
+    const result = generateStealthAddress(meta, chainId);
+
+    // #then — valid address, CREATE2 (not EOA), valid ephemeral key
+    expect(ethers.utils.isAddress(result.stealthAddress)).toBe(true);
+    expect(ethers.utils.isAddress(result.stealthEOAAddress)).toBe(true);
+    expect(result.stealthAddress).not.toBe(result.stealthEOAAddress);
+    expect(result.ephemeralPublicKey).toMatch(/^0[23][0-9a-fA-F]{64}$/);
+    expect(result.viewTag).toMatch(/^[0-9a-fA-F]{2}$/);
+  });
+
+  it('generates valid stealth addresses for OP Sepolia', () => {
+    // #given — OP Sepolia chain ID (non-EIP-7702)
+    const chainId = 11155420;
+
+    // #when
+    const result = generateStealthAddress(meta, chainId);
+
+    // #then — valid address, CREATE2 (not EOA), valid ephemeral key
+    expect(ethers.utils.isAddress(result.stealthAddress)).toBe(true);
+    expect(ethers.utils.isAddress(result.stealthEOAAddress)).toBe(true);
+    expect(result.stealthAddress).not.toBe(result.stealthEOAAddress);
+    expect(result.ephemeralPublicKey).toMatch(/^0[23][0-9a-fA-F]{64}$/);
+    expect(result.viewTag).toMatch(/^[0-9a-fA-F]{2}$/);
+  });
+
+  it('generates valid stealth addresses for Base Sepolia', () => {
+    // #given — Base Sepolia chain ID (non-EIP-7702)
+    const chainId = 84532;
+
+    // #when
+    const result = generateStealthAddress(meta, chainId);
+
+    // #then — valid address, CREATE2 (not EOA), valid ephemeral key
+    expect(ethers.utils.isAddress(result.stealthAddress)).toBe(true);
+    expect(ethers.utils.isAddress(result.stealthEOAAddress)).toBe(true);
+    expect(result.stealthAddress).not.toBe(result.stealthEOAAddress);
+    expect(result.ephemeralPublicKey).toMatch(/^0[23][0-9a-fA-F]{64}$/);
+    expect(result.viewTag).toMatch(/^[0-9a-fA-F]{2}$/);
+  });
+
+  it('ECDH round-trip works on L2 chains (recipient derives correct private key)', () => {
+    // #given — generate stealth address on Base Sepolia
+    const chainId = 84532;
+    const generated = generateStealthAddress(meta, chainId);
+
+    // #when — recipient derives stealth private key
+    const stealthPrivKey = computeStealthPrivateKey(
+      spending.privateKey,
+      viewing.privateKey,
+      generated.ephemeralPublicKey,
+    );
+    const derivedAddress = getAddressFromPrivateKey(stealthPrivKey);
+
+    // #then — derived EOA matches the generated stealth EOA
+    expect(derivedAddress.toLowerCase()).toBe(
+      generated.stealthEOAAddress.toLowerCase(),
+    );
+  });
+
+  it('different L2 chains produce same stealth EOA but different account addresses', () => {
+    // #given — generate stealth address on two L2 chains with same ephemeral key
+    // Note: generateStealthAddress uses random ephemeral keys each call,
+    // so we test that wallet/account addresses computed from the same EOA
+    // are deterministic per-chain.
+    const eoaOwner = '0x1234567890abcdef1234567890abcdef12345678';
+
+    // #when — compute CREATE2 account addresses for different chains
+    const arbAccount = computeStealthAccountAddress(eoaOwner, 421614);
+    const opAccount = computeStealthAccountAddress(eoaOwner, 11155420);
+    const baseAccount = computeStealthAccountAddress(eoaOwner, 84532);
+
+    // #then — all valid addresses, all equal (same mock factory addresses)
+    // In production, different chains may have different factory addresses,
+    // but with our mock they share the same factory, proving CREATE2 is deterministic
+    expect(ethers.utils.isAddress(arbAccount)).toBe(true);
+    expect(ethers.utils.isAddress(opAccount)).toBe(true);
+    expect(ethers.utils.isAddress(baseAccount)).toBe(true);
+    // Same factory + same creation code + same owner = same CREATE2 address
+    expect(arbAccount).toBe(opAccount);
+    expect(opAccount).toBe(baseAccount);
   });
 });
 

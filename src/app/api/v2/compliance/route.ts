@@ -1,7 +1,7 @@
 import { ethers } from 'ethers'
 import { NextResponse } from 'next/server'
 import { getServerSponsor, getMaxGasPrice } from '@/lib/server-provider'
-import { DEFAULT_CHAIN_ID } from '@/config/chains'
+import { DEFAULT_CHAIN_ID, isChainSupported } from '@/config/chains'
 import { getDustPoolV2Address, DUST_POOL_V2_ABI } from '@/lib/dustpool/v2/contracts'
 import { toBytes32Hex } from '@/lib/dustpool/poseidon'
 import {
@@ -25,6 +25,13 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const commitmentStr = url.searchParams.get('commitment')
     const chainId = Number(url.searchParams.get('chainId') ?? DEFAULT_CHAIN_ID)
+
+    if (!isChainSupported(chainId)) {
+      return NextResponse.json(
+        { error: `Unsupported chain: ${chainId}` },
+        { status: 400, headers: NO_STORE },
+      )
+    }
 
     if (!commitmentStr) {
       return NextResponse.json(

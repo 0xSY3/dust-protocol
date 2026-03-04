@@ -190,6 +190,11 @@ export function OnboardingWizard() {
                 <p className="text-[13px] text-[rgba(255,255,255,0.4)]">
                   {error ? "Activation failed" : isReactivation ? "Restoring your private identity..." : "Creating your private identity..."}
                 </p>
+                {!error && (
+                  <p className="text-[11px] text-[rgba(255,255,255,0.25)]">
+                    Registered on Ethereum Sepolia — works across all supported chains
+                  </p>
+                )}
               </div>
 
               {!error && (

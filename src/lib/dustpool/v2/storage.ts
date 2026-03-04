@@ -213,13 +213,13 @@ export async function saveNoteV2(
 }
 
 /**
- * Get all unspent notes for a wallet, optionally filtered by chain.
+ * Get all unspent notes for a wallet on a specific chain.
  * If `encKey` is provided, encrypted notes are decrypted before returning.
  */
 export async function getUnspentNotes(
   db: IDBDatabase,
   walletAddress: string,
-  chainId?: number,
+  chainId: number,
   encKey?: CryptoKey
 ): Promise<StoredNoteV2[]> {
   if (!walletAddress) return []

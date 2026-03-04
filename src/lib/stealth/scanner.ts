@@ -129,6 +129,10 @@ export async function scanAnnouncements(
   announcerAddress = CANONICAL_ADDRESSES.announcer,
   chainId?: number,
 ): Promise<ScanResult[]> {
+  // Guard: default announcer is Eth Sepolia — silently returns 0 results on other chains
+  if (chainId && chainId !== 11155111 && announcerAddress === CANONICAL_ADDRESSES.announcer) {
+    console.warn(`[scanner] scanAnnouncements: using default Eth Sepolia announcer on chain ${chainId} — pass chain-specific announcer`);
+  }
   // Verify key consistency
   const derived = secp256k1.keyFromPrivate(keys.spendingPrivateKey.replace(/^0x/, ''), 'hex');
   if (derived.getPublic(true, 'hex') !== keys.spendingPublicKey) {
@@ -263,6 +267,9 @@ export async function scanAnnouncementsViewOnly(
   announcerAddress = CANONICAL_ADDRESSES.announcer,
   chainId?: number,
 ): Promise<StealthAnnouncement[]> {
+  if (chainId && chainId !== 11155111 && announcerAddress === CANONICAL_ADDRESSES.announcer) {
+    console.warn(`[scanner] scanAnnouncementsViewOnly: using default Eth Sepolia announcer on chain ${chainId} — pass chain-specific announcer`);
+  }
   const announcer = new ethers.Contract(announcerAddress, ANNOUNCER_ABI, provider);
   const filter = announcer.filters.Announcement(SCHEME_ID.SECP256K1, null, null);
   const resolvedTo = toBlock === 'latest' || toBlock === undefined
@@ -321,18 +328,18 @@ export async function scanAnnouncementsViewOnly(
 
 import { storageKey, migrateKey } from '@/lib/storageKey';
 
-function lastScannedKey(address: string, chainId?: number): string {
+function lastScannedKey(address: string, chainId: number): string {
   return storageKey('scanner', address, chainId);
 }
 
-export function getLastScannedBlock(address: string, chainId?: number): number | null {
+export function getLastScannedBlock(address: string, chainId: number): number | null {
   if (typeof window === 'undefined') return null;
   migrateKey('stealth_last_scanned_' + address.toLowerCase(), lastScannedKey(address, chainId));
   const val = localStorage.getItem(lastScannedKey(address, chainId));
   return val ? parseInt(val, 10) : null;
 }
 
-export function setLastScannedBlock(address: string, block: number, chainId?: number): void {
+export function setLastScannedBlock(address: string, block: number, chainId: number): void {
   if (typeof window !== 'undefined') {
     localStorage.setItem(lastScannedKey(address, chainId), block.toString());
   }

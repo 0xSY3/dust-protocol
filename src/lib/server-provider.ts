@@ -100,7 +100,8 @@ const MAX_GAS_PRICE_BY_CHAIN: Record<number, ethers.BigNumber> = {
   84532: ethers.utils.parseUnits('5', 'gwei'),
   8453: ethers.utils.parseUnits('5', 'gwei'),
 };
-const DEFAULT_MAX_GAS = ethers.utils.parseUnits('100', 'gwei');
+// Default 10 gwei — conservative for unknown L2s where 100 gwei would waste ETH
+const DEFAULT_MAX_GAS = ethers.utils.parseUnits('10', 'gwei');
 
 export function getMaxGasPrice(chainId: number): ethers.BigNumber {
   return MAX_GAS_PRICE_BY_CHAIN[chainId] ?? DEFAULT_MAX_GAS;

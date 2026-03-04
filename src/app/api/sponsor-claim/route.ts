@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { NextResponse } from 'next/server';
-import { getChainConfig } from '@/config/chains';
+import { getChainConfig, isL2Chain } from '@/config/chains';
 import { isKnownToken } from '@/config/tokens';
 import { getServerProvider, getServerSponsor, parseChainId, getMaxGasPrice } from '@/lib/server-provider';
 import { canUseGelato, sponsoredRelay, waitForRelay } from '@/lib/relay/gelato';
@@ -20,10 +20,8 @@ let globalClaimTimestamps: number[] = [];
 
 // Sponsor balance monitoring — per-chain to avoid one low-balance chain pausing all
 const sponsorBalanceState = new Map<number, { paused: boolean; lastCheck: number }>();
-// L2 claims cost ~0.0001 ETH vs ~0.01 on L1 — 0.01 ETH is sufficient on L2
-const L2_CHAIN_IDS = new Set([421614, 11155420, 84532]);
 function getMinSponsorBalance(chainId: number): ethers.BigNumber {
-  return L2_CHAIN_IDS.has(chainId) ? ethers.utils.parseEther('0.01') : ethers.utils.parseEther('0.1');
+  return isL2Chain(chainId) ? ethers.utils.parseEther('0.01') : ethers.utils.parseEther('0.1');
 }
 const BALANCE_CHECK_INTERVAL_MS = 30_000;
 

@@ -328,6 +328,75 @@ describe('buildWithdrawInputs', () => {
   })
 })
 
+describe('cross-chain isolation', () => {
+  const ETH_ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+  const USDC_ADDRESS = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+
+  it('computeAssetId produces different results for same token on different chains', async () => {
+    // #given — ETH (zero address) on Eth Sepolia vs Arb Sepolia
+    const ethSepoliaChainId = 11155111
+    const arbSepoliaChainId = 421614
+
+    // #when — compute asset ID for each
+    const assetEthSepolia = await computeAssetId(ethSepoliaChainId, ETH_ZERO_ADDRESS)
+    const assetArbSepolia = await computeAssetId(arbSepoliaChainId, ETH_ZERO_ADDRESS)
+
+    // #then — they differ (chainId is a Poseidon input)
+    expect(assetEthSepolia).not.toBe(assetArbSepolia)
+  })
+
+  it('computeAssetId produces different results across all L2 chains', async () => {
+    // #given — ETH on four different chains
+    const chainIds = [11155111, 421614, 11155420, 84532]
+
+    // #when — compute asset IDs for all chains
+    const assetIds = await Promise.all(
+      chainIds.map(id => computeAssetId(id, ETH_ZERO_ADDRESS))
+    )
+
+    // #then — all are unique (Set size equals array length)
+    const uniqueIds = new Set(assetIds.map(id => id.toString()))
+    expect(uniqueIds.size).toBe(chainIds.length)
+  })
+
+  it('same token address on different chains produces different note commitments', async () => {
+    // #given — identical note params except chainId
+    const ownerPubKey = await computeOwnerPubKey(MOCK_KEYS.spendingKey)
+    const assetSepolia = await computeAssetId(11155111, USDC_ADDRESS)
+    const assetArb = await computeAssetId(421614, USDC_ADDRESS)
+
+    const noteSepolia = createNote(ownerPubKey, 1000n, assetSepolia, 11155111)
+    const noteArb = createNote(ownerPubKey, 1000n, assetArb, 421614)
+
+    // #when — compute commitments
+    const commitSepolia = await computeNoteCommitment(noteSepolia)
+    const commitArb = await computeNoteCommitment(noteArb)
+
+    // #then — commitments differ because asset + chainId differ
+    expect(commitSepolia).not.toBe(commitArb)
+  })
+
+  it('nullifier for same note on different chains differs (via different commitments)', async () => {
+    // #given — two notes with identical amounts but different chains
+    const ownerPubKey = await computeOwnerPubKey(MOCK_KEYS.spendingKey)
+    const assetA = await computeAssetId(11155111, ETH_ZERO_ADDRESS)
+    const assetB = await computeAssetId(84532, ETH_ZERO_ADDRESS)
+
+    const noteA = createNote(ownerPubKey, 500n, assetA, 11155111)
+    const noteB = createNote(ownerPubKey, 500n, assetB, 84532)
+
+    const commitA = await computeNoteCommitment(noteA)
+    const commitB = await computeNoteCommitment(noteB)
+
+    // #when — compute nullifiers at same leaf index
+    const nullA = await computeNullifier(commitA, MOCK_KEYS.nullifierKey, 0)
+    const nullB = await computeNullifier(commitB, MOCK_KEYS.nullifierKey, 0)
+
+    // #then — nullifiers differ because commitments differ
+    expect(nullA).not.toBe(nullB)
+  })
+})
+
 describe('buildTransferInputs', () => {
   it('sets publicAmount to 0 (no value enters/leaves pool)', async () => {
     const noteCommitment = await mockNote(1000n)

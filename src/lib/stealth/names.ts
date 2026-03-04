@@ -20,6 +20,8 @@ export function setNameRegistryAddress(address: string): void {
   registryAddress = address;
 }
 
+// Intentionally chain-agnostic: all name writes go to the canonical chain (Eth Sepolia).
+// L2 chains resolve names via cross-chain NameVerifier contracts.
 export function getNameRegistryAddress(): string {
   // In Next.js, NEXT_PUBLIC_* vars are inlined at build time
   const envAddr = process.env.NEXT_PUBLIC_STEALTH_NAME_REGISTRY_ADDRESS;

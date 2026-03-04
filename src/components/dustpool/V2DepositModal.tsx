@@ -26,7 +26,7 @@ import { errorToUserMessage } from "@/lib/dustpool/v2/errors";
 import { getTokenBySymbol } from "@/config/tokens";
 import { ERC20_ABI } from "@/lib/swap/contracts";
 import { getDustPoolV2Config } from "@/lib/dustpool/v2/contracts";
-import { getChainConfig } from "@/config/chains";
+import { getChainConfig, isL2Chain } from "@/config/chains";
 
 type DepositMode = "self" | "external";
 type SelectedToken = "native" | "USDC";
@@ -222,9 +222,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId, hasKeys: has
       return;
     }
     if (!walletBalance) return;
-    // L2s need ~10x less gas reserve than L1
-    const isL2 = [421614, 42161, 11155420, 10, 84532, 8453].includes(chainId ?? 0);
-    const reserveAmount = isL2 ? "0.0005" : "0.005";
+    const reserveAmount = isL2Chain(chainId ?? 0) ? "0.0005" : "0.005";
     const reserved = parseEther(reserveAmount);
     const max = walletBalance.value > reserved ? walletBalance.value - reserved : 0n;
     if (max > 0n) {
