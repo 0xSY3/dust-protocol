@@ -46,7 +46,14 @@ export async function syncRootToAllChains(): Promise<{
     NAME_REGISTRY_MERKLE_ABI,
     canonicalProvider,
   );
-  const currentRoot: string = await canonicalRegistry.getLastRoot();
+  let currentRoot: string;
+  try {
+    currentRoot = await canonicalRegistry.getLastRoot();
+  } catch (e) {
+    // getLastRoot reverts on a fresh tree with no leaves — treat as empty
+    console.warn('[RootSync] getLastRoot failed on canonical chain (empty tree?):', e instanceof Error ? e.message : e);
+    return { root: ethers.constants.HashZero, synced: [], errors: [] };
+  }
 
   if (currentRoot === lastSyncedRoot) {
     return { root: currentRoot, synced: [], errors: [] };
@@ -71,7 +78,13 @@ export async function syncRootToAllChains(): Promise<{
           sponsor,
         );
 
-        const chainRoot: string = await verifier.getLastRoot();
+        let chainRoot: string;
+        try {
+          chainRoot = await verifier.getLastRoot();
+        } catch {
+          // Fresh verifier with no root set — needs update
+          chainRoot = ethers.constants.HashZero;
+        }
         if (chainRoot === currentRoot) {
           synced.push({ chainId: chain.id, txHash: 'already-synced' });
           return;

@@ -103,6 +103,10 @@ contract DustSwapHook is Ownable2Step {
         address relayer
     );
 
+    event RelayerUpdated(address indexed relayer, bool authorized);
+    event RelayerWhitelistToggled(bool enabled);
+    event MinWaitBlocksUpdated(uint256 newMinWaitBlocks);
+
     error HookNotImplemented();
     error NotPoolManager();
     error InvalidProof();
@@ -428,17 +432,20 @@ contract DustSwapHook is Ownable2Step {
     /// @notice Set authorized relayer status
     function setAuthorizedRelayer(address relayer, bool authorized) external onlyOwner {
         authorizedRelayers[relayer] = authorized;
+        emit RelayerUpdated(relayer, authorized);
     }
 
     /// @notice Enable/disable relayer whitelist
     function setRelayerWhitelistEnabled(bool enabled) external onlyOwner {
         relayerWhitelistEnabled = enabled;
+        emit RelayerWhitelistToggled(enabled);
     }
 
     /// @notice Update the minimum wait time (blocks) between deposit and swap
     /// @param _minWaitBlocks Number of blocks a root must age (0 = disabled)
     function setMinWaitBlocks(uint256 _minWaitBlocks) external onlyOwner {
         minWaitBlocks = _minWaitBlocks;
+        emit MinWaitBlocksUpdated(_minWaitBlocks);
     }
 
     // ─── Receive ETH ─────────────────────────────────────────────────────────────

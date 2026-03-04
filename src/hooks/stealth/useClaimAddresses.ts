@@ -32,6 +32,11 @@ export function useClaimAddresses() {
   const signatureRef = useRef<string | null>(null);
   const selectedAddress = claimAddresses[selectedIndex] || null;
 
+  // Ref-stabilize claimAddresses so refreshBalances doesn't recreate on every balance update
+  // (which would restart the polling interval on every fetch cycle)
+  const claimAddressesRef = useRef(claimAddresses);
+  useEffect(() => { claimAddressesRef.current = claimAddresses; }, [claimAddresses]);
+
   const fetchBalance = useCallback(async (addr: string): Promise<string> => {
     try {
       const provider = getChainProvider(activeChainId);
@@ -43,11 +48,12 @@ export function useClaimAddresses() {
   }, [activeChainId]);
 
   const refreshBalances = useCallback(async () => {
-    if (!claimAddresses.length) return;
+    const current = claimAddressesRef.current;
+    if (!current.length) return;
     setClaimAddresses(prev => prev.map(a => ({ ...a, isLoadingBalance: true })));
-    const balances = await Promise.all(claimAddresses.map(a => fetchBalance(a.address)));
+    const balances = await Promise.all(current.map(a => fetchBalance(a.address)));
     setClaimAddresses(prev => prev.map((a, i) => ({ ...a, balance: balances[i], isLoadingBalance: false })));
-  }, [claimAddresses, fetchBalance]);
+  }, [fetchBalance]);
 
   const initializeAddresses = useCallback(async () => {
     if (!isConnected || !address) { setError('Wallet not connected'); return; }

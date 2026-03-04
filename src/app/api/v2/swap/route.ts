@@ -217,7 +217,6 @@ export async function POST(req: Request) {
       }
 
       if (!outputCommitment || !outputAmount) {
-        releaseNullifier(nullifier0Hex)
         return NextResponse.json(
           { error: 'PrivateSwapExecuted event not found in receipt' },
           { status: 500, headers: NO_STORE },

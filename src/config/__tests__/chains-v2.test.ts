@@ -75,6 +75,7 @@ describe('Chain config: core functions work', () => {
     expect(isChainSupported(421614)).toBe(true)
     expect(isChainSupported(11155420)).toBe(true)
     expect(isChainSupported(84532)).toBe(true)
+    expect(isChainSupported(8453)).toBe(false)
     expect(isChainSupported(1)).toBe(false)
   })
 })

@@ -117,6 +117,10 @@ function parseEvent(event: ethers.Event, schemeId: number): StealthAnnouncement 
   };
 }
 
+/**
+ * @param announcerAddress Defaults to Eth Sepolia announcer. Callers MUST pass
+ *   the chain-specific announcer from getChainConfig(chainId) for non-Sepolia chains.
+ */
 export async function scanAnnouncements(
   provider: ethers.providers.Provider,
   keys: StealthKeyPair,
@@ -246,6 +250,10 @@ export async function scanAnnouncements(
   return results;
 }
 
+/**
+ * @param announcerAddress Defaults to Eth Sepolia announcer. Callers MUST pass
+ *   the chain-specific announcer from getChainConfig(chainId) for non-Sepolia chains.
+ */
 export async function scanAnnouncementsViewOnly(
   provider: ethers.providers.Provider,
   viewingPrivateKey: string,
@@ -330,6 +338,10 @@ export function setLastScannedBlock(address: string, block: number, chainId?: nu
   }
 }
 
+/**
+ * @param announcerAddress Defaults to Eth Sepolia announcer. Callers MUST pass
+ *   the chain-specific announcer from getChainConfig(chainId) for non-Sepolia chains.
+ */
 export async function getAnnouncementCount(
   provider: ethers.providers.Provider,
   fromBlock: number,

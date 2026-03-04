@@ -1,6 +1,6 @@
 import { ethers } from 'ethers'
 import { NextResponse } from 'next/server'
-import { getServerProvider } from '@/lib/server-provider'
+import { getServerProvider, getServerSponsor } from '@/lib/server-provider'
 import { DEFAULT_CHAIN_ID } from '@/config/chains'
 import { getDustPoolV2Address } from '@/lib/dustpool/v2/contracts'
 import { getTreeSnapshot } from '@/lib/dustpool/v2/relayer-tree'
@@ -10,6 +10,14 @@ import { runDepositScreenerCycle } from '@/lib/dustpool/v2/deposit-screener'
 export const maxDuration = 30
 
 const NO_STORE = { 'Cache-Control': 'no-store' } as const
+
+// Warning threshold: alert before claims start failing (L2: 0.02 ETH, L1: 0.05 ETH)
+const L2_CHAIN_IDS = new Set([421614, 11155420, 84532])
+function getSponsorWarningThreshold(chainId: number): ethers.BigNumber {
+  return L2_CHAIN_IDS.has(chainId)
+    ? ethers.utils.parseEther('0.02')
+    : ethers.utils.parseEther('0.05')
+}
 
 // Minimal ABI for health-check reads (currentRootIndex, roots, depositQueueTail)
 const HEALTH_ABI = [
@@ -76,6 +84,21 @@ export async function GET(req: Request) {
       console.error('[V2/health] Screener cycle error:', e instanceof Error ? e.message : e)
     }
 
+    // Sponsor balance alerting — warns before claims start failing
+    let sponsorBalanceLow = false
+    let sponsorBalanceEth: string | null = null
+    try {
+      const sponsor = getServerSponsor(chainId)
+      const balance = await provider.getBalance(sponsor.address)
+      sponsorBalanceEth = ethers.utils.formatEther(balance)
+      sponsorBalanceLow = balance.lt(getSponsorWarningThreshold(chainId))
+      if (sponsorBalanceLow) {
+        console.warn(`[V2/health] Chain ${chainId}: sponsor balance low (${sponsorBalanceEth} ETH)`)
+      }
+    } catch (e) {
+      console.error('[V2/health] Sponsor balance check error:', e instanceof Error ? e.message : e)
+    }
+
     const body = {
       ok,
       chainId,
@@ -91,6 +114,8 @@ export async function GET(req: Request) {
       rootMatch,
       latestBlock,
       syncGap,
+      sponsorBalanceLow,
+      ...(sponsorBalanceEth && { sponsorBalanceEth }),
       ...(screener && { screener }),
     }
 

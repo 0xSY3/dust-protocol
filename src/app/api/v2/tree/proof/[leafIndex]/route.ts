@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getRelayerTreeProof, getTreeLeafCount } from '@/lib/dustpool/v2/relayer-tree'
 import { getDustPoolV2Address } from '@/lib/dustpool/v2/contracts'
 import { DEFAULT_CHAIN_ID } from '@/config/chains'
+import { toBytes32Hex } from '@/lib/dustpool/poseidon'
 
 export const maxDuration = 60
 
@@ -42,7 +43,7 @@ export async function GET(
 
     return NextResponse.json(
       {
-        pathElements: proof.pathElements.map((e) => '0x' + e.toString(16)),
+        pathElements: proof.pathElements.map((e) => toBytes32Hex(e)),
         pathIndices: proof.pathIndices,
       },
       { headers: NO_STORE },

@@ -5,53 +5,135 @@ import "forge-std/Test.sol";
 import {DustSwapHook, PoolKey, SwapParams, IHooks, IPoolManager} from "../src/DustSwapHook.sol";
 import {IDustSwapVerifier} from "../src/DustSwapVerifier.sol";
 import {IDustSwapPool} from "../src/IDustSwapPool.sol";
+import {DustSwapPoolETH} from "../src/DustSwapPoolETH.sol";
 
-/// @title DustSwapHook Fork Tests — Real Sepolia Contracts
-/// @notice Tests against deployed contracts on Ethereum Sepolia — NO mocks.
-///
-/// Run with:
-///   forge test --match-contract DustSwapHookForkTest --fork-url $SEPOLIA_RPC_URL -vvv
+/// @dev Mock verifier — returns configurable result
+contract MockDustSwapVerifier is IDustSwapVerifier {
+    bool public result = false;
+
+    function setResult(bool _result) external {
+        result = _result;
+    }
+
+    function verifyProof(
+        uint256[2] calldata,
+        uint256[2][2] calldata,
+        uint256[2] calldata,
+        uint256[8] calldata
+    ) external view returns (bool) {
+        return result;
+    }
+}
+
+/// @dev Minimal mock pool that implements IDustSwapPool for hook validation tests
+contract MockDustSwapPool is IDustSwapPool {
+    mapping(bytes32 => bool) private _knownRoots;
+    mapping(bytes32 => bool) private _spentNullifiers;
+    mapping(bytes32 => bool) private _commitments;
+    mapping(bytes32 => uint256) private _rootCreatedAt;
+    mapping(uint256 => bool) private _allowedDenoms;
+    uint32 private _depositCount;
+    bytes32 private _lastRoot;
+
+    constructor() {
+        // Set an initial known root
+        bytes32 initialRoot = bytes32(uint256(0xABCD));
+        _knownRoots[initialRoot] = true;
+        _lastRoot = initialRoot;
+        _rootCreatedAt[initialRoot] = 1; // block 1 — old enough
+    }
+
+    function setKnownRoot(bytes32 root, uint256 createdAt) external {
+        _knownRoots[root] = true;
+        _lastRoot = root;
+        _rootCreatedAt[root] = createdAt;
+    }
+
+    function isKnownRoot(bytes32 root) external view returns (bool) {
+        return _knownRoots[root];
+    }
+
+    function isSpent(bytes32 nullifierHash) external view returns (bool) {
+        return _spentNullifiers[nullifierHash];
+    }
+
+    function markNullifierAsSpent(bytes32 nullifierHash) external {
+        _spentNullifiers[nullifierHash] = true;
+    }
+
+    function getLastRoot() external view returns (bytes32) {
+        return _lastRoot;
+    }
+
+    function getDepositCount() external view returns (uint32) {
+        return _depositCount;
+    }
+
+    function commitments(bytes32 commitment) external view returns (bool) {
+        return _commitments[commitment];
+    }
+
+    function nullifierHashes(bytes32 nullifierHash) external view returns (bool) {
+        return _spentNullifiers[nullifierHash];
+    }
+
+    function releaseForSwap(uint256) external {}
+
+    function rootCreatedAt(bytes32 root) external view returns (uint256) {
+        return _rootCreatedAt[root];
+    }
+
+    function allowedDenominations(uint256 amount) external view returns (bool) {
+        return _allowedDenoms[amount];
+    }
+}
+
+/// @title DustSwapHook Local Tests — No fork dependency
+/// @notice Tests hook logic using locally deployed mocks.
 contract DustSwapHookForkTest is Test {
-    // ─── Deployed Sepolia Addresses ─────────────────────────────────────────────
-    address constant POOL_MANAGER      = 0x93805603e0167574dFe2F50ABdA8f42C85002FD8;
-    address payable constant DUST_SWAP_HOOK    = payable(0x605F8a92D488960174108035c41d376Ed25A00C0);
-    address constant DUST_SWAP_VERIFIER = 0x1677C9c4E575C910B9bCaF398D615B9F3775d0f1;
-    address constant POOL_ETH          = 0xD342940442AC499656a514e5C355d2b82975155B;
-    address constant POOL_USDC         = 0xa4218b115219ba96e2c5CAAaC42D0d04D60e3269;
-    address constant USDC_TOKEN        = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238; // Sepolia USDC
-    address constant POOL_SWAP_TEST    = 0x25eC587b262F30E4e8AE13643255a5f0F9E049aD;
+    DustSwapHook hook;
+    MockDustSwapVerifier verifier;
+    MockDustSwapPool poolETH;
+    MockDustSwapPool poolUSDC;
 
-    DustSwapHook     hook;
-    IDustSwapPool    poolETH;
-    IDustSwapPool    poolUSDC;
-    IDustSwapVerifier verifier;
-
-    address user     = address(0xCAFE);
-    address relayer  = address(0xBEEF);
+    address poolManager = address(0xAA01);
+    address usdcToken = address(0xAA05);
+    address user = address(0xCAFE);
+    address relayer = address(0xBEEF);
     address recipient = address(0xDEAD);
 
     PoolKey poolKey;
 
-    function setUp() public {
-        // Attach to deployed contracts
-        hook     = DustSwapHook(DUST_SWAP_HOOK);
-        poolETH  = IDustSwapPool(POOL_ETH);
-        poolUSDC = IDustSwapPool(POOL_USDC);
-        verifier = IDustSwapVerifier(DUST_SWAP_VERIFIER);
+    // Known root set in mock pool
+    bytes32 constant KNOWN_ROOT = bytes32(uint256(0xABCD));
 
-        // Pool key matching the deployed pool
+    function setUp() public {
+        verifier = new MockDustSwapVerifier();
+        poolETH = new MockDustSwapPool();
+        poolUSDC = new MockDustSwapPool();
+
+        hook = new DustSwapHook(
+            IPoolManager(poolManager),
+            IDustSwapVerifier(address(verifier)),
+            IDustSwapPool(address(poolETH)),
+            IDustSwapPool(address(poolUSDC)),
+            address(this)
+        );
+
+        // Disable wait time for tests
+        hook.setMinWaitBlocks(0);
+
         poolKey = PoolKey({
-            currency0: address(0),  // native ETH
-            currency1: USDC_TOKEN,
+            currency0: address(0),
+            currency1: usdcToken,
             fee: 3000,
             tickSpacing: 60,
-            hooks: IHooks(DUST_SWAP_HOOK)
+            hooks: IHooks(address(hook))
         });
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────
 
-    /// @dev Create hookData with 8-element pubSignals (matches DustSwapHook.sol)
     function createHookData(
         uint256[2] memory pA,
         uint256[2][2] memory pB,
@@ -61,7 +143,6 @@ contract DustSwapHookForkTest is Test {
         return abi.encode(pA, pB, pC, pubSignals);
     }
 
-    /// @dev Create pubSignals array with 8 elements (matching circuit output)
     function createPubSignals(
         bytes32 root,
         bytes32 nullifierHash,
@@ -71,58 +152,62 @@ contract DustSwapHookForkTest is Test {
         uint256 swapAmountOut
     ) internal view returns (uint256[8] memory) {
         return [
-            uint256(root),                      // [0] merkleRoot
-            uint256(nullifierHash),             // [1] nullifierHash
-            uint256(uint160(_recipient)),       // [2] recipient
-            uint256(uint160(_relayer)),         // [3] relayer
-            relayerFee,                          // [4] relayerFee (BPS)
-            swapAmountOut,                       // [5] swapAmountOut
-            block.chainid,                       // [6] chainId
-            0                                    // [7] reserved2
+            uint256(root),
+            uint256(nullifierHash),
+            uint256(uint160(_recipient)),
+            uint256(uint160(_relayer)),
+            relayerFee,
+            swapAmountOut,
+            block.chainid,
+            0
         ];
+    }
+
+    function _dummyProof()
+        internal
+        pure
+        returns (
+            uint256[2] memory pA,
+            uint256[2][2] memory pB,
+            uint256[2] memory pC
+        )
+    {
+        pA = [uint256(1), uint256(2)];
+        pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
+        pC = [uint256(7), uint256(8)];
     }
 
     // ─── Structural Tests ──────────────────────────────────────────────────────
 
-    /// @notice Validate that the deployed hook has correct immutable references
     function testDeployedHookConfiguration() public view {
-        assertEq(address(hook.poolManager()), POOL_MANAGER, "poolManager mismatch");
-        assertEq(address(hook.verifier()), DUST_SWAP_VERIFIER, "verifier mismatch");
-        assertEq(address(hook.dustSwapPoolETH()), POOL_ETH, "poolETH mismatch");
-        assertEq(address(hook.dustSwapPoolUSDC()), POOL_USDC, "poolUSDC mismatch");
+        assertEq(address(hook.poolManager()), poolManager, "poolManager mismatch");
+        assertEq(address(hook.verifier()), address(verifier), "verifier mismatch");
+        assertEq(address(hook.dustSwapPoolETH()), address(poolETH), "poolETH mismatch");
+        assertEq(address(hook.dustSwapPoolUSDC()), address(poolUSDC), "poolUSDC mismatch");
     }
 
-    /// @notice Validate pool state is accessible
-    function testPoolStateIsReadable() public {
+    function testPoolStateIsReadable() public view {
         bytes32 rootETH = poolETH.getLastRoot();
         bytes32 rootUSDC = poolUSDC.getLastRoot();
 
-        // Roots should be non-zero if deposits have been made
-        // (may be zero-hash if no deposits yet — both are valid states)
-        assertTrue(true, "Roots are readable");
+        assertTrue(rootETH != bytes32(0), "ETH pool root should be set");
+        assertTrue(rootUSDC != bytes32(0), "USDC pool root should be set");
 
         uint32 countETH = poolETH.getDepositCount();
         uint32 countUSDC = poolUSDC.getDepositCount();
 
-        // Log for diagnostics
-        emit log_named_bytes32("ETH pool last root", rootETH);
-        emit log_named_uint("ETH pool deposit count", countETH);
-        emit log_named_bytes32("USDC pool last root", rootUSDC);
-        emit log_named_uint("USDC pool deposit count", countUSDC);
+        assertEq(countETH, 0, "ETH pool should have 0 deposits");
+        assertEq(countUSDC, 0, "USDC pool should have 0 deposits");
     }
 
-    /// @notice Verifier should reject random/invalid proofs
     function testVerifierRejectsInvalidProof() public view {
-        uint256[2] memory pA = [uint256(1), uint256(2)];
-        uint256[2][2] memory pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
-        uint256[2] memory pC = [uint256(7), uint256(8)];
-        uint256[8] memory pubSignals = [uint256(0), uint256(0), uint256(0), uint256(0), uint256(0), uint256(0), uint256(0), uint256(0)];
+        (uint256[2] memory pA, uint256[2][2] memory pB, uint256[2] memory pC) = _dummyProof();
+        uint256[8] memory pubSignals;
 
         bool valid = verifier.verifyProof(pA, pB, pC, pubSignals);
-        assertFalse(valid, "Verifier should reject random proof values");
+        assertFalse(valid, "Verifier should reject by default");
     }
 
-    /// @notice Vanilla swap (no hookData) should be allowed
     function testVanillaSwapAllowed() public {
         SwapParams memory params = SwapParams({
             zeroForOne: true,
@@ -130,8 +215,7 @@ contract DustSwapHookForkTest is Test {
             sqrtPriceLimitX96: 0
         });
 
-        // Call as PoolManager — vanilla swap with empty hookData
-        vm.prank(POOL_MANAGER);
+        vm.prank(poolManager);
         (bytes4 selector, int256 delta, uint24 fee) = hook.beforeSwap(user, poolKey, params, "");
 
         assertEq(selector, hook.beforeSwap.selector, "Should return beforeSwap selector");
@@ -139,9 +223,8 @@ contract DustSwapHookForkTest is Test {
         assertEq(fee, 0, "Fee should be 0 for vanilla");
     }
 
-    // ─── Validation Tests (via PoolManager prank) ──────────────────────────────
+    // ─── Validation Tests ──────────────────────────────────────────────────────
 
-    /// @notice NotPoolManager revert when called by non-manager
     function testRevertNotPoolManager() public {
         SwapParams memory params = SwapParams({
             zeroForOne: true,
@@ -150,21 +233,17 @@ contract DustSwapHookForkTest is Test {
         });
 
         uint256[8] memory pubSignals = createPubSignals(
-            bytes32(uint256(0x123)), bytes32(uint256(0x456)),
+            KNOWN_ROOT, bytes32(uint256(0x456)),
             recipient, relayer, 100, 1 ether
         );
-        uint256[2] memory pA = [uint256(1), uint256(2)];
-        uint256[2][2] memory pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
-        uint256[2] memory pC = [uint256(7), uint256(8)];
+        (uint256[2] memory pA, uint256[2][2] memory pB, uint256[2] memory pC) = _dummyProof();
         bytes memory hookData = createHookData(pA, pB, pC, pubSignals);
 
-        // Call from non-PoolManager address — should revert
         vm.prank(user);
         vm.expectRevert(DustSwapHook.NotPoolManager.selector);
         hook.beforeSwap(user, poolKey, params, hookData);
     }
 
-    /// @notice InvalidMerkleRoot when using a root that doesn't exist in pool
     function testRevertInvalidMerkleRoot() public {
         SwapParams memory params = SwapParams({
             zeroForOne: true,
@@ -172,23 +251,19 @@ contract DustSwapHookForkTest is Test {
             sqrtPriceLimitX96: 0
         });
 
-        // Use a fake root that won't be in the pool's root history
         uint256[8] memory pubSignals = createPubSignals(
-            bytes32(uint256(0xDEADBEEF)), // Fake root
+            bytes32(uint256(0xDEADBEEF)), // Unknown root
             bytes32(uint256(0x456)),
             recipient, relayer, 100, 1 ether
         );
-        uint256[2] memory pA = [uint256(1), uint256(2)];
-        uint256[2][2] memory pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
-        uint256[2] memory pC = [uint256(7), uint256(8)];
+        (uint256[2] memory pA, uint256[2][2] memory pB, uint256[2] memory pC) = _dummyProof();
         bytes memory hookData = createHookData(pA, pB, pC, pubSignals);
 
-        vm.prank(POOL_MANAGER);
+        vm.prank(poolManager);
         vm.expectRevert(DustSwapHook.InvalidMerkleRoot.selector);
         hook.beforeSwap(user, poolKey, params, hookData);
     }
 
-    /// @notice InvalidRecipient when recipient is address(0)
     function testRevertInvalidRecipient() public {
         SwapParams memory params = SwapParams({
             zeroForOne: true,
@@ -196,27 +271,20 @@ contract DustSwapHookForkTest is Test {
             sqrtPriceLimitX96: 0
         });
 
-        // Use real root from pool (if deposits exist), or this will hit InvalidMerkleRoot first
-        bytes32 realRoot = poolETH.getLastRoot();
-
         uint256[8] memory pubSignals = createPubSignals(
-            realRoot,
+            KNOWN_ROOT,
             bytes32(uint256(0x456)),
-            address(0),  // Invalid recipient
+            address(0), // Invalid recipient
             relayer, 100, 1 ether
         );
-        uint256[2] memory pA = [uint256(1), uint256(2)];
-        uint256[2][2] memory pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
-        uint256[2] memory pC = [uint256(7), uint256(8)];
+        (uint256[2] memory pA, uint256[2][2] memory pB, uint256[2] memory pC) = _dummyProof();
         bytes memory hookData = createHookData(pA, pB, pC, pubSignals);
 
-        vm.prank(POOL_MANAGER);
-        // Will revert with one of: InvalidMerkleRoot (if no deposits) or InvalidRecipient
-        vm.expectRevert();
+        vm.prank(poolManager);
+        vm.expectRevert(DustSwapHook.InvalidRecipient.selector);
         hook.beforeSwap(user, poolKey, params, hookData);
     }
 
-    /// @notice InvalidMinimumOutput when swapAmountOut is 0
     function testRevertInvalidMinimumOutput() public {
         SwapParams memory params = SwapParams({
             zeroForOne: true,
@@ -224,25 +292,20 @@ contract DustSwapHookForkTest is Test {
             sqrtPriceLimitX96: 0
         });
 
-        bytes32 realRoot = poolETH.getLastRoot();
-
         uint256[8] memory pubSignals = createPubSignals(
-            realRoot,
+            KNOWN_ROOT,
             bytes32(uint256(0x456)),
             recipient, relayer, 100,
-            0  // Zero swapAmountOut → InvalidMinimumOutput
+            0 // Zero swapAmountOut
         );
-        uint256[2] memory pA = [uint256(1), uint256(2)];
-        uint256[2][2] memory pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
-        uint256[2] memory pC = [uint256(7), uint256(8)];
+        (uint256[2] memory pA, uint256[2][2] memory pB, uint256[2] memory pC) = _dummyProof();
         bytes memory hookData = createHookData(pA, pB, pC, pubSignals);
 
-        vm.prank(POOL_MANAGER);
+        vm.prank(poolManager);
         vm.expectRevert(DustSwapHook.InvalidMinimumOutput.selector);
         hook.beforeSwap(user, poolKey, params, hookData);
     }
 
-    /// @notice InvalidRelayerFee when fee exceeds MAX_RELAYER_FEE_BPS (500)
     function testRevertInvalidRelayerFee() public {
         SwapParams memory params = SwapParams({
             zeroForOne: true,
@@ -250,36 +313,29 @@ contract DustSwapHookForkTest is Test {
             sqrtPriceLimitX96: 0
         });
 
-        bytes32 realRoot = poolETH.getLastRoot();
-
         uint256[8] memory pubSignals = createPubSignals(
-            realRoot,
+            KNOWN_ROOT,
             bytes32(uint256(0x456)),
             recipient, relayer,
-            501,     // Exceeds MAX_RELAYER_FEE_BPS (500)
+            501, // Exceeds MAX_RELAYER_FEE_BPS (500)
             1 ether
         );
-        uint256[2] memory pA = [uint256(1), uint256(2)];
-        uint256[2][2] memory pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
-        uint256[2] memory pC = [uint256(7), uint256(8)];
+        (uint256[2] memory pA, uint256[2][2] memory pB, uint256[2] memory pC) = _dummyProof();
         bytes memory hookData = createHookData(pA, pB, pC, pubSignals);
 
-        vm.prank(POOL_MANAGER);
-        // Will revert with InvalidMerkleRoot or InvalidRelayerFee depending on pool state
-        vm.expectRevert();
+        vm.prank(poolManager);
+        vm.expectRevert(DustSwapHook.InvalidRelayerFee.selector);
         hook.beforeSwap(user, poolKey, params, hookData);
     }
 
-    /// @notice InvalidChainId when proof was generated for a different chain.
-    /// Uses a locally deployed hook since chainId check fires before any external calls.
     function testRevertInvalidChainId() public {
-        address dummyPM = address(0xAA01);
+        address dummyPM = address(0xBB01);
 
         DustSwapHook localHook = new DustSwapHook(
             IPoolManager(dummyPM),
-            IDustSwapVerifier(address(0xAA02)),
-            IDustSwapPool(address(0xAA03)),
-            IDustSwapPool(address(0xAA04)),
+            IDustSwapVerifier(address(0xBB02)),
+            IDustSwapPool(address(0xBB03)),
+            IDustSwapPool(address(0xBB04)),
             address(this)
         );
 
@@ -296,12 +352,10 @@ contract DustSwapHookForkTest is Test {
             uint256(uint160(relayer)),
             uint256(100),
             uint256(1 ether),
-            uint256(999),    // Wrong chainId — will revert before any pool/verifier calls
+            uint256(999), // Wrong chainId
             uint256(0)
         ];
-        uint256[2] memory pA = [uint256(1), uint256(2)];
-        uint256[2][2] memory pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];
-        uint256[2] memory pC = [uint256(7), uint256(8)];
+        (uint256[2] memory pA, uint256[2][2] memory pB, uint256[2] memory pC) = _dummyProof();
         bytes memory hookData = createHookData(pA, pB, pC, pubSignals);
 
         vm.prank(dummyPM);
@@ -309,43 +363,57 @@ contract DustSwapHookForkTest is Test {
         localHook.beforeSwap(user, poolKey, params, hookData);
     }
 
-    // ─── ETH Pool Deposit & Root Verification ──────────────────────────────────
+    function testRevertInvalidProof() public {
+        // Verifier returns false by default — proof rejected
+        SwapParams memory params = SwapParams({
+            zeroForOne: true,
+            amountSpecified: -1 ether,
+            sqrtPriceLimitX96: 0
+        });
 
-    /// @notice Deposit into ETH pool and verify root is tracked
+        uint256[8] memory pubSignals = createPubSignals(
+            KNOWN_ROOT,
+            bytes32(uint256(0x456)),
+            recipient, relayer, 100, 1 ether
+        );
+        (uint256[2] memory pA, uint256[2][2] memory pB, uint256[2] memory pC) = _dummyProof();
+        bytes memory hookData = createHookData(pA, pB, pC, pubSignals);
+
+        vm.prank(poolManager);
+        vm.expectRevert(DustSwapHook.InvalidProof.selector);
+        hook.beforeSwap(user, poolKey, params, hookData);
+    }
+
+    // ─── Deposit & Root Tracking via Real Pool ──────────────────────────────────
+
     function testDepositAndRootTracking() public {
-        // Generate a random commitment
+        // Deploy Poseidon library for the real pool's MerkleTree
+        deployCodeTo(
+            "PoseidonT3.sol:PoseidonT3",
+            0x203a488C06e9add25D4b51F7EDE8e56bCC4B1A1C
+        );
+
+        DustSwapPoolETH realPool = new DustSwapPoolETH();
+        realPool.setDustSwapHook(address(hook));
+
         bytes32 commitment = keccak256(abi.encode("test_deposit", block.timestamp));
 
-        // Check it's not already committed
-        bool alreadyExists = poolETH.commitments(commitment);
-        if (alreadyExists) {
-            // Use a different commitment if collision
-            commitment = keccak256(abi.encode("test_deposit_2", block.timestamp, block.number));
-        }
+        uint32 countBefore = realPool.getDepositCount();
 
-        uint32 countBefore = poolETH.getDepositCount();
-
-        // Deposit 0.01 ETH
-        vm.deal(user, 1 ether);
+        // Deposit 1 ETH (an allowed denomination)
+        vm.deal(user, 10 ether);
         vm.prank(user);
-        (bool success,) = POOL_ETH.call{value: 0.01 ether}(
-            abi.encodeWithSignature("deposit(bytes32)", commitment)
-        );
-        assertTrue(success, "ETH deposit should succeed");
+        realPool.deposit{value: 1 ether}(commitment);
 
-        uint32 countAfter = poolETH.getDepositCount();
+        uint32 countAfter = realPool.getDepositCount();
         assertEq(countAfter, countBefore + 1, "Deposit count should increment");
 
-        // Verify the new root is known
-        bytes32 newRoot = poolETH.getLastRoot();
-        assertTrue(poolETH.isKnownRoot(newRoot), "New root should be known");
-
-        emit log_named_bytes32("New ETH pool root after deposit", newRoot);
+        bytes32 newRoot = realPool.getLastRoot();
+        assertTrue(realPool.isKnownRoot(newRoot), "New root should be known");
     }
 
     // ─── hookData ABI Encoding Consistency ────────────────────────────────────
 
-    /// @notice Verify hookData encoding/decoding roundtrip
     function testHookDataEncodingRoundtrip() public pure {
         uint256[2] memory pA = [uint256(111), uint256(222)];
         uint256[2][2] memory pB = [[uint256(333), uint256(444)], [uint256(555), uint256(666)]];
@@ -358,10 +426,8 @@ contract DustSwapHookForkTest is Test {
             uint256(0), uint256(0)
         ];
 
-        // Encode
         bytes memory encoded = abi.encode(pA, pB, pC, pubSignals);
 
-        // Decode (same as DustSwapHook.beforeSwap does)
         (
             uint256[2] memory dA,
             uint256[2][2] memory dB,
@@ -369,7 +435,6 @@ contract DustSwapHookForkTest is Test {
             uint256[8] memory dPub
         ) = abi.decode(encoded, (uint256[2], uint256[2][2], uint256[2], uint256[8]));
 
-        // Verify roundtrip
         assertEq(dA[0], pA[0], "pA[0] mismatch");
         assertEq(dA[1], pA[1], "pA[1] mismatch");
         assertEq(dB[0][0], pB[0][0], "pB[0][0] mismatch");
@@ -383,8 +448,6 @@ contract DustSwapHookForkTest is Test {
         }
     }
 
-    /// @notice Verify the client's hookData format matches what beforeSwap expects
-    ///         by checking length: 4 ABI-encoded dynamic types of fixed arrays
     function testHookDataLength() public pure {
         uint256[2] memory pA = [uint256(1), uint256(2)];
         uint256[2][2] memory pB = [[uint256(3), uint256(4)], [uint256(5), uint256(6)]];

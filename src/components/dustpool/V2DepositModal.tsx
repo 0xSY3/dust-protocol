@@ -19,6 +19,7 @@ import {
   ExternalLinkIcon,
   QRIcon,
   LockIcon,
+  ChainIcon,
 } from "@/components/stealth/icons";
 import type { V2Keys } from "@/lib/dustpool/v2/types";
 import { errorToUserMessage } from "@/lib/dustpool/v2/errors";
@@ -287,6 +288,10 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId, hasKeys: has
                 <ShieldIcon size={16} color="#00FF41" />
                 <span className="text-sm font-bold text-white font-mono tracking-wider">
                   [ DEPOSIT_V2 ]
+                </span>
+                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)]">
+                  <ChainIcon size={14} chainId={chainId} />
+                  <span className="text-[9px] text-[rgba(255,255,255,0.5)] font-mono">{getChainConfig(chainId).name}</span>
                 </span>
               </div>
               {!isBusy && (

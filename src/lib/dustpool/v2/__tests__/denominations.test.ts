@@ -97,8 +97,8 @@ describe('decompose', () => {
     const result = decompose(amount, ETH_DENOMINATIONS)
     const sum = result.reduce((a, b) => a + b, 0n)
     expect(sum).toBe(amount)
-    // Should start with 10 ETH chunks
-    expect(result[0]).toBe(parseEther('10'))
+    // Should start with the 50 ETH denomination (largest that fits)
+    expect(result[0]).toBe(parseEther('50'))
   })
 
   it('produces chunks in descending order', () => {
@@ -187,10 +187,11 @@ describe('suggestRoundedAmounts', () => {
 
 describe('decompose — maxChunks', () => {
   it('respects maxChunks and merges remainder into last chunk', () => {
-    // #given — 29.99 ETH needs 11 chunks without limit
+    // #given — 29.99 ETH needs 10 chunks without limit
+    // (20 + 5 + 3 + 1 + 0.5 + 0.3 + 0.1 + 0.05 + 0.03 + 0.01)
     const amount = parseEther('29.99')
     const unlimitedChunks = decompose(amount, ETH_DENOMINATIONS)
-    expect(unlimitedChunks.length).toBe(11)
+    expect(unlimitedChunks.length).toBe(10)
 
     // #when — limit to 7 chunks
     const limited = decompose(amount, ETH_DENOMINATIONS, 7)
@@ -203,19 +204,19 @@ describe('decompose — maxChunks', () => {
 
   it('last chunk absorbs remainder when maxChunks reached', () => {
     // #given — 29.99 ETH limited to 7 chunks
-    // Expected: [10, 10, 5, 3, 1, 0.5, 0.3+0.19=0.49]
+    // Expected: [20, 5, 3, 1, 0.5, 0.3, 0.1+0.09=0.19]
     const amount = parseEther('29.99')
     const limited = decompose(amount, ETH_DENOMINATIONS, 7)
 
     // #then — first 6 chunks are standard denominations
-    expect(limited[0]).toBe(parseEther('10'))
-    expect(limited[1]).toBe(parseEther('10'))
-    expect(limited[2]).toBe(parseEther('5'))
-    expect(limited[3]).toBe(parseEther('3'))
-    expect(limited[4]).toBe(parseEther('1'))
-    expect(limited[5]).toBe(parseEther('0.5'))
-    // Last chunk: 0.3 + 0.19 remainder = 0.49
-    expect(limited[6]).toBe(parseEther('0.49'))
+    expect(limited[0]).toBe(parseEther('20'))
+    expect(limited[1]).toBe(parseEther('5'))
+    expect(limited[2]).toBe(parseEther('3'))
+    expect(limited[3]).toBe(parseEther('1'))
+    expect(limited[4]).toBe(parseEther('0.5'))
+    expect(limited[5]).toBe(parseEther('0.3'))
+    // Last chunk: 0.1 + 0.09 remainder = 0.19
+    expect(limited[6]).toBe(parseEther('0.19'))
   })
 
   it('returns all chunks when count is within limit', () => {
@@ -309,8 +310,8 @@ describe('decompose — edge cases', () => {
   })
 
   it('exact large amount decomposes cleanly', () => {
-    // 30 ETH = 3 x 10 ETH — no remainder
+    // 30 ETH = 20 + 10 via greedy — no remainder
     const result = decompose(parseEther('30'), ETH_DENOMINATIONS)
-    expect(result).toEqual([parseEther('10'), parseEther('10'), parseEther('10')])
+    expect(result).toEqual([parseEther('20'), parseEther('10')])
   })
 })

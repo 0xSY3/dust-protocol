@@ -9,9 +9,10 @@ export const USDC_ADDRESS_SEPOLIA = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'
 
 const USDC_ADDRESSES: Record<number, Address> = {
   11155111: USDC_ADDRESS_SEPOLIA,
-  421614: '0xf3C3351D6bd0098EEb33ca8f830FAf2a141Ea2e1',
+  421614: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
   11155420: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7',
   84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+  8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
 }
 
 export function getUSDCAddress(chainId?: number): Address {
@@ -42,6 +43,17 @@ export const SUPPORTED_TOKENS: Record<string, SwapToken> = {
     name: 'USD Coin',
     decimals: 6,
   },
+}
+
+/** Chain-aware token list — resolves USDC to the correct address per chain */
+export function getSupportedTokens(chainId?: number): Record<string, SwapToken> {
+  return {
+    ETH: SUPPORTED_TOKENS.ETH,
+    USDC: {
+      ...SUPPORTED_TOKENS.USDC,
+      address: getUSDCAddress(chainId),
+    },
+  }
 }
 
 // ─── Pool Config ─────────────────────────────────────────────────────────────

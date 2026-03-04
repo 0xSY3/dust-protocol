@@ -47,6 +47,9 @@ contract DustSwapPoolETH is MerkleTree {
 
     event DenominationAdded(uint256 amount);
     event DenominationRemoved(uint256 amount);
+    event DustSwapHookUpdated(address indexed hook);
+    event AuthorizedRouterUpdated(address indexed router, bool authorized);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     error InvalidCommitment();
     error CommitmentAlreadyExists();
@@ -141,6 +144,7 @@ contract DustSwapPoolETH is MerkleTree {
     /// @notice Set the DustSwapHook address (owner only, set once after deployment)
     function setDustSwapHook(address _dustSwapHook) external onlyOwner {
         dustSwapHook = _dustSwapHook;
+        emit DustSwapHookUpdated(_dustSwapHook);
     }
 
     /// @notice Set authorized router for releasing deposited ETH
@@ -148,6 +152,7 @@ contract DustSwapPoolETH is MerkleTree {
     /// @param authorized Whether the router is authorized
     function setAuthorizedRouter(address router, bool authorized) external onlyOwner {
         authorizedRouters[router] = authorized;
+        emit AuthorizedRouterUpdated(router, authorized);
     }
 
     /// @notice Add a new allowed deposit denomination (owner only)
@@ -181,7 +186,9 @@ contract DustSwapPoolETH is MerkleTree {
 
     /// @notice Transfer ownership
     function transferOwnership(address newOwner) external onlyOwner {
+        address oldOwner = owner;
         owner = newOwner;
+        emit OwnershipTransferred(oldOwner, newOwner);
     }
 
     receive() external payable {}

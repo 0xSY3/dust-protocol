@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { V2SwapCard } from "@/components/swap/V2SwapCard";
+import { ProtocolMetrics } from "@/components/metrics/ProtocolMetrics";
 
 export default function PoolsPageClient() {
   const { activeChainId } = useAuth();
@@ -25,6 +26,8 @@ export default function PoolsPageClient() {
             <V2SwapCard chainId={activeChainId} />
           </div>
         </div>
+
+        <ProtocolMetrics />
       </div>
     </div>
   );

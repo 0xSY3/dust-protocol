@@ -10,9 +10,19 @@ contract DustSwapPoolETHTest is Test {
     address hook = address(0xBEEF);
     address user = address(0xCAFE);
 
+    // Allowed denomination used across tests
+    uint256 constant DENOM = 1 ether;
+    uint256 constant DENOM_SMALL = 0.1 ether;
+
     event Deposit(bytes32 indexed commitment, uint32 leafIndex, uint256 amount, uint256 timestamp);
 
     function setUp() public {
+        // Deploy Poseidon library at its linked address (required by MerkleTree)
+        deployCodeTo(
+            "PoseidonT3.sol:PoseidonT3",
+            0x203a488C06e9add25D4b51F7EDE8e56bCC4B1A1C
+        );
+
         pool = new DustSwapPoolETH();
         pool.setDustSwapHook(hook);
         vm.deal(user, 100 ether);
@@ -21,7 +31,7 @@ contract DustSwapPoolETHTest is Test {
     function test_deposit() public {
         bytes32 commitment = keccak256("test_commitment_1");
         vm.prank(user);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.deposit{value: DENOM}(commitment);
 
         assertTrue(pool.isCommitmentExists(commitment));
         assertEq(pool.getDepositCount(), 1);
@@ -30,10 +40,10 @@ contract DustSwapPoolETHTest is Test {
     function test_deposit_emitsEvent() public {
         bytes32 commitment = keccak256("test_commitment_2");
         vm.expectEmit(true, false, false, true);
-        emit Deposit(commitment, 0, 1 ether, block.timestamp);
+        emit Deposit(commitment, 0, DENOM, block.timestamp);
 
         vm.prank(user);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.deposit{value: DENOM}(commitment);
     }
 
     function test_deposit_revert_zeroValue() public {
@@ -46,17 +56,17 @@ contract DustSwapPoolETHTest is Test {
     function test_deposit_revert_zeroCommitment() public {
         vm.prank(user);
         vm.expectRevert(DustSwapPoolETH.InvalidCommitment.selector);
-        pool.deposit{value: 1 ether}(bytes32(0));
+        pool.deposit{value: DENOM}(bytes32(0));
     }
 
     function test_deposit_revert_duplicateCommitment() public {
         bytes32 commitment = keccak256("test_commitment_4");
         vm.prank(user);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.deposit{value: DENOM}(commitment);
 
         vm.prank(user);
         vm.expectRevert(DustSwapPoolETH.CommitmentAlreadyExists.selector);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.deposit{value: DENOM}(commitment);
     }
 
     function test_markNullifier_onlyHook() public {
@@ -89,7 +99,7 @@ contract DustSwapPoolETHTest is Test {
 
         bytes32 commitment = keccak256("test_commitment_5");
         vm.prank(user);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.deposit{value: DENOM}(commitment);
 
         bytes32 rootAfter = pool.getLastRoot();
         assertTrue(rootBefore != rootAfter);
@@ -100,7 +110,7 @@ contract DustSwapPoolETHTest is Test {
         for (uint256 i = 0; i < 5; i++) {
             bytes32 commitment = keccak256(abi.encodePacked("commitment_", i));
             vm.prank(user);
-            pool.deposit{value: 0.1 ether}(commitment);
+            pool.deposit{value: DENOM_SMALL}(commitment);
         }
 
         assertEq(pool.getDepositCount(), 5);

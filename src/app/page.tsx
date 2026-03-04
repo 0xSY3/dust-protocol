@@ -10,6 +10,7 @@ import { isPrivyEnabled } from "@/config/privy";
 import { useConnect, useConnectors } from "wagmi";
 import { injected } from "wagmi/connectors";
 import DecryptedText from "@/components/DecryptedText";
+import { ProtocolMetrics } from "@/components/metrics/ProtocolMetrics";
 
 // One-time cleanup of stale cache data from previous sessions
 function cleanupCorruptedStorage() {
@@ -349,6 +350,13 @@ export default function Home() {
             </div>
           </div>
 
+        </div>
+
+        {/* Protocol Metrics */}
+        <div className="relative z-10 w-full px-6 md:px-[60px] pb-16">
+          <div className="max-w-[900px] mx-auto">
+            <ProtocolMetrics />
+          </div>
         </div>
 
         {/* Footer */}

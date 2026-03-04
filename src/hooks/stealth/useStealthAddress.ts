@@ -54,6 +54,10 @@ export function useStealthAddress() {
   const [selectedClaimIndex, setSelectedClaimIndex] = useState(0);
   const signatureRef = useRef<string | null>(null);
 
+  // Ref-stabilize claimAddresses so refreshClaimBalances doesn't capture stale addresses
+  const claimAddressesRef = useRef(claimAddresses);
+  useEffect(() => { claimAddressesRef.current = claimAddresses; }, [claimAddresses]);
+
   // Auto-restore: silently re-derive keys on page load using stored encrypted PIN
   const [autoRestoreFailed, setAutoRestoreFailed] = useState(false);
   const autoRestoringRef = useRef(false);
@@ -310,10 +314,11 @@ export function useStealthAddress() {
   }, [claimAddresses.length]);
 
   const refreshClaimBalances = useCallback(async () => {
-    if (!claimAddresses.length) return;
-    const balances = await Promise.all(claimAddresses.map(a => fetchBalance(a.address)));
+    const current = claimAddressesRef.current;
+    if (!current.length) return;
+    const balances = await Promise.all(current.map(a => fetchBalance(a.address)));
     setClaimAddresses(prev => prev.map((a, i) => ({ ...a, balance: balances[i] })));
-  }, [claimAddresses, fetchBalance]);
+  }, [fetchBalance]);
 
   // Auto-restore: sign message silently → decrypt stored PIN → re-derive keys
   // Privy embedded wallets sign without popup; external wallets show one signature request

@@ -109,14 +109,75 @@ metaAddress = (spendKey * G, viewKey * G)  // registered on ERC-6538
 
 ## Supported Networks
 
-| Network | Chain ID | Currency | Explorer |
-|---------|----------|----------|---------|
-| Ethereum Sepolia | `11155111` | ETH | [sepolia.etherscan.io](https://sepolia.etherscan.io) |
-| Thanos Sepolia | `111551119090` | TON | [explorer.thanos-sepolia.dustamak.network](https://explorer.thanos-sepolia.dustamak.network) |
+| Network | Chain ID | Currency | Explorer | DustPool V2 | DustSwap | Compliance |
+|---------|----------|----------|---------|:-----------:|:--------:|:----------:|
+| Ethereum Sepolia | `11155111` | ETH | [sepolia.etherscan.io](https://sepolia.etherscan.io) | Yes | Yes | No |
+| Base Sepolia | `84532` | ETH | [sepolia.basescan.org](https://sepolia.basescan.org) | Yes | Yes | Yes |
+| Arbitrum Sepolia | `421614` | ETH | [sepolia.arbiscan.io](https://sepolia.arbiscan.io) | Yes | Yes | Yes |
+| OP Sepolia | `11155420` | ETH | [sepolia-optimism.etherscan.io](https://sepolia-optimism.etherscan.io) | Yes | No | Yes |
+| Thanos Sepolia | `111551119090` | TON | [explorer.thanos-sepolia.tokamak.network](https://explorer.thanos-sepolia.tokamak.network) | Yes | No | No |
+| Base Mainnet | `8453` | ETH | [basescan.org](https://basescan.org) | Pending | Pending | Pending |
 
-`.dust` name registry is canonical on Ethereum Sepolia. DustSwap (privacy swaps) is currently on Ethereum Sepolia only.
+`.dust` name registry is canonical on Ethereum Sepolia. DustSwap (private swaps) operates on chains with Uniswap V4 deployed.
 
-Contract addresses: [`docs/CONTRACTS.md`](docs/CONTRACTS.md)
+### Base Sepolia Deployment
+
+Dust Protocol is fully deployed on Base Sepolia (chain ID: `84532`) with 15+ verified contracts covering stealth transfers, ZK privacy pools, private swaps, compliance, and gasless claims.
+
+#### Contract Addresses
+
+**Privacy Pool and Verifiers:**
+
+| Contract | Address |
+|----------|---------|
+| DustPoolV2 | [`0x17f52f01ffcB6d3C376b2b789314808981cebb16`](https://sepolia.basescan.org/address/0x17f52f01ffcB6d3C376b2b789314808981cebb16) |
+| FflonkVerifier (9 signals) | [`0xe51ebD6B1F1ad7d7E4874Bb7D4E53a0504cCf652`](https://sepolia.basescan.org/address/0xe51ebD6B1F1ad7d7E4874Bb7D4E53a0504cCf652) |
+| FflonkSplitVerifier (15 signals) | [`0x503e68AdccFbAc5A2F991FC285735a119bF364F7`](https://sepolia.basescan.org/address/0x503e68AdccFbAc5A2F991FC285735a119bF364F7) |
+| ComplianceVerifier | [`0x33b72e6d7b39a32B88715b658f2248897Af2e650`](https://sepolia.basescan.org/address/0x33b72e6d7b39a32B88715b658f2248897Af2e650) |
+| DustSwapAdapterV2 | [`0x844d11bD48D85411eE8cD1a7cB0aC00672B1d516`](https://sepolia.basescan.org/address/0x844d11bD48D85411eE8cD1a7cB0aC00672B1d516) |
+
+**Stealth and Name Resolution:**
+
+| Contract | Address |
+|----------|---------|
+| ERC5564Announcer | [`0x26640Ae565CB324b9253b41101E415f983E85DEf`](https://sepolia.basescan.org/address/0x26640Ae565CB324b9253b41101E415f983E85DEf) |
+| ERC6538Registry | [`0xF1c5F2bF2E21287C49779c6893728A2B954478d1`](https://sepolia.basescan.org/address/0xF1c5F2bF2E21287C49779c6893728A2B954478d1) |
+| NameVerifier | [`0x416D52f0566081b6881eA887baD3FB1a54fa94aF`](https://sepolia.basescan.org/address/0x416D52f0566081b6881eA887baD3FB1a54fa94aF) |
+
+**ERC-4337 Account Abstraction:**
+
+| Contract | Address |
+|----------|---------|
+| DustPaymaster | [`0xA2ec6653f6F56bb1215071D4cD8daE7A5A87ddB2`](https://sepolia.basescan.org/address/0xA2ec6653f6F56bb1215071D4cD8daE7A5A87ddB2) |
+| StealthAccountFactory | [`0xd539DA238B7407aE06886458dBdD8e4068c29A3e`](https://sepolia.basescan.org/address/0xd539DA238B7407aE06886458dBdD8e4068c29A3e) |
+| StealthWalletFactory | [`0xF201ad71388aA1624B8005E3d9c4f02B6FC2D547`](https://sepolia.basescan.org/address/0xF201ad71388aA1624B8005E3d9c4f02B6FC2D547) |
+
+Full address list: [`docs/CONTRACTS.md`](docs/CONTRACTS.md)
+
+#### Quick Start on Base Sepolia
+
+1. **Get testnet ETH** -- [Alchemy Base Sepolia Faucet](https://www.alchemy.com/faucets/base-sepolia)
+2. **Get testnet USDC** -- [Circle Faucet](https://faucet.circle.com/)
+3. **Connect wallet** and switch to Base Sepolia (chain ID: `84532`)
+4. Run the app locally:
+   ```bash
+   npm install
+   cp .env.example .env.local
+   npm run dev
+   ```
+
+#### Feature Matrix (Base Sepolia)
+
+| Feature | Status |
+|---------|--------|
+| Stealth payments (ECDH) | Supported |
+| Name registration (.dust) | Supported |
+| DustPool V2 deposits/withdrawals | Supported |
+| Split withdrawals (2-in-8-out) | Supported |
+| Private swaps (DustSwap V2) | Supported |
+| ZK exclusion compliance proofs | Supported |
+| ERC-4337 sponsored claims | Supported |
+| EIP-7702 delegation | Not supported |
 
 ---
 
@@ -134,8 +195,12 @@ npm run dev
 # Required — relayer key for gas sponsorship
 RELAYER_PRIVATE_KEY=<private-key>
 
-# Optional — Alchemy for higher rate limits on Sepolia
+# Optional — Alchemy for higher rate limits
 NEXT_PUBLIC_ALCHEMY_SEPOLIA_RPC=https://eth-sepolia.g.alchemy.com/v2/<key>
+NEXT_PUBLIC_ALCHEMY_BASE_SEPOLIA_RPC=https://base-sepolia.g.alchemy.com/v2/<key>
+NEXT_PUBLIC_ALCHEMY_BASE_RPC=https://base-mainnet.g.alchemy.com/v2/<key>
+NEXT_PUBLIC_ALCHEMY_ARBITRUM_SEPOLIA_RPC=https://arb-sepolia.g.alchemy.com/v2/<key>
+NEXT_PUBLIC_ALCHEMY_OP_SEPOLIA_RPC=https://opt-sepolia.g.alchemy.com/v2/<key>
 
 # Optional — The Graph for faster name lookups
 NEXT_PUBLIC_SUBGRAPH_URL_SEPOLIA=https://api.studio.thegraph.com/query/<id>/dust-protocol-sepolia/version/latest

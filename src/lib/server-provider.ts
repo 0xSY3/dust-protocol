@@ -98,11 +98,27 @@ const MAX_GAS_PRICE_BY_CHAIN: Record<number, ethers.BigNumber> = {
   421614: ethers.utils.parseUnits('5', 'gwei'),
   11155420: ethers.utils.parseUnits('5', 'gwei'),
   84532: ethers.utils.parseUnits('5', 'gwei'),
+  8453: ethers.utils.parseUnits('5', 'gwei'),
 };
 const DEFAULT_MAX_GAS = ethers.utils.parseUnits('100', 'gwei');
 
 export function getMaxGasPrice(chainId: number): ethers.BigNumber {
   return MAX_GAS_PRICE_BY_CHAIN[chainId] ?? DEFAULT_MAX_GAS;
+}
+
+// Block number cache — avoids redundant RPC calls on hot paths (2s TTL ~ one Base block)
+const blockNumberCache = new Map<number, { block: number; timestamp: number }>()
+const BLOCK_CACHE_TTL_MS = 2000
+
+export async function getCachedBlockNumber(chainId: number): Promise<number> {
+  const cached = blockNumberCache.get(chainId)
+  if (cached && Date.now() - cached.timestamp < BLOCK_CACHE_TTL_MS) {
+    return cached.block
+  }
+  const provider = getServerProvider(chainId)
+  const block = await provider.getBlockNumber()
+  blockNumberCache.set(chainId, { block, timestamp: Date.now() })
+  return block
 }
 
 export function parseChainId(body: Record<string, unknown>): number {

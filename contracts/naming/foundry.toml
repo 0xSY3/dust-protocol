@@ -12,5 +12,14 @@ remappings = [
 ]
 
 [rpc_endpoints]
-ethereum_sepolia = "https://ethereum-sepolia-rpc.publicnode.com"
+ethereum_sepolia = "${SEPOLIA_RPC_URL}"
 thanos_sepolia = "https://rpc.thanos-sepolia.tokamak.network"
+arbitrum_sepolia = "${ARB_SEPOLIA_RPC_URL}"
+op_sepolia = "${OP_SEPOLIA_RPC_URL}"
+base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
+
+[etherscan]
+ethereum_sepolia = { key = "${ETHERSCAN_API_KEY}", url = "https://api-sepolia.etherscan.io/api", chain = 11155111 }
+arbitrum_sepolia = { key = "${ARBISCAN_API_KEY}", url = "https://api-sepolia.arbiscan.io/api", chain = 421614 }
+op_sepolia = { key = "${OP_ETHERSCAN_API_KEY}", url = "https://api-sepolia-optimistic.etherscan.io/api", chain = 11155420 }
+base_sepolia = { key = "${BASESCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api", chain = 84532 }

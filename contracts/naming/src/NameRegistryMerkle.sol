@@ -135,6 +135,17 @@ contract NameRegistryMerkle {
 
         address oldOwner = entry.owner;
         entry.owner = newOwner;
+
+        // Remove from old owner's ownedNames array
+        bytes32[] storage oldOwnerNames = ownedNames[oldOwner];
+        for (uint256 i = 0; i < oldOwnerNames.length; i++) {
+            if (oldOwnerNames[i] == nameHash) {
+                oldOwnerNames[i] = oldOwnerNames[oldOwnerNames.length - 1];
+                oldOwnerNames.pop();
+                break;
+            }
+        }
+
         ownedNames[newOwner].push(nameHash);
 
         emit NameTransferred(nameHash, oldOwner, newOwner);

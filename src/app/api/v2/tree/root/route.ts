@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getRelayerTreeRoot } from '@/lib/dustpool/v2/relayer-tree'
 import { getDustPoolV2Address } from '@/lib/dustpool/v2/contracts'
 import { DEFAULT_CHAIN_ID } from '@/config/chains'
+import { toBytes32Hex } from '@/lib/dustpool/poseidon'
 
 export const maxDuration = 60
 
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
     const root = await getRelayerTreeRoot(chainId)
 
     return NextResponse.json(
-      { root: '0x' + root.toString(16) },
+      { root: toBytes32Hex(root) },
       { headers: NO_STORE },
     )
   } catch (e) {

@@ -247,7 +247,7 @@ contract DustSwapRouter {
         } else {
             // ERC20: sync + transfer + settle pattern
             poolManager.sync(currency);
-            IERC20Router(currency).transfer(address(poolManager), amount);
+            if (!IERC20Router(currency).transfer(address(poolManager), amount)) revert SwapFailed();
             poolManager.settle();
         }
     }

@@ -6,7 +6,7 @@
 
 import { ethers } from 'ethers'
 import { readFile, writeFile } from 'fs/promises'
-import { getServerProvider, getServerSponsor } from '@/lib/server-provider'
+import { getServerProvider, getServerSponsor, getCachedBlockNumber } from '@/lib/server-provider'
 import { getDustPoolV2Address, DUST_POOL_V2_ABI } from './contracts'
 import { MerkleTree } from '../merkle'
 import { toBytes32Hex } from '../poseidon'
@@ -22,8 +22,19 @@ const V2_START_BLOCKS: Record<number, number> = {
   84532: 38350239,
 }
 
-// drpc.org enforces 10K block limit on eth_getLogs
-const EVENT_SCAN_CHUNK = 10_000
+// L2s support larger log ranges; drpc.org enforces 10K on Eth Sepolia
+const EVENT_SCAN_CHUNK_BY_CHAIN: Record<number, number> = {
+  11155111: 10_000,     // Eth Sepolia (drpc.org limit)
+  111551119090: 10_000, // Thanos Sepolia
+  84532: 50_000,        // Base Sepolia (2s blocks, native RPC)
+  421614: 50_000,       // Arbitrum Sepolia (~0.25s blocks)
+  11155420: 50_000,     // OP Sepolia (2s blocks)
+}
+const DEFAULT_EVENT_SCAN_CHUNK = 10_000
+
+function getEventScanChunk(chainId: number): number {
+  return EVENT_SCAN_CHUNK_BY_CHAIN[chainId] ?? DEFAULT_EVENT_SCAN_CHUNK
+}
 
 // ─── Tree State ─────────────────────────────────────────────────────────────────
 
@@ -150,15 +161,16 @@ async function syncInternal(chainId: number): Promise<TreeState> {
   }
 
   const provider = getServerProvider(chainId)
-  const currentBlock = await provider.getBlockNumber()
+  const currentBlock = await getCachedBlockNumber(chainId)
 
   if (state.lastSyncedBlock >= currentBlock) return state
 
   const contract = new ethers.Contract(address, DUST_POOL_V2_ABI as unknown as ethers.ContractInterface, provider)
   const fromBlock = state.lastSyncedBlock + 1
+  const chunkSize = getEventScanChunk(chainId)
 
-  for (let from = fromBlock; from <= currentBlock; from += EVENT_SCAN_CHUNK) {
-    const to = Math.min(from + EVENT_SCAN_CHUNK - 1, currentBlock)
+  for (let from = fromBlock; from <= currentBlock; from += chunkSize) {
+    const to = Math.min(from + chunkSize - 1, currentBlock)
     const events = await contract.queryFilter(
       contract.filters.DepositQueued(),
       from,

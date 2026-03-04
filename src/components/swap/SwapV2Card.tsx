@@ -1010,6 +1010,18 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
 
           {/* PIN prompt moved to top of card — no longer inline here */}
 
+          {/* No liquidity banner */}
+          {!isProcessing && amountValid && !isQuoteLoading && quotedAmountOut <= 0n && swapSupported && (
+            <div className="mt-3 p-3 rounded-sm bg-[rgba(245,158,11,0.06)] border border-[rgba(245,158,11,0.15)]">
+              <div className="flex items-start gap-2">
+                <AlertCircleIcon size={14} color="#f59e0b" />
+                <p className="text-[11px] text-amber-400 font-mono leading-relaxed">
+                  {quoteError || "Swap not available on this chain -- pool has no liquidity."}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Swap / Reset Button */}
           <button
             onClick={

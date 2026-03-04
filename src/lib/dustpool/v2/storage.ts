@@ -296,15 +296,16 @@ export async function getBalance(
 }
 
 /**
- * Get balances for all assets across unspent notes, grouped by asset hex.
- * Returns a Map keyed by asset hex string with bigint total values.
+ * Get balances for all assets across unspent notes on a specific chain,
+ * grouped by asset hex. Returns a Map keyed by asset hex string with bigint total values.
  */
 export async function getAllBalances(
   db: IDBDatabase,
   walletAddress: string,
+  chainId: number,
   encKey?: CryptoKey
 ): Promise<Map<string, bigint>> {
-  const notes = await getUnspentNotes(db, walletAddress, undefined, encKey)
+  const notes = await getUnspentNotes(db, walletAddress, chainId, encKey)
   const balances = new Map<string, bigint>()
 
   for (const note of notes) {

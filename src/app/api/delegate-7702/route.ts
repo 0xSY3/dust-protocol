@@ -79,14 +79,12 @@ export async function POST(req: Request) {
       transport: http(config.rpcUrl),
     });
 
-    // Build calldata based on mode
-    let calldata: `0x${string}`;
     if (mode === 'drain') {
       const { drainTo, drainSig } = body;
       if (!drainTo || !drainSig) {
         return NextResponse.json({ error: 'Missing drain fields' }, { status: 400, headers: NO_STORE });
       }
-      calldata = encodeFunctionData({
+      const calldata = encodeFunctionData({
         abi: [{
           name: 'drain',
           type: 'function',
@@ -97,12 +95,23 @@ export async function POST(req: Request) {
         functionName: 'drain',
         args: [drainTo, drainSig],
       });
+
+      const txHash = await client.sendTransaction({
+        authorizationList: [authorization],
+        to: stealthAddress as `0x${string}`,
+        data: calldata,
+        gas: 200_000n,
+      });
+
+      console.log(`[7702] drain for ${stealthAddress} → tx: ${txHash}`);
+
+      return NextResponse.json({ txHash }, { headers: NO_STORE });
     } else if (mode === 'initialize') {
       const { initializeOwner, initializeSig } = body;
       if (!initializeOwner || !initializeSig) {
         return NextResponse.json({ error: 'Missing initialize fields' }, { status: 400, headers: NO_STORE });
       }
-      calldata = encodeFunctionData({
+      const calldata = encodeFunctionData({
         abi: [{
           name: 'initialize',
           type: 'function',
@@ -113,6 +122,17 @@ export async function POST(req: Request) {
         functionName: 'initialize',
         args: [initializeOwner, initializeSig],
       });
+
+      const txHash = await client.sendTransaction({
+        authorizationList: [authorization],
+        to: stealthAddress as `0x${string}`,
+        data: calldata,
+        gas: 200_000n,
+      });
+
+      console.log(`[7702] initialize for ${stealthAddress} → tx: ${txHash}`);
+
+      return NextResponse.json({ txHash }, { headers: NO_STORE });
     } else if (mode === 'pool-deposit') {
       // Pool deposit: initialize (if needed) → execute(dustPool, balance, depositCalldata)
       const { initializeSig, commitment } = body;
@@ -243,18 +263,6 @@ export async function POST(req: Request) {
     } else {
       return NextResponse.json({ error: 'Invalid mode (drain, initialize, or pool-deposit)' }, { status: 400, headers: NO_STORE });
     }
-
-    // Submit type-4 transaction with EIP-7702 authorization (drain/initialize modes)
-    const txHash = await client.sendTransaction({
-      authorizationList: [authorization],
-      to: stealthAddress as `0x${string}`,
-      data: calldata,
-      gas: 200_000n,
-    });
-
-    console.log(`[7702] ${mode} for ${stealthAddress} → tx: ${txHash}`);
-
-    return NextResponse.json({ txHash }, { headers: NO_STORE });
   } catch (e) {
     console.error('[7702] Error:', e);
     const message = e instanceof Error ? e.message : 'Unknown error';

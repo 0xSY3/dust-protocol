@@ -76,11 +76,17 @@ export function OnboardingWizard() {
       // isReactivation (captured at render) could be stale.
       const alreadyHasName = ownedNames.length > 0;
 
+      // Track locally — setMetaRegWarning won't update the closure variable
+      let hasMetaWarning = false;
+
       if (alreadyHasName) {
         // Wallet already has a name — just re-derive keys and re-register ERC-6538 meta-address.
         // Skip registerName to avoid an unnecessary API call.
         const metaOk = await tryRegisterMeta();
-        if (!metaOk) setMetaRegWarning("Account restored, but stealth keys couldn't be registered on-chain. Your account may not be discoverable from other devices.");
+        if (!metaOk) {
+          hasMetaWarning = true;
+          setMetaRegWarning("Account restored, but stealth keys couldn't be registered on-chain. Your account may not be discoverable from other devices.");
+        }
       } else if (isReclaiming) {
         // Reclaim flow: user says they already have an account.
         // Use derived metaAddress to find their name via server-side lookup.
@@ -107,7 +113,10 @@ export function OnboardingWizard() {
           tryRegisterMeta(),
         ]);
         if (!nameTx) throw new Error("Failed to register name");
-        if (!metaOk) setMetaRegWarning("Account created, but stealth keys couldn't be registered on-chain. Your account may not be discoverable from other devices.");
+        if (!metaOk) {
+          hasMetaWarning = true;
+          setMetaRegWarning("Account created, but stealth keys couldn't be registered on-chain. Your account may not be discoverable from other devices.");
+        }
       }
 
       if (address) {
@@ -115,7 +124,7 @@ export function OnboardingWizard() {
       }
 
       // If meta registration failed, briefly show warning before navigating
-      if (metaRegWarning) {
+      if (hasMetaWarning) {
         await new Promise(r => setTimeout(r, 3000));
       }
 

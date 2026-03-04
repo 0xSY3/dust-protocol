@@ -105,7 +105,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.setItem(CHAIN_STORAGE_KEY, chainId.toString());
     }
-  }, []);
+    // Also switch the wallet to match
+    if (isConnected && switchChain && walletChainId !== chainId) {
+      try {
+        switchChain({ chainId });
+      } catch {
+        // User rejected — wallet stays on old chain, mismatch banner will show
+      }
+    }
+  }, [isConnected, switchChain, walletChainId]);
 
   const isChainMismatch = isConnected
     && walletChainId !== undefined

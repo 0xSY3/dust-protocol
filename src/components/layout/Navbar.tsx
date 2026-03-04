@@ -9,7 +9,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { DustLogo } from "@/components/DustLogo";
 import { getSupportedChains } from "@/config/chains";
 import { ChainIcon as ChainTokenIcon } from "@/components/stealth/icons";
-import { FeatureMatrix } from "@/components/ui/FeatureMatrix";
 import { MenuIcon, XIcon, ChevronDownIcon, CopyIcon, LogOutIcon, CheckIcon } from "lucide-react";
 import { isPrivyEnabled } from "@/config/privy";
 import { useLogin, usePrivy, useLogout } from "@privy-io/react-auth";
@@ -198,13 +197,6 @@ export function Navbar() {
                         </button>
                       );
                     })}
-                  </div>
-                  {/* Feature availability for selected chain */}
-                  <div className="border-t border-white/[0.04]">
-                    <div className="px-4 pt-2.5 pb-1">
-                      <span className="text-[10px] font-mono text-white/25 tracking-[0.2em] uppercase">Features</span>
-                    </div>
-                    <FeatureMatrix chainId={activeChainId} />
                   </div>
                 </div>
               )}

@@ -2,7 +2,7 @@
 // Each supported chain has its contract addresses, creation codes, and metadata
 
 import { defineChain, type Chain } from 'viem';
-import { arbitrumSepolia, optimismSepolia, baseSepolia } from 'viem/chains';
+import { arbitrumSepolia, optimismSepolia, baseSepolia, base } from 'viem/chains';
 
 export interface ChainContracts {
   announcer: string;
@@ -370,6 +370,61 @@ const BASE_SEPOLIA_CONFIG: ChainConfig = {
   testnet: true,
 };
 
+// ─── Base Mainnet ───────────────────────────────────────────────────────────────
+
+const BASE_MAINNET_RPC_URLS = [
+  process.env.NEXT_PUBLIC_ALCHEMY_BASE_RPC,
+  'https://mainnet.base.org',
+  'https://base.drpc.org',
+].filter(Boolean) as string[];
+
+const BASE_MAINNET_CONFIG: ChainConfig = {
+  id: 8453,
+  name: 'Base',
+  rpcUrl: BASE_MAINNET_RPC_URLS[0],
+  rpcUrls: BASE_MAINNET_RPC_URLS,
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  blockExplorerUrl: 'https://basescan.org',
+  viemChain: base,
+  contracts: {
+    // Addresses filled after deployment
+    announcer: '',
+    registry: '',
+    nameRegistry: '',
+    walletFactory: '',
+    legacyWalletFactory: '',
+    accountFactory: '',
+    legacyAccountFactory: '',
+    entryPoint: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789',
+    paymaster: '',
+    dustPool: null,
+    dustPoolVerifier: null,
+    subAccount7702: null,
+    nameRegistryMerkle: null,
+    nameVerifier: null,
+    uniswapV4PoolManager: null,
+    uniswapV4StateView: null,
+    uniswapV4Quoter: null,
+    dustPoolV2: '',
+    dustPoolV2Verifier: '',
+    dustPoolV2SplitVerifier: '',
+    dustPoolV2ComplianceVerifier: null,
+    dustSwapAdapterV2: null,
+    dustSwapVanillaPoolKey: null,
+  },
+  creationCodes: {
+    wallet: THANOS_SEPOLIA_CONFIG.creationCodes.wallet,
+    legacyWallet: '',
+    account: THANOS_SEPOLIA_CONFIG.creationCodes.account,
+    legacyAccount: '',
+  },
+  deploymentBlock: 0,
+  dustPoolDeploymentBlock: null,
+  supportsEIP7702: false,
+  canonicalForNaming: false,
+  testnet: false,
+};
+
 // ─── Registry ──────────────────────────────────────────────────────────────────
 
 const CHAIN_CONFIGS: Record<number, ChainConfig> = {
@@ -378,6 +433,7 @@ const CHAIN_CONFIGS: Record<number, ChainConfig> = {
   [ARBITRUM_SEPOLIA_CONFIG.id]: ARBITRUM_SEPOLIA_CONFIG,
   [OP_SEPOLIA_CONFIG.id]: OP_SEPOLIA_CONFIG,
   [BASE_SEPOLIA_CONFIG.id]: BASE_SEPOLIA_CONFIG,
+  // Base Mainnet (8453) excluded until contracts are deployed
 };
 
 export const DEFAULT_CHAIN_ID = 11155111;
@@ -410,7 +466,7 @@ export function getCanonicalNamingChain(): ChainConfig {
 }
 
 // L2 chain IDs — gas is ~1000x cheaper than L1
-const L2_CHAIN_IDS = new Set([421614, 11155420, 84532]);
+const L2_CHAIN_IDS = new Set([421614, 11155420, 84532, 8453]);
 
 // Minimum balance needed to cover gas for a claim transaction (EOA only).
 // L1: 21000 gas * 1 gwei * 2x buffer ≈ 0.000042; using 0.0001.
@@ -424,4 +480,4 @@ export function getMinClaimableBalance(chainId: number): number {
 export const MIN_CLAIMABLE_BALANCE = 0.0001;
 
 // Re-export viem chain definitions for providers.tsx
-export { thanosSepolia, ethereumSepolia, arbitrumSepolia, optimismSepolia, baseSepolia };
+export { thanosSepolia, ethereumSepolia, arbitrumSepolia, optimismSepolia, baseSepolia, base as baseMainnet };
