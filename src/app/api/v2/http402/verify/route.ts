@@ -113,7 +113,7 @@ async function verifyPrivate(
   }
 
   // Validate proof bytes format (FFLONK proof: 768 bytes = 0x prefix + 1536 hex chars)
-  if (!/^0x[0-9a-fA-F]+$/.test(proof.proof)) {
+  if (!/^0x[0-9a-fA-F]{1536}$/.test(proof.proof)) {
     return { valid: false, settled: false }
   }
 
@@ -220,11 +220,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     const chainStr = String(proof.chainId)
     incrementHttp402Payment(chainStr, proof.privacy, result.valid ? 'verified' : 'failed')
 
-    // Prevent overwriting a settled receipt with the same nonce
+    // Prevent nonce reuse — a nonce can only be verified once
     const existingReceipt = receiptStore.get(proof.nonce)
-    if (existingReceipt && existingReceipt.status === 'settled') {
+    if (existingReceipt) {
       return NextResponse.json(
-        { error: 'Nonce already settled' },
+        { error: `Nonce already ${existingReceipt.status}` },
         { status: 409, headers: NO_STORE },
       )
     }

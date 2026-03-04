@@ -197,7 +197,6 @@ contract DustPoolV2 {
         if (msg.value == 0) revert ZeroValue();
         if (msg.value > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
         if (commitmentUsed[commitment]) revert DuplicateCommitment();
-        if (whitelistEnabled && !allowedAssets[address(0)]) revert AssetNotAllowed(address(0));
         _screenDepositor(msg.sender);
 
         commitmentUsed[commitment] = true;
@@ -248,7 +247,6 @@ contract DustPoolV2 {
         if (len > MAX_BATCH_SIZE) revert BatchTooLarge();
         if (msg.value == 0) revert ZeroValue();
         if (msg.value > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
-        if (whitelistEnabled && !allowedAssets[address(0)]) revert AssetNotAllowed(address(0));
         _screenDepositor(msg.sender);
 
         uint256 amountPerCommitment = msg.value / len;

@@ -318,6 +318,53 @@ export const DUST_POOL_V2_ABI = [
     inputs: [],
     outputs: [{ type: 'bool' }],
   },
+  // Token whitelist
+  {
+    name: 'whitelistEnabled',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    name: 'allowedAssets',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'asset', type: 'address' }],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    name: 'setWhitelistEnabled',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'enabled', type: 'bool' }],
+    outputs: [],
+  },
+  {
+    name: 'setAllowedAsset',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'asset', type: 'address' },
+      { name: 'allowed', type: 'bool' },
+    ],
+    outputs: [],
+  },
+  {
+    name: 'WhitelistUpdated',
+    type: 'event',
+    inputs: [
+      { name: 'enabled', type: 'bool', indexed: false },
+    ],
+  },
+  {
+    name: 'AssetAllowed',
+    type: 'event',
+    inputs: [
+      { name: 'asset', type: 'address', indexed: true },
+      { name: 'allowed', type: 'bool', indexed: false },
+    ],
+  },
   // Ownable2Step
   {
     name: 'pendingOwner',
