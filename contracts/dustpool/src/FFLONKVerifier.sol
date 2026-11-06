@@ -48,14 +48,14 @@ contract FflonkVerifier {
     uint256 constant w8_7 = 8613538655231327379234925296132678673308827349856085326283699237864372525723;
 
     // Verifier preprocessed input C_0(x)·[1]_1
-    uint256 constant C0x  = 15388230416042757297913456229638165726194942582334504347967980095244473210667;
-    uint256 constant C0y  = 15223776950515993593427814107353681296918003287967251658550823462736656790309;
+    uint256 constant C0x  = 19940224717921976342124331283402884007754177661729899464205968016844515240931;
+    uint256 constant C0y  = 21261644514224038188989179555835002995627018152653496469237701944221739842414;
 
     // Verifier preprocessed input x·[1]_2
-    uint256 constant X2x1 = 21831381940315734285607113342023901060522397560371972897001948545212302161822;
-    uint256 constant X2x2 = 17231025384763736816414546592865244497437017442647097510447326538965263639101;
-    uint256 constant X2y1 = 2388026358213174446665280700919698872609886601280537296205114254867301080648;
-    uint256 constant X2y2 = 11507326595632554467052522095592665270651932854513688777769618397986436103170;
+    uint256 constant X2x1 = 18253511544609001572866960948873128266198935669250718031100637619547827597184;
+    uint256 constant X2x2 = 10764647077472957448033591885865458661573660819003350325268673957890498500987;
+    uint256 constant X2y1 = 19756181390911900613508142947142748782977087973617411469215564659012323409872;
+    uint256 constant X2y2 = 15207030507740967976352749097256929091435606784526748170016829002013506957017;
 
     // Scalar field size
     uint256 constant q    = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
@@ -455,14 +455,24 @@ contract FflonkVerifier {
                 }
             }  
             
-            // Validate all the evaluations sent by the prover ∈ F
-            function checkInput() {
-                // Check proof commitments fullfill bn128 curve equation Y^2 = X^3 + 3
+            function checkProofData() {
+                // Check proof commitments belong to the bn128 curve
                 checkPointBelongsToBN128Curve(pC1)
                 checkPointBelongsToBN128Curve(pC2)
                 checkPointBelongsToBN128Curve(pW1)
                 checkPointBelongsToBN128Curve(pW2)
 
+                // Check proof commitments coordinates are in the field
+                checkField(calldataload(pC1))
+                checkField(calldataload(add(pC1, 32)))
+                checkField(calldataload(pC2))
+                checkField(calldataload(add(pC2, 32)))
+                checkField(calldataload(pW1))
+                checkField(calldataload(add(pW1, 32)))
+                checkField(calldataload(pW2))
+                checkField(calldataload(add(pW2, 32)))
+
+                // Check proof evaluations are in the field
                 checkField(calldataload(pEval_ql))
                 checkField(calldataload(pEval_qr))
                 checkField(calldataload(pEval_qm))
@@ -479,8 +489,6 @@ contract FflonkVerifier {
                 checkField(calldataload(pEval_t1w))
                 checkField(calldataload(pEval_t2w))
                 checkField(calldataload(pEval_inv))
-
-                // Points are checked in the point operations precompiled smart contracts
             }
 
             function computeChallenges(pMem, pPublic) {
@@ -1362,8 +1370,8 @@ contract FflonkVerifier {
             let pMem := mload(0x40)
             mstore(0x40, add(pMem, lastMem))
 
-            // Validate that all evaluations ∈ F
-            checkInput()
+            // Check proof data is well-formed
+            checkProofData()
 
             // Compute the challenges: beta, gamma, xi, alpha and y ∈ F, h1w4/h2w3/h3w3 roots, xiN and zh(xi)
             computeChallenges(pMem, pubSignals)

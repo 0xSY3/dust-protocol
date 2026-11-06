@@ -10,6 +10,7 @@ remappings = [
   "forge-std/=lib/forge-std/src/",
   "poseidon-solidity/=node_modules/poseidon-solidity/",
 ]
+libs = ["node_modules", "lib"]
 
 [rpc_endpoints]
 thanos_sepolia = "https://rpc.thanos-sepolia.tokamak.network"
