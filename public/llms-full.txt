@@ -504,10 +504,10 @@ Thanos Sepolia has core stealth transfer and pool contracts. DustSwap (privacy s
 
 | Contract | Path | Description |
 |----------|------|-------------|
-| ERC5564Announcer.sol | contracts/ERC5564Announcer.sol | ERC-5564 stealth announcement |
-| ERC6538Registry.sol | contracts/ERC6538Registry.sol | ERC-6538 meta-address registry |
-| StealthNameRegistry.sol | contracts/StealthNameRegistry.sol | .dust name registry |
-| StealthRelayer.sol | contracts/StealthRelayer.sol | EIP-712 signed withdrawal relayer (0.5% fee) |
+| ERC5564Announcer.sol | contracts/core/src/ERC5564Announcer.sol | ERC-5564 stealth announcement |
+| ERC6538Registry.sol | contracts/core/src/ERC6538Registry.sol | ERC-6538 meta-address registry |
+| StealthNameRegistry.sol | contracts/core/src/StealthNameRegistry.sol | .dust name registry |
+| StealthRelayer.sol | contracts/core/src/StealthRelayer.sol | EIP-712 signed withdrawal relayer (0.5% fee) |
 | DustPool.sol | contracts/dustpool/src/DustPool.sol | Privacy pool core contract |
 | DustSwapHook.sol | contracts/dustswap/src/DustSwapHook.sol | Uniswap V4 beforeSwap/afterSwap hook |
 | DustSwapRouter.sol | contracts/dustswap/src/DustSwapRouter.sol | Privacy swap entry point |

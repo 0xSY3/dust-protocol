@@ -250,10 +250,10 @@ export default function ContractsPage() {
         <h2 className="text-sm font-mono font-semibold text-white tracking-wider mb-3 uppercase">Source Code</h2>
         <div className="space-y-2">
           {[
-            { name: "ERC5564Announcer.sol", path: "contracts/ERC5564Announcer.sol", desc: "ERC-5564 stealth announcement" },
-            { name: "ERC6538Registry.sol", path: "contracts/ERC6538Registry.sol", desc: "ERC-6538 meta-address registry" },
-            { name: "StealthNameRegistry.sol", path: "contracts/StealthNameRegistry.sol", desc: ".dust name registry" },
-            { name: "StealthRelayer.sol", path: "contracts/StealthRelayer.sol", desc: "EIP-712 signed withdrawal relayer (0.5% fee)" },
+            { name: "ERC5564Announcer.sol", path: "contracts/core/src/ERC5564Announcer.sol", desc: "ERC-5564 stealth announcement" },
+            { name: "ERC6538Registry.sol", path: "contracts/core/src/ERC6538Registry.sol", desc: "ERC-6538 meta-address registry" },
+            { name: "StealthNameRegistry.sol", path: "contracts/core/src/StealthNameRegistry.sol", desc: ".dust name registry" },
+            { name: "StealthRelayer.sol", path: "contracts/core/src/StealthRelayer.sol", desc: "EIP-712 signed withdrawal relayer (0.5% fee)" },
             { name: "DustPool.sol", path: "contracts/dustpool/src/DustPool.sol", desc: "Privacy pool core contract" },
             { name: "DustSwapAdapterV2.sol", path: "contracts/dustswap/src/DustSwapAdapterV2.sol", desc: "V2 atomic privacy swap adapter (DustPoolV2 + vanilla V4 pool)" },
             { name: "DustPoolV2.sol", path: "contracts/dustpool/src/DustPoolV2.sol", desc: "V2 ZK-UTXO privacy pool (FFLONK, split withdrawals, compliance)" },

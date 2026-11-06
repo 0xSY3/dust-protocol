@@ -46,6 +46,10 @@ contracts/wallet/out/
 contracts/wallet/cache/
 contracts/wallet/broadcast/
 contracts/wallet/lib/
+contracts/core/out/
+contracts/core/cache/
+contracts/core/broadcast/
+contracts/core/lib/
 contracts/dustpool/out/
 contracts/dustpool/cache/
 contracts/dustpool/build/

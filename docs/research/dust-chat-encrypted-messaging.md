@@ -24,7 +24,7 @@ deriveStorageKey(spendingKey) → AES-256 key via SHA-256
 ```
 Production-ready symmetric encryption already in the codebase. Currently encrypts UTXO note data in IndexedDB.
 
-### 1.3 ERC-5564 Announcement Metadata (`contracts/ERC5564Announcer.sol`)
+### 1.3 ERC-5564 Announcement Metadata (`contracts/core/src/ERC5564Announcer.sol`)
 The `Announcement` event has an extensible `metadata` bytes field. Currently encodes view tags + token info + link slugs. This could carry encrypted message payloads or message pointers.
 
 ### 1.4 PIN-Based Key Derivation (`src/lib/stealth/keys.ts`)
