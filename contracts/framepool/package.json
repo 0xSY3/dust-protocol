@@ -1,0 +1,9 @@
+{
+  "name": "dust-framepool",
+  "private": true,
+  "description": "DustPoolV2Frame: relayer-less DustPoolV2 withdrawals as EIP-8141 frame transactions",
+  "type": "module",
+  "dependencies": {
+    "@forshtat/hegota-support": "0.0.1"
+  }
+}

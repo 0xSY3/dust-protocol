@@ -1,0 +1,24 @@
+# DustPoolV2Frame: DustPoolV2 + the EIP-8141 frame opcodes. A separate project because
+# @forshtat/hegota-support pins solc 0.8.28, while contracts/dustpool builds its deployed
+# contracts with 0.8.20; DustPoolV2's source is shared, not copied.
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+solc = "0.8.28"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+libs = ["node_modules", "../dustpool/node_modules", "../dustpool/lib"]
+remappings = [
+  "forge-std/=../dustpool/lib/forge-std/src/",
+  "poseidon-solidity/=../dustpool/node_modules/poseidon-solidity/",
+  "@forshtat/hegota-support/=node_modules/@forshtat/hegota-support/",
+  "dustpool/=../dustpool/src/",
+]
+allow_paths = ["../dustpool"]
+fs_permissions = [{ access = "read", path = "./test/fixtures" }]
+
+[rpc_endpoints]
+hegota_devnet = "https://altmempoolgateway.forshtat.com/rpc"
