@@ -216,11 +216,12 @@ contract DustPoolV2Frame is DustPoolV2, HegotaSupport {
         if (w.recipient == address(0) || w.recipient == address(this)) revert InvalidFrameRecipient();
         if (w.nullifier0 == bytes32(0)) revert ZeroNullifier();
 
-        // nullifier0 is the only nonce key, at sequence 0: copies of one spend collide in the mempool (one
-        // pending transaction per key), and once a transaction consumes the key, the proof can never pay for
-        // another frame transaction, whether or not the first one settled
+        // The nonce keys are exactly the spend's nonzero nullifiers, at sequence 0 (EIP-8250). The mempool holds
+        // one pending transaction per (sender, key), so spends that share a note collide on admission instead of
+        // invalidating each other later and costing the pool reputation, and once a transaction consumes the
+        // keys no frame transaction can pay for the proof again, whether or not the first one settled
         if (
-            txparam(TxParam.NONCE_KEY_COUNT) != 1 || txparam(TxParam.NONCE_KEY_0) != uint256(w.nullifier0)
+            txparam(TxParam.NONCE_KEYS_HASH) != uint256(_nonceKeysHash(w.nullifier0, w.nullifier1))
                 || txparam(TxParam.NONCE) != 0
         ) revert NonceNotBoundToSpend();
 
@@ -246,6 +247,14 @@ contract DustPoolV2Frame is DustPoolV2, HegotaSupport {
             ETH_ASSET_ID,
             frameRecipientSignal(w.recipient, w.feeCap)
         );
+    }
+
+    /// @dev EIP-8250 nonce_keys_hash, keccak256(be32(key count) ‖ be32(key)…), for the nonzero nullifiers in the
+    ///      strictly increasing order the protocol requires of nonce keys. nullifier0 is nonzero (checked before).
+    function _nonceKeysHash(bytes32 nullifier0, bytes32 nullifier1) internal pure returns (bytes32) {
+        if (nullifier1 == bytes32(0)) return keccak256(abi.encode(uint256(1), nullifier0));
+        (bytes32 low, bytes32 high) = nullifier0 < nullifier1 ? (nullifier0, nullifier1) : (nullifier1, nullifier0);
+        return keccak256(abi.encode(uint256(2), low, high));
     }
 
     /// @dev Read-only half of _checkComplianceGate: the VERIFY frame cannot clear the flags, frame 1 does.

@@ -303,12 +303,13 @@ async function withdraw(recipientArg, amountEth, options) {
     read(pool, POOL_ABI, 'settlementExecutionGas'),
     read(pool, POOL_ABI, 'settlementStateGas'),
   ])
-  // nullifier0 as the only nonce key, at sequence 0, is what validateFrameWithdrawal requires
+  // validateFrameWithdrawal requires the nonzero nullifiers as the nonce keys, in increasing order, at sequence 0
+  const nonceKeys = [nullifier0, BigInt(publicSignals[2])].filter((key) => key !== 0n).sort((a, b) => (a < b ? -1 : 1))
   const frameTx = (verifyGas) =>
     newTx({
       chainId: CHAIN_ID,
       sender: pool,
-      nonceKeys: [nullifier0],
+      nonceKeys,
       nonceSeq: 0n,
       signatures: [],
       fees: { maxFeePerGas: MAX_FEE_PER_GAS },

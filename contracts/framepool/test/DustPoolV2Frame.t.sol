@@ -114,7 +114,7 @@ contract DustPoolV2FrameTest is FrameOpcodeMocks {
     }
 
     function testRejectsNonceKeyOtherThanNullifier() public {
-        txParams.set(uint256(TxParam.NONCE_KEY_0), uint256(w.nullifier0) + 1);
+        txParams.set(uint256(TxParam.NONCE_KEYS_HASH), _keysHash(uint256(w.nullifier0) + 1));
         _expectValidateRevert(DustPoolV2Frame.NonceNotBoundToSpend.selector);
     }
 
@@ -124,7 +124,29 @@ contract DustPoolV2FrameTest is FrameOpcodeMocks {
     }
 
     function testRejectsExtraNonceKeys() public {
-        txParams.set(uint256(TxParam.NONCE_KEY_COUNT), 2);
+        txParams.set(uint256(TxParam.NONCE_KEYS_HASH), _keysHash(uint256(w.nullifier0), uint256(w.nullifier0) + 1));
+        _expectValidateRevert(DustPoolV2Frame.NonceNotBoundToSpend.selector);
+    }
+
+    /// A two-input spend is keyed on both nullifiers, lower first. The fixture proves one input, so once a second
+    /// nullifier is patched in, the proof is the first check to fail: every check before it passed.
+    function testTwoInputSpendKeysOnBothNullifiersInIncreasingOrder() public {
+        _setSecondNullifier(1);
+        txParams.set(uint256(TxParam.NONCE_KEYS_HASH), _keysHash(1, uint256(w.nullifier0)));
+        _expectValidateRevert(DustPoolV2.InvalidProof.selector);
+
+        uint256 highNullifier = pool.FIELD_SIZE() - 1;
+        _setSecondNullifier(highNullifier);
+        txParams.set(uint256(TxParam.NONCE_KEYS_HASH), _keysHash(uint256(w.nullifier0), highNullifier));
+        _expectValidateRevert(DustPoolV2.InvalidProof.selector);
+    }
+
+    function testRejectsTwoInputSpendKeyedOutOfOrderOrOnOneNullifier() public {
+        _setSecondNullifier(1);
+        txParams.set(uint256(TxParam.NONCE_KEYS_HASH), _keysHash(uint256(w.nullifier0), 1));
+        _expectValidateRevert(DustPoolV2Frame.NonceNotBoundToSpend.selector);
+
+        txParams.set(uint256(TxParam.NONCE_KEYS_HASH), _keysHash(uint256(w.nullifier0)));
         _expectValidateRevert(DustPoolV2Frame.NonceNotBoundToSpend.selector);
     }
 
@@ -282,8 +304,7 @@ contract DustPoolV2FrameTest is FrameOpcodeMocks {
     function _setValidTransaction() internal {
         txParams.set(uint256(TxParam.FRAME_COUNT), 2);
         txParams.set(uint256(TxParam.CURRENT_FRAME_INDEX), 0);
-        txParams.set(uint256(TxParam.NONCE_KEY_COUNT), 1);
-        txParams.set(uint256(TxParam.NONCE_KEY_0), uint256(w.nullifier0));
+        txParams.set(uint256(TxParam.NONCE_KEYS_HASH), _keysHash(uint256(w.nullifier0)));
         txParams.set(uint256(TxParam.NONCE), 0);
         txParams.set(uint256(TxParam.MAX_COST), MAX_COST);
         frameParams.set(1, uint256(FrameParam.MODE), uint256(FrameMode.SENDER));
@@ -299,6 +320,20 @@ contract DustPoolV2FrameTest is FrameOpcodeMocks {
         bytes memory settlement = abi.encodeCall(pool.executeFrameWithdrawal, (w));
         assertEq(settlement.length, SETTLEMENT_CALLDATA_LENGTH, "static encoding");
         setFrameData(1, settlement);
+    }
+
+    function _setSecondNullifier(uint256 nullifier1) internal {
+        w.nullifier1 = bytes32(nullifier1);
+        _setSettlementData();
+    }
+
+    /// EIP-8250 nonce_keys_hash: keccak256 over the key count and then the keys, each a 32-byte big-endian word
+    function _keysHash(uint256 key) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(uint256(1), key)));
+    }
+
+    function _keysHash(uint256 key0, uint256 key1) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(uint256(2), key0, key1)));
     }
 
     function _expectValidateRevert(bytes4 selector) internal {
