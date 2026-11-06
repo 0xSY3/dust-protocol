@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Malabar Roasters</title></head>
+<body style="font-family:system-ui,sans-serif;max-width:420px;margin:48px auto;padding:0 16px">
+  <h1>Monsoon Malabar, 250 g</h1>
+  <p>12.50 USDT, roasted in Mumbai this week.</p>
+  <script src="http://localhost:3000/dust-pay.js" defer></script>
+  <button data-dust-pay data-merchant="your-dust-name" data-amount="12.50" data-memo="Order 1042: Monsoon Malabar"></button>
+  <p id="receipt"></p>
+  <script>
+    document.addEventListener('dust:paid', function (event) {
+      var link = document.createElement('a');
+      link.href = 'https://explorer.testnet.whitechain.io/tx/' + event.detail.txHash;
+      link.textContent = 'View payment';
+      document.getElementById('receipt').replaceChildren('Paid privately. ', link);
+    });
+  </script>
+</body>
+</html>
