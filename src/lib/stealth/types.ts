@@ -60,6 +60,8 @@ export interface ScanResult {
   announcedTokenAmount?: string | null;
   /** Chain ID encoded in announcement metadata (if present) */
   announcedChainId?: number | null;
+  /** Invoice id encoded in announcement metadata (invoice payments only) */
+  announcedInvoiceId?: string | null;
 }
 
 export const SCHEME_ID = { SECP256K1: 1 } as const;

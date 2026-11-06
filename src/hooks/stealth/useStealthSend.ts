@@ -8,6 +8,12 @@ import {
 import type { OutgoingPayment } from '@/lib/design/types';
 import { getChainConfig, DEFAULT_CHAIN_ID } from '@/config/chains';
 import { getChainProvider } from '@/lib/providers';
+import { encodeTokenMetadata } from '@/lib/stealth/metadata';
+
+export interface TokenSendOptions {
+  /** Random 16-byte invoice id embedded in the announcement so the merchant can reconcile it */
+  invoiceId?: string;
+}
 
 import { storageKey, migrateKey } from '@/lib/storageKey';
 
@@ -320,7 +326,7 @@ export function useStealthSend(chainId?: number) {
     }
   }, [isConnected, activeChainId, generateAddressFor]);
 
-  const sendTokenToStealth = useCallback(async (metaAddress: string, tokenAddress: string, amount: string): Promise<string | null> => {
+  const sendTokenToStealth = useCallback(async (metaAddress: string, tokenAddress: string, amount: string, options?: TokenSendOptions): Promise<string | null> => {
     if (!isConnected) { setError('Wallet not connected'); return null; }
     if (sendingRef.current) return null;
     sendingRef.current = true;
@@ -366,15 +372,17 @@ export function useStealthSend(chainId?: number) {
       const receipt = await tx.wait();
       const sendTxHash = receipt.transactionHash;
 
-      // Announce via sponsored API (deployer pays gas) — fire-and-forget
-      // H1: Encode token info in metadata: viewTag + 'T' marker + chainId (4 bytes big-endian) + token address (20 bytes) + amount (32 bytes)
+      // Announce via sponsored API (deployer pays gas)
+      // H1: token info travels in the metadata (see lib/stealth/metadata.ts for the layout)
       const ephPubKey2 = '0x' + generated.ephemeralPublicKey.replace(/^0x/, '');
-      const tokenAddrHex = tokenAddress.replace(/^0x/, '').toLowerCase();
-      const amountHex = amountWei.toHexString().replace(/^0x/, '').padStart(64, '0');
-      const chainIdHex = activeChainId.toString(16).padStart(8, '0');
-      const tokenMetadata = '0x' + generated.viewTag + '54' + chainIdHex + tokenAddrHex + amountHex; // 0x54 = 'T'
-      sponsorAnnounce(generated.stealthAddress, ephPubKey2, tokenMetadata, activeChainId)
-        .catch(err => console.warn('Sponsored announcement failed (non-fatal):', err));
+      const tokenMetadata = encodeTokenMetadata({
+        viewTag: generated.viewTag,
+        chainId: activeChainId,
+        tokenAddress,
+        amount: amountWei,
+        invoiceId: options?.invoiceId,
+      });
+      const announce = () => sponsorAnnounce(generated.stealthAddress, ephPubKey2, tokenMetadata, activeChainId);
 
       // Persist outgoing payment for Activities
       saveOutgoingPayment(signerAddress, activeChainId, {
@@ -385,6 +393,24 @@ export function useStealthSend(chainId?: number) {
         stealthAddress: generated.stealthAddress,
       });
 
+      if (!options?.invoiceId) {
+        announce().catch(err => console.warn('Sponsored announcement failed (non-fatal):', err));
+        return sendTxHash;
+      }
+
+      // The merchant reconciles invoices from the announcement alone, so an invoice payment
+      // is not complete until it is announced: await it (one retry) instead of fire-and-forget.
+      try {
+        await announce();
+      } catch (firstError) {
+        console.warn('Invoice announcement failed, retrying:', firstError);
+        try {
+          await announce();
+        } catch (retryError) {
+          const reason = retryError instanceof Error ? retryError.message : String(retryError);
+          throw new Error(`Payment ${sendTxHash} settled but the invoice announcement failed: ${reason}`);
+        }
+      }
       return sendTxHash;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to send token');

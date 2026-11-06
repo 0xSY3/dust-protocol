@@ -64,9 +64,20 @@ const THANOS_SEPOLIA_TOKENS: TokenConfig[] = [
   },
 ];
 
+// Whitechain Sepolia — Whitechain's official test USDT (TetherTokenV2 proxy)
+const WHITECHAIN_SEPOLIA_TOKENS: TokenConfig[] = [
+  {
+    address: '0xcedfB56113143d55b2358b8CFbB0dEB5Ad2f55a7',
+    symbol: 'USDT',
+    decimals: 6,
+    name: 'Tether USD',
+  },
+];
+
 const TOKEN_REGISTRY: Record<number, TokenConfig[]> = {
   [11155111]: ETHEREUM_SEPOLIA_TOKENS,
   [111551119090]: THANOS_SEPOLIA_TOKENS,
+  [1874]: WHITECHAIN_SEPOLIA_TOKENS,
 };
 
 export function getTokensForChain(chainId: number): TokenConfig[] {
