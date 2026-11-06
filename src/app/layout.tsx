@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "./providers";
 import { AuthLayoutWrapper } from "./auth-layout-wrapper";
 import { ROOT_METADATA } from "@/lib/seo/metadata";
@@ -71,7 +70,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Providers>
             <AuthLayoutWrapper>{children}</AuthLayoutWrapper>
           </Providers>
-          <Analytics />
         </div>
       </body>
     </html>
