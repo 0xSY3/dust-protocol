@@ -76,7 +76,8 @@ function PayableInvoice({ merchantName, parse }: { merchantName: string; parse: 
   const { isConnected } = useAccount();
   const { connect } = useConnect();
   const { resolveName, isConfigured } = useStealthName();
-  const { sendTokenToStealth, isLoading, error } = useStealthSend(terms.chainId);
+  const { sendTokenToStealth, sendTokenWithAuthorization, isLoading, error } = useStealthSend(terms.chainId);
+  const isGasless = Boolean(token.authorization && chain.contracts.stealthPaymentRouter);
 
   const [metaAddress, setMetaAddress] = useState<string | null>(null);
   const [resolveFailed, setResolveFailed] = useState(false);
@@ -99,7 +100,10 @@ function PayableInvoice({ merchantName, parse }: { merchantName: string; parse: 
 
   const pay = async () => {
     if (!metaAddress) return;
-    const hash = await sendTokenToStealth(metaAddress, token.address, terms.amount, { invoiceId: terms.id });
+    const options = { invoiceId: terms.id };
+    const hash = isGasless
+      ? await sendTokenWithAuthorization(metaAddress, token, terms.amount, options)
+      : await sendTokenToStealth(metaAddress, token.address, terms.amount, options);
     if (!hash) return;
     setTxHash(hash);
     if (returnOrigin && window.opener) {
@@ -123,6 +127,7 @@ function PayableInvoice({ merchantName, parse }: { merchantName: string; parse: 
       <div style={{ padding: "8px 24px 0" }}>
         {terms.memo && <DetailRow label="For" value={terms.memo} />}
         {terms.dueDate && <DetailRow label="Due" value={isOverdue ? `${terms.dueDate} (overdue)` : terms.dueDate} />}
+        {isGasless && <DetailRow label="Network fee" value="Paid by Dust" />}
         <DetailRow label="Reference" value={`${terms.id.slice(0, 10)}…${terms.id.slice(-6)}`} />
       </div>
 
@@ -140,7 +145,7 @@ function PayableInvoice({ merchantName, parse }: { merchantName: string; parse: 
         ) : (
           <button onClick={pay} disabled={!metaAddress || isLoading}
             style={{ padding: "14px", borderRadius: radius.sm, border: "none", background: colors.accent.indigo, color: "#000", fontWeight: 700, fontSize: "15px", cursor: metaAddress && !isLoading ? "pointer" : "not-allowed", opacity: metaAddress && !isLoading ? 1 : 0.5 }}>
-            {isLoading ? "Confirm in your wallet…" : metaAddress ? `Pay ${terms.amount} ${token.symbol}` : "Finding merchant…"}
+            {isLoading ? (isGasless ? "Sign the payment in your wallet…" : "Confirm in your wallet…") : metaAddress ? `Pay ${terms.amount} ${token.symbol}` : "Finding merchant…"}
           </button>
         )}
 

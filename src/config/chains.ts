@@ -29,6 +29,8 @@ export interface ChainContracts {
   dustPoolV2ComplianceVerifier: string | null;
   // DustSwap V2 adapter (standalone, no Uniswap V4 dependency)
   dustSwapAdapterV2: string | null;
+  // EIP-3009 router: gasless stealth payment with transfer + announcement in one transaction
+  stealthPaymentRouter: string | null;
   dustSwapVanillaPoolKey: {
     currency0: string;
     currency1: string;
@@ -104,6 +106,7 @@ const THANOS_SEPOLIA_CONFIG: ChainConfig = {
     dustPoolV2SplitVerifier: '0xbcb3FDB42C2bAEA700B840e25e32da25f2C78Ef7',
     dustPoolV2ComplianceVerifier: null,
     dustSwapAdapterV2: null,
+    stealthPaymentRouter: null,
     dustSwapVanillaPoolKey: null,
   },
   creationCodes: {
@@ -173,6 +176,7 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
     dustPoolV2SplitVerifier: '0x472CBA068f19738eB514B7f0b846a63E7E502120',
     dustPoolV2ComplianceVerifier: null,
     dustSwapAdapterV2: '0xb91Afd19FeB4000E228243f40B8d98ea07127400',
+    stealthPaymentRouter: null,
     dustSwapVanillaPoolKey: {
       currency0: '0x0000000000000000000000000000000000000000',
       currency1: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',

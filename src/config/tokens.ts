@@ -1,11 +1,14 @@
 // ERC-20 token configuration per chain
 import { ethers } from 'ethers';
+import type { Eip3009Domain } from '@/lib/stealth/authorization';
 
 export interface TokenConfig {
   address: string;
   symbol: string;
   decimals: number;
   name: string;
+  /** EIP-712 domain for EIP-3009 transferWithAuthorization, enabling gasless stealth payments */
+  authorization?: Eip3009Domain;
 }
 
 // Ethereum Sepolia testnet tokens (well-known faucet/deployed addresses)
@@ -71,6 +74,8 @@ const WHITECHAIN_SEPOLIA_TOKENS: TokenConfig[] = [
     symbol: 'USDT',
     decimals: 6,
     name: 'Tether USD',
+    // Matches the on-chain DOMAIN_SEPARATOR (verified with cast against chain 1874)
+    authorization: { name: 'Tether USD', version: '1' },
   },
 ];
 
