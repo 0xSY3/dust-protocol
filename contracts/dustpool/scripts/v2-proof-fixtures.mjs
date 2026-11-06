@@ -6,6 +6,7 @@
 //   input-c1-slot<i>.json  same notes and Merkle paths, but input i claims leafIndex + 1 and carries the
 //                          nullifier derived from that index: the nullifier-unbinding double spend.
 //                          Every other constraint still holds, so the C1 binding is the only one it can trip.
+// plus two satisfiable inputs that DustPoolV2 itself must reject (duplicate-nullifier, unbacked-deposit).
 //
 // Input layout mirrors src/lib/dustpool/v2/proof-inputs.ts (buildWithdrawInputs, buildSplitInputs) and
 // the tree mirrors src/MerkleTree.sol (empty leaf 0, zeros[i + 1] = Poseidon(zeros[i], zeros[i])).
@@ -170,6 +171,64 @@ function buildSplitFixture() {
   return { spent, signalsFor }
 }
 
+// Shapes the circuit accepts and only the contract can refuse. Proof-based paths (withdraw, the frame
+// withdrawal) are not payable and must not depend on a relayer filtering requests first.
+//
+// duplicate-nullifier: one 0.5 ETH note @ leaf 9 spent in both input slots. Both slots derive the same
+// nullifier and the balance equation counts the note twice, so the proof withdraws 1 ETH.
+function buildDuplicateNullifierFixture() {
+  const note = createNote(ETHER / 2n, 'duplicate-note')
+  const tree = buildMerkleTree(new Map([[9, commitmentOf(note)]]))
+  const spend = spendInTree(tree, note, 9)
+  const spent = [spend, spend]
+  const withdrawAmount = 2n * note.amount
+  const outputs = [DUMMY_NOTE, DUMMY_NOTE]
+
+  const signalsFor = (spends) => ({
+    merkleRoot: tree.root,
+    nullifier0: spends[0].nullifier,
+    nullifier1: spends[1].nullifier,
+    outputCommitment0: commitmentOf(outputs[0]),
+    outputCommitment1: commitmentOf(outputs[1]),
+    publicAmount: BN254_FIELD_SIZE - withdrawAmount,
+    publicAsset: asset,
+    recipient: RECIPIENT,
+    chainId: CHAIN_ID,
+    spendingKey,
+    nullifierKey,
+    ...inputNoteSignals(spends),
+    ...outputNoteSignals(outputs),
+  })
+
+  return { spent, signalsFor }
+}
+
+// unbacked-deposit: two dummy inputs and publicAmount = +1 ETH, creating a 1 ETH note. Valid as a deposit
+// proof, but withdraw() takes no value, so accepting it would credit a note nobody paid for.
+function buildUnbackedDepositFixture() {
+  const tree = buildMerkleTree(new Map([[0, fieldFromLabel('unbacked-leaf')]]))
+  const spent = [DUMMY_SPEND, DUMMY_SPEND]
+  const outputs = [createNote(ETHER, 'unbacked-note'), DUMMY_NOTE]
+
+  const signalsFor = (spends) => ({
+    merkleRoot: tree.root,
+    nullifier0: spends[0].nullifier,
+    nullifier1: spends[1].nullifier,
+    outputCommitment0: commitmentOf(outputs[0]),
+    outputCommitment1: commitmentOf(outputs[1]),
+    publicAmount: ETHER,
+    publicAsset: asset,
+    recipient: RECIPIENT,
+    chainId: CHAIN_ID,
+    spendingKey,
+    nullifierKey,
+    ...inputNoteSignals(spends),
+    ...outputNoteSignals(outputs),
+  })
+
+  return { spent, signalsFor }
+}
+
 function withShiftedLeafIndex(spent, slot) {
   return spent.map((s, i) => {
     if (i !== slot) return s
@@ -199,3 +258,5 @@ function writeFixture(circuitDirName, { spent, signalsFor }, forgedSlots) {
 
 writeFixture('transaction', buildTransactionFixture(), [0, 1])
 writeFixture('split', buildSplitFixture(), [0])
+writeFixture('duplicate-nullifier', buildDuplicateNullifierFixture(), [])
+writeFixture('unbacked-deposit', buildUnbackedDepositFixture(), [])

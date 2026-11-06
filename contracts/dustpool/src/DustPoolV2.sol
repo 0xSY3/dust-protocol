@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity ^0.8.20;
 
 import {IFFLONKVerifier} from "./IFFLONKVerifier.sol";
 import {IFFLONKSplitVerifier} from "./IFFLONKSplitVerifier.sol";
@@ -150,6 +150,8 @@ contract DustPoolV2 {
     error ComplianceRequired();
     error ComplianceNotEnabled();
     error ZeroNullifier();
+    error DuplicateNullifier();
+    error UnbackedPublicAmount();
     error ZeroExclusionRoot();
 
     modifier onlyRelayer() {
@@ -283,6 +285,43 @@ contract DustPoolV2 {
         address tokenAddress
     ) external onlyRelayer nonReentrant whenNotPaused {
         if (recipient == address(0)) revert ZeroRecipient();
+        _verifyTransactionProof(
+            _proofWords(proof),
+            merkleRoot,
+            nullifier0,
+            nullifier1,
+            outCommitment0,
+            outCommitment1,
+            publicAmount,
+            publicAsset,
+            uint256(uint160(recipient))
+        );
+
+        // Exclusion compliance gate: each non-zero nullifier must be pre-verified if compliance is enabled
+        _checkComplianceGate(nullifier0, nullifier1);
+        _spendAndQueueOutputs(nullifier0, nullifier1, outCommitment0, outCommitment1, tokenAddress);
+
+        uint256 withdrawAmount = _debitWithdrawal(publicAmount, tokenAddress);
+        if (withdrawAmount != 0) {
+            _transferOut(tokenAddress, recipient, withdrawAmount);
+            emit Withdrawal(nullifier0, recipient, withdrawAmount, tokenAddress);
+        }
+    }
+
+    /// @dev Every check a transaction-circuit spend needs before it may change state. View-only, so
+    ///      a frame transaction's VERIFY frame can run it (see DustPoolV2Frame).
+    /// @param recipientSignal Public signal 7: the recipient address, or a commitment that stands in for one
+    function _verifyTransactionProof(
+        bytes32[24] memory proofData,
+        bytes32 merkleRoot,
+        bytes32 nullifier0,
+        bytes32 nullifier1,
+        bytes32 outCommitment0,
+        bytes32 outCommitment1,
+        uint256 publicAmount,
+        uint256 publicAsset,
+        uint256 recipientSignal
+    ) internal view {
         if (!isKnownRoot(merkleRoot)) revert UnknownRoot();
 
         // All public signals must be valid BN254 field elements to prevent
@@ -294,12 +333,12 @@ contract DustPoolV2 {
         if (uint256(outCommitment1) >= FIELD_SIZE) revert InvalidFieldElement();
         if (publicAmount >= FIELD_SIZE) revert InvalidFieldElement();
         if (publicAsset >= FIELD_SIZE) revert InvalidFieldElement();
+        _checkSpendShape(nullifier0, nullifier1, publicAmount);
 
         if (nullifiers[nullifier0]) revert NullifierAlreadySpent();
         if (nullifier1 != bytes32(0) && nullifiers[nullifier1]) {
             revert NullifierAlreadySpent();
         }
-        if (proof.length != 768) revert InvalidProofLength();
 
         // Public signals match circuit order:
         // [merkleRoot, nullifier0, nullifier1, outCommitment0, outCommitment1, publicAmount, publicAsset, recipient, chainId]
@@ -311,20 +350,37 @@ contract DustPoolV2 {
         pubSignals[4] = uint256(outCommitment1);
         pubSignals[5] = publicAmount;
         pubSignals[6] = publicAsset;
-        pubSignals[7] = uint256(uint160(recipient));
+        pubSignals[7] = recipientSignal;
         pubSignals[8] = block.chainid;
 
-        bytes32[24] memory proofData;
+        if (!VERIFIER.verifyProof(proofData, pubSignals)) revert InvalidProof();
+    }
+
+    /// @dev Spends both circuits accept but the pool must refuse. Neither circuit forces the two inputs to
+    ///      differ: one note in both slots repeats its nullifier and is counted twice by the balance equation.
+    ///      Proof-based paths take no value: a positive publicAmount would credit outputs nobody paid for.
+    function _checkSpendShape(bytes32 nullifier0, bytes32 nullifier1, uint256 publicAmount) internal pure {
+        if (nullifier1 != bytes32(0) && nullifier1 == nullifier0) revert DuplicateNullifier();
+        if (publicAmount != 0 && publicAmount <= FIELD_SIZE / 2) revert UnbackedPublicAmount();
+    }
+
+    /// @dev Splits a 768-byte FFLONK proof into the 24 words the verifier takes.
+    function _proofWords(bytes calldata proof) internal pure returns (bytes32[24] memory proofData) {
+        if (proof.length != 768) revert InvalidProofLength();
         for (uint256 i = 0; i < 24; i++) {
             proofData[i] = bytes32(proof[i * 32:(i + 1) * 32]);
         }
+    }
 
-        if (!VERIFIER.verifyProof(proofData, pubSignals)) revert InvalidProof();
-
-        // Exclusion compliance gate: each non-zero nullifier must be pre-verified if compliance is enabled
-        _checkComplianceGate(nullifier0, nullifier1);
-
-        // Effects — mark nullifiers spent (skip zero slot used by dummy inputs)
+    /// @dev Effects of a verified transaction-circuit spend: mark nullifiers spent (skipping the zero
+    ///      slot used by dummy inputs), queue output commitments and emit events so chain-watchers find them.
+    function _spendAndQueueOutputs(
+        bytes32 nullifier0,
+        bytes32 nullifier1,
+        bytes32 outCommitment0,
+        bytes32 outCommitment1,
+        address tokenAddress
+    ) internal {
         if (nullifier0 != bytes32(0)) {
             nullifiers[nullifier0] = true;
         }
@@ -332,7 +388,6 @@ contract DustPoolV2 {
             nullifiers[nullifier1] = true;
         }
 
-        // Queue output commitments + emit events so chain-watcher can discover them
         if (outCommitment0 != bytes32(0)) {
             uint256 idx = depositQueueTail;
             depositQueue[idx] = outCommitment0;
@@ -345,24 +400,26 @@ contract DustPoolV2 {
             depositQueueTail = idx + 1;
             emit DepositQueued(outCommitment1, idx, 0, tokenAddress, block.timestamp);
         }
+    }
 
-        // Interactions — transfer if publicAmount encodes a withdrawal
+    /// @dev Debits the per-asset deposit total for a net outflow.
+    /// @return withdrawAmount Amount leaving the pool, 0 when publicAmount is not an outflow
+    function _debitWithdrawal(uint256 publicAmount, address tokenAddress) internal returns (uint256 withdrawAmount) {
         // Values > FIELD_SIZE/2 represent negative field elements (net outflow)
-        if (publicAmount != 0 && publicAmount > FIELD_SIZE / 2) {
-            uint256 withdrawAmount = FIELD_SIZE - publicAmount;
+        if (publicAmount <= FIELD_SIZE / 2) return 0;
+        withdrawAmount = FIELD_SIZE - publicAmount;
 
-            // Solvency check: pool cannot pay out more than was deposited per asset
-            if (totalDeposited[tokenAddress] < withdrawAmount) revert InsufficientPoolBalance();
-            totalDeposited[tokenAddress] -= withdrawAmount;
+        // Solvency check: pool cannot pay out more than was deposited per asset
+        if (totalDeposited[tokenAddress] < withdrawAmount) revert InsufficientPoolBalance();
+        totalDeposited[tokenAddress] -= withdrawAmount;
+    }
 
-            if (tokenAddress == address(0)) {
-                (bool ok,) = recipient.call{value: withdrawAmount}("");
-                if (!ok) revert TransferFailed();
-            } else {
-                tokenAddress.safeTransfer(recipient, withdrawAmount);
-            }
-
-            emit Withdrawal(nullifier0, recipient, withdrawAmount, tokenAddress);
+    function _transferOut(address tokenAddress, address recipient, uint256 amount) internal {
+        if (tokenAddress == address(0)) {
+            (bool ok,) = recipient.call{value: amount}("");
+            if (!ok) revert TransferFailed();
+        } else {
+            tokenAddress.safeTransfer(recipient, amount);
         }
     }
 
@@ -398,6 +455,7 @@ contract DustPoolV2 {
         }
         if (publicAmount >= FIELD_SIZE) revert InvalidFieldElement();
         if (publicAsset >= FIELD_SIZE) revert InvalidFieldElement();
+        _checkSpendShape(nullifier0, nullifier1, publicAmount);
 
         if (nullifiers[nullifier0]) revert NullifierAlreadySpent();
         if (nullifier1 != bytes32(0) && nullifiers[nullifier1]) {

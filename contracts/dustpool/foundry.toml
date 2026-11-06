@@ -11,6 +11,7 @@ remappings = [
   "poseidon-solidity/=node_modules/poseidon-solidity/",
 ]
 libs = ["node_modules", "lib"]
+fs_permissions = [{ access = "read", path = "./test/fixtures" }]
 
 [rpc_endpoints]
 thanos_sepolia = "https://rpc.thanos-sepolia.tokamak.network"

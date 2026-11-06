@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity ^0.8.20;
 
 /// @title IComplianceOracle — Sanctions/compliance screening interface
 /// @notice Wraps any sanctions list oracle (e.g. Chainalysis) behind a common interface

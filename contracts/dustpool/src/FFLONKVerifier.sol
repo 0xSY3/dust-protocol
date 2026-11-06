@@ -1237,7 +1237,7 @@ contract FflonkVerifier {
                 mstore(add(mIn, 64), mload(pP))
                 mstore(add(mIn, 96), mload(add(pP, 32)))
 
-                let success := staticcall(sub(gas(), 2000), 6, mIn, 128, pR, 64)
+                let success := staticcall(gas(), 6, mIn, 128, pR, 64)
 
                 if iszero(success) {
                     mstore(0, 0)
@@ -1253,7 +1253,7 @@ contract FflonkVerifier {
                 mstore(add(mIn, 32), calldataload(add(pP, 32)))
                 mstore(add(mIn, 64), s)
 
-                success := staticcall(sub(gas(), 2000), 7, mIn, 96, mIn, 64)
+                success := staticcall(gas(), 7, mIn, 96, mIn, 64)
 
                 if iszero(success) {
                     mstore(0, 0)
@@ -1263,7 +1263,7 @@ contract FflonkVerifier {
                 mstore(add(mIn, 64), mload(pR))
                 mstore(add(mIn, 96), mload(add(pR, 32)))
 
-                success := staticcall(sub(gas(), 2000), 6, mIn, 128, pR, 64)
+                success := staticcall(gas(), 6, mIn, 128, pR, 64)
 
                 if iszero(success) {
                     mstore(0, 0)
@@ -1279,7 +1279,7 @@ contract FflonkVerifier {
                 mstore(add(mIn, 32), y)
                 mstore(add(mIn, 64), s)
 
-                success := staticcall(sub(gas(), 2000), 7, mIn, 96, mIn, 64)
+                success := staticcall(gas(), 7, mIn, 96, mIn, 64)
 
                 if iszero(success) {
                     mstore(0, 0)
@@ -1289,7 +1289,7 @@ contract FflonkVerifier {
                 mstore(add(mIn, 64), mload(pR))
                 mstore(add(mIn, 96), mload(add(pR, 32)))
 
-                success := staticcall(sub(gas(), 2000), 6, mIn, 128, pR, 64)
+                success := staticcall(gas(), 6, mIn, 128, pR, 64)
 
                 if iszero(success) {
                     mstore(0, 0)
@@ -1362,7 +1362,7 @@ contract FflonkVerifier {
                 mstore(add(mIn, 320), X2y2)
                 mstore(add(mIn, 352), X2y1)
 
-                let success := staticcall(sub(gas(), 2000), 8, mIn, 384, mIn, 0x20)
+                let success := staticcall(gas(), 8, mIn, 384, mIn, 0x20)
 
                 isOk := and(success, mload(mIn))
             }

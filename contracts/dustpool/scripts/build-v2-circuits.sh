@@ -107,8 +107,14 @@ build_circuit() {
   "$SNARKJS" zkey export solidityverifier "$out/$circuit.zkey" "$out/FflonkVerifier.generated.sol"
   # snarkjs names every FFLONK verifier FflonkVerifier; DeployV2.s.sol deploys the split verifier
   # alongside it, so it needs a distinct contract name.
-  sed "s/^contract FflonkVerifier {/contract $contract_name {/" \
+  # The template's precompile calls forward sub(gas(), 2000). ERC-7562 OP-012 (enforced by the
+  # EIP-8141 alt mempool tracer) bans a GAS opcode that is not immediately followed by a CALL, which
+  # would make the verifier unusable from a frame transaction's VERIFY frame (DustPoolV2Frame).
+  # Forwarding gas() keeps GAS adjacent to STATICCALL; EIP-150 already leaves the caller 1/64.
+  sed -e "s/^contract FflonkVerifier {/contract $contract_name {/" \
+      -e "s/staticcall(sub(gas(), 2000), /staticcall(gas(), /" \
     "$out/FflonkVerifier.generated.sol" > "$out/$contract_name.sol"
+  grep -q "sub(gas()" "$out/$contract_name.sol" && fail "$circuit: verifier still forwards sub(gas(), ...)"
 
   check_artifacts "$circuit" "$contract_name" "$expected_n_public"
 }
