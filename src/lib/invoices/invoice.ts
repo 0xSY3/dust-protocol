@@ -49,6 +49,13 @@ export function generateInvoiceId(): string {
   return ethers.utils.hexlify(ethers.utils.randomBytes(INVOICE_ID_BYTES));
 }
 
+/** The viewer's local calendar date as YYYY-MM-DD, comparable with due dates. */
+export function localDateString(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 export function isValidDueDate(value: string): boolean {
   if (!DUE_DATE_PATTERN.test(value)) return false;
   const date = new Date(`${value}T00:00:00Z`);

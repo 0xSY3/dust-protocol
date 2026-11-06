@@ -14,6 +14,8 @@ import {
   WalletIcon, SendIcon, CopyIcon,
 } from "@/components/stealth/icons";
 import { DustLogo } from "@/components/DustLogo";
+import { InvoiceCheckout } from "@/components/pay/InvoiceCheckout";
+import { parseInvoiceParams } from "@/lib/invoices/invoice";
 
 const animations = `
 @keyframes dust-success-scale {
@@ -39,7 +41,24 @@ const animations = `
 }
 `;
 
-export default function LinkPayPage({ params }: { params: { name: string; link: string } }) {
+type SearchParams = Record<string, string | string[] | undefined>;
+
+function toUrlSearchParams(searchParams: SearchParams): URLSearchParams {
+  const result = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    const first = Array.isArray(value) ? value[0] : value;
+    if (first !== undefined) result.set(key, first);
+  }
+  return result;
+}
+
+export default function LinkPayPage({ params, searchParams }: { params: { name: string; link: string }; searchParams: SearchParams }) {
+  const invoice = parseInvoiceParams(toUrlSearchParams(searchParams));
+  if (invoice) return <InvoiceCheckout merchantName={params.name} parse={invoice} />;
+  return <LinkPaymentView params={params} />;
+}
+
+function LinkPaymentView({ params }: { params: { name: string; link: string } }) {
   const { name, link } = params;
   const { isConnected } = useAccount();
   const { connect } = useConnect();

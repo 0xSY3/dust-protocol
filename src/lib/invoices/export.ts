@@ -7,7 +7,8 @@ import type { InvoiceSummary, VerifiedTransfer } from './reconcile';
 import { paymentKey } from './reconcile';
 
 export interface InvoiceExportRow {
-  invoice: Invoice;
+  /** createdAt is null for embedded-checkout payments the merchant never issued locally */
+  invoice: Omit<Invoice, 'createdAt'> & { createdAt: number | null };
   summary: InvoiceSummary;
   tokenSymbol: string;
   decimals: number;
@@ -44,7 +45,7 @@ export function invoicesToCsv(rows: InvoiceExportRow[], verified: ReadonlyMap<st
       ethers.utils.formatUnits(summary.expected, decimals),
       ethers.utils.formatUnits(summary.received, decimals),
       invoice.dueDate ?? '',
-      new Date(invoice.createdAt).toISOString(),
+      invoice.createdAt === null ? '' : new Date(invoice.createdAt).toISOString(),
       payers.join(' '),
       txHashes.join(' '),
       txHashes.map(hash => `${explorerBaseUrl}/tx/${hash}`).join(' '),
