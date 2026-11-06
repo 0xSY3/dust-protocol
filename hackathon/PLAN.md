@@ -21,11 +21,13 @@ swap-and-pay through Uniswap v4).
 | Uniswap Foundation | Build with Uniswap (Continuity) | Atomic private swap-and-pay: pool notes -> v4 swap -> stealth address |
 
 ## Phases
-- [ ] P0 Setup: branch, new repo `0xSY3/dust-mumbai` (tokamak remote push-disabled), deps, baseline tests
-- [ ] P1 Hygiene: LICENSE, remove `@vercel/analytics`, fix `.gitmodules`, README Continuity/CROPS/AI sections
+- [x] P0 Setup: branch, new repo `0xSY3/dust-mumbai` (tokamak remote push-disabled), deps, baseline tests
+- [ ] P1 Hygiene: ~~LICENSE~~, ~~remove `@vercel/analytics`~~, fix `.gitmodules`, README Continuity/CROPS/AI sections
 - [ ] P2 C1 fix shipped: recompile V2 circuits, FFLONK zkeys + verifiers, tests, Sepolia redeploy, zkeys to R2
 - [ ] P3 Anon-RPC: transport factory for viem + ethers reads, settings toggle, "% anonymized" counter
-- [ ] P4 Whitechain: chain config, deploy + verify suite, USDT stealth payment flow, WHITECHAIN_FEEDBACK.md
+- [ ] P4 Whitechain: ~~core Foundry project~~, ~~invoice metadata + reconciliation~~, ~~merchant /invoices +
+  invoice checkout~~, ~~dust-pay.js embed + example~~, ~~WHITECHAIN_FEEDBACK.md draft~~; remaining: deploy +
+  verify on 1874, chain config, real `0xcedf…` USDT payment, README links
 - [ ] P5 Uniswap: `DustSwapAdapterV2` swap-to-stealth path, tests, Sepolia deploy, UI, FEEDBACK.md
 - [ ] P6 E2E run, docs, push, videos (user), submission (user)
 
@@ -45,6 +47,13 @@ swap-and-pay through Uniswap v4).
 - Relayer remains trusted for exits/roots in this iteration; disclosed in README CROPS "C"/"S".
 - New FFLONK setup uses PSE Perpetual Powers of Tau (`ppot_0080_20.ptau`); Hermez mirrors 403.
 
+- Invoice ids ride in ERC-5564 announcement metadata (`'I'` + 16 random bytes after the amount), so
+  merchants reconcile with their viewing key alone; status counts only on-chain-verified Transfer
+  amounts, and only the first announcement per stealth address (replay protection).
+- Whitechain payments target the prize-mandated USDT `0xcedf…55a7`, not the docs' `USDT.e`.
+
 ## Errors encountered
 - `npm ci` EACCES in `~/.npm/_cacache` (root-owned cache) -> use isolated `--cache` dir.
 - Hermez ptau URLs return 403 -> PSE ppot mirror.
+- `forge install` in a dir without foundry.toml installs into the git root -> create foundry.toml first.
+- zsh: a loop variable named `path` clobbers `PATH`; `timeout` is not installed on macOS.
