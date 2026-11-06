@@ -34,13 +34,50 @@ describe('invoicePaymentsFromScan', () => {
       stealthPrivateKey: '0x', isMatch: true,
       announcedTokenAddress: USDT, announcedTokenAmount: '17d7840', announcedChainId: 1874,
     } satisfies ScanResult;
-    const results: ScanResult[] = [base, { ...base, announcedInvoiceId: '0x00112233445566778899AABBCCDDEEFF' }];
+    const otherStealth = '0x3333333333333333333333333333333333333333';
+    const invoiced: ScanResult = {
+      ...base,
+      announcement: { ...base.announcement, stealthAddress: otherStealth, txHash: '0xcc' },
+      announcedInvoiceId: '0x00112233445566778899AABBCCDDEEFF',
+    };
 
     // #when
-    const payments = invoicePaymentsFromScan(results);
+    const payments = invoicePaymentsFromScan([base, invoiced]);
 
     // #then
-    expect(payments).toEqual([payment({ announcedAmount: 25_000_000n, blockNumber: 7 })]);
+    expect(payments).toEqual([payment({ stealthAddress: otherStealth, announcementTxHash: '0xcc', blockNumber: 7 })]);
+  });
+});
+
+describe('invoicePaymentsFromScan replay protection', () => {
+  const scan = (blockNumber: number, txHash: string, invoiceId: string | null): ScanResult => ({
+    announcement: { schemeId: 1, stealthAddress: STEALTH, ephemeralPublicKey: '02ab', viewTag: 'aa', metadata: '0x', caller: PAYER, blockNumber, txHash },
+    stealthPrivateKey: '0x', isMatch: true,
+    announcedTokenAddress: USDT, announcedTokenAmount: '17d7840', announcedChainId: 1874, announcedInvoiceId: invoiceId,
+  });
+
+  it('ignores a later re-announcement of the same stealth address under another invoice id', () => {
+    // #given
+    const original = scan(100, '0x0a', INVOICE.id);
+    const replay = scan(200, '0x0b', '0xffeeddccbbaa99887766554433221100');
+
+    // #when
+    const payments = invoicePaymentsFromScan([replay, original]);
+
+    // #then
+    expect(payments.map(p => p.invoiceId)).toEqual([INVOICE.id]);
+  });
+
+  it('drops an invoice replay of a stealth address first announced without an invoice', () => {
+    // #given
+    const plainPayment = scan(100, '0x0a', null);
+    const replay = scan(200, '0x0b', INVOICE.id);
+
+    // #when
+    const payments = invoicePaymentsFromScan([plainPayment, replay]);
+
+    // #then
+    expect(payments).toEqual([]);
   });
 });
 

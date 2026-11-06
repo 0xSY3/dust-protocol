@@ -41,8 +41,29 @@ export interface InvoiceSummary {
   isVerifying: boolean;
 }
 
+function isEarlierAnnouncement(a: ScanResult['announcement'], b: ScanResult['announcement']): boolean {
+  if (a.blockNumber !== b.blockNumber) return a.blockNumber < b.blockNumber;
+  // Same block: no log index available, so break the tie deterministically
+  return a.txHash.toLowerCase() < b.txHash.toLowerCase();
+}
+
+/**
+ * Only the first announcement of each stealth address is trusted. Announcements are public, so
+ * anyone can re-announce an observed (stealth address, ephemeral key) pair with another invoice
+ * id; crediting every announcement would let one transfer settle several invoices. Because a
+ * Transfer log has exactly one recipient, this also means each transfer is credited at most once.
+ */
 export function invoicePaymentsFromScan(results: ScanResult[]): InvoicePayment[] {
-  return results.flatMap((result): InvoicePayment[] => {
+  const firstByStealthAddress = new Map<string, ScanResult>();
+  for (const result of results) {
+    const key = result.announcement.stealthAddress.toLowerCase();
+    const current = firstByStealthAddress.get(key);
+    if (!current || isEarlierAnnouncement(result.announcement, current.announcement)) {
+      firstByStealthAddress.set(key, result);
+    }
+  }
+
+  return [...firstByStealthAddress.values()].flatMap((result): InvoicePayment[] => {
     const { announcedInvoiceId, announcedChainId, announcedTokenAddress, announcedTokenAmount } = result;
     if (!announcedInvoiceId || !announcedChainId || !announcedTokenAddress) return [];
     return [{
