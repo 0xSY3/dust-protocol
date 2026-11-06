@@ -199,11 +199,78 @@ const ETHEREUM_SEPOLIA_CONFIG: ChainConfig = {
   testnet: true,
 };
 
+// ─── Whitechain Sepolia ────────────────────────────────────────────────────────
+
+const WHITECHAIN_SEPOLIA_RPC_URLS = [
+  process.env.NEXT_PUBLIC_WHITECHAIN_SEPOLIA_RPC,    // Optional private/forked RPC
+  'https://rpc.testnet.whitechain.io',
+].filter(Boolean) as string[];
+
+const whitechainSepolia = defineChain({
+  id: 1874,
+  name: 'Whitechain Sepolia',
+  nativeCurrency: { decimals: 18, name: 'WhiteBIT Coin', symbol: 'WBT' },
+  rpcUrls: { default: { http: WHITECHAIN_SEPOLIA_RPC_URLS } },
+  blockExplorers: { default: { name: 'Whitechain Explorer', url: 'https://explorer.testnet.whitechain.io' } },
+  contracts: { multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' } }, // Preinstall
+  testnet: true,
+});
+
+const WHITECHAIN_SEPOLIA_CONFIG: ChainConfig = {
+  id: 1874,
+  name: 'Whitechain Sepolia',
+  rpcUrl: WHITECHAIN_SEPOLIA_RPC_URLS[0],
+  rpcUrls: WHITECHAIN_SEPOLIA_RPC_URLS,
+  nativeCurrency: { name: 'WhiteBIT Coin', symbol: 'WBT', decimals: 18 },
+  blockExplorerUrl: 'https://explorer.testnet.whitechain.io',
+  viemChain: whitechainSepolia,
+  contracts: {
+    announcer: '0xfE55B104f6A200cbD17D0Be5a90D17a2A2a0d223',
+    registry: '0x0e4cF377fc18E46BB1184e4274367Bc0dB958573',
+    nameRegistry: '0x75BD499f7CA8E361b7930e2881b2B3c99Aa1eea1',
+    walletFactory: '0xACe425FC23d7594b829935EC4862f654541Bf0d3',
+    legacyWalletFactory: '',
+    accountFactory: '0x72f0bd8d014cdB045efD33311028A3013769d69F',
+    legacyAccountFactory: '',
+    entryPoint: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789', // Canonical v0.6, preinstalled on Whitechain
+    paymaster: '0xE6Bee82a9a38f43dba44c6Ba4DF9c74BeDBb61BC',
+    dustPool: null,
+    dustPoolVerifier: null,
+    subAccount7702: null,
+    nameRegistryMerkle: null,
+    nameVerifier: null,
+    uniswapV4PoolManager: null,
+    uniswapV4StateView: null,
+    uniswapV4Quoter: null,
+    dustPoolV2: null,
+    dustPoolV2Verifier: null,
+    dustPoolV2SplitVerifier: null,
+    dustPoolV2ComplianceVerifier: null,
+    dustSwapAdapterV2: null,
+    stealthPaymentRouter: '0x5779192B220876221Bc2871511FB764941314e04',
+    dustSwapVanillaPoolKey: null,
+  },
+  creationCodes: {
+    // Same bytecode as Thanos/Sepolia: the factories deployed here derive identical CREATE2 addresses
+    wallet: THANOS_SEPOLIA_CONFIG.creationCodes.wallet,
+    legacyWallet: '',
+    account: THANOS_SEPOLIA_CONFIG.creationCodes.account,
+    legacyAccount: '',
+  },
+  deploymentBlock: 12397940,
+  dustPoolDeploymentBlock: null,
+  // Prague headers are present but EIP-7702 support is undocumented, so use ERC-4337 accounts
+  supportsEIP7702: false,
+  canonicalForNaming: false,
+  testnet: true,
+};
+
 // ─── Registry ──────────────────────────────────────────────────────────────────
 
 const CHAIN_CONFIGS: Record<number, ChainConfig> = {
   [THANOS_SEPOLIA_CONFIG.id]: THANOS_SEPOLIA_CONFIG,
   [ETHEREUM_SEPOLIA_CONFIG.id]: ETHEREUM_SEPOLIA_CONFIG,
+  [WHITECHAIN_SEPOLIA_CONFIG.id]: WHITECHAIN_SEPOLIA_CONFIG,
 };
 
 export const DEFAULT_CHAIN_ID = 11155111;

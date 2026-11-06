@@ -30,18 +30,27 @@ contract Deploy4337 is Script {
         StealthAccountFactory factory = new StealthAccountFactory(entryPoint);
         console.log("StealthAccountFactory:", address(factory));
 
-        // 3. Deploy DustPaymaster (deployer is owner + verifying signer)
-        DustPaymaster paymaster = new DustPaymaster(entryPoint, deployer);
+        // 3. Deploy DustPaymaster (deployer is owner). The verifying signer must be the key that
+        //    /api/bundle signs paymasterAndData with (RELAYER_PRIVATE_KEY), so allow overriding it
+        //    when the deployer and the relayer are different accounts.
+        address paymasterSigner = vm.envOr("PAYMASTER_SIGNER", deployer);
+        DustPaymaster paymaster = new DustPaymaster(entryPoint, paymasterSigner);
         console.log("DustPaymaster:", address(paymaster));
+        console.log("Paymaster verifying signer:", paymasterSigner);
 
-        // 4. Fund paymaster deposit on EntryPoint (0.5 ETH for testnets)
-        entryPoint.depositTo{value: 0.5 ether}(address(paymaster));
-        console.log("Paymaster deposit: 0.5 ETH");
+        // 4. Fund paymaster deposit on EntryPoint. Defaults suit Sepolia; faucet-limited testnets
+        //    (e.g. Whitechain: 0.5 WBT/day) can pass a smaller PAYMASTER_DEPOSIT.
+        uint256 deposit = vm.envOr("PAYMASTER_DEPOSIT", uint256(0.5 ether));
+        entryPoint.depositTo{value: deposit}(address(paymaster));
         console.log("Paymaster deposit balance:", entryPoint.balanceOf(address(paymaster)));
 
-        // 5. Stake paymaster (required by bundlers, we self-bundle but do it anyway)
-        paymaster.addStake{value: 0.1 ether}(86400); // 1 day unstake delay
-        console.log("Paymaster staked: 0.1 ETH");
+        // 5. Stake paymaster (required by bundlers, we self-bundle but do it anyway).
+        //    EntryPoint v0.6 rejects a zero stake, so PAYMASTER_STAKE=0 skips staking.
+        uint256 stake = vm.envOr("PAYMASTER_STAKE", uint256(0.1 ether));
+        if (stake > 0) {
+            paymaster.addStake{value: stake}(86400); // 1 day unstake delay
+            console.log("Paymaster staked:", stake);
+        }
 
         vm.stopBroadcast();
     }
