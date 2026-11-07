@@ -12,6 +12,9 @@ import { encodeAbiParameters, encodeFunctionData, keccak256, stringToHex } from 
 
 export const FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
 const TREE_DEPTH = 20
+// ASCII "dust.v2.nk": nullifierKey = Poseidon(spendingKey, NULLIFIER_KEY_DOMAIN), enforced by DustV2Transaction.circom
+// and matching src/lib/dustpool/v2/constants.ts.
+const NULLIFIER_KEY_DOMAIN = 0x647573742e76322e6e6bn
 // DustPoolV2Frame.FRAME_WITHDRAWAL_TAG
 const FRAME_WITHDRAWAL_TAG = keccak256(stringToHex('DustPoolV2Frame.withdrawal.v1'))
 const ARTIFACTS = resolve(dirname(fileURLToPath(import.meta.url)), '../../dustpool/build/v2/DustV2Transaction')
@@ -27,7 +30,7 @@ export function fieldFromLabel(label) {
 
 export function deriveKeys(seed) {
   const spendingKey = fieldFromLabel(`${seed}:spending`)
-  return { spendingKey, nullifierKey: fieldFromLabel(`${seed}:nullifier`), owner: hash([spendingKey]) }
+  return { spendingKey, nullifierKey: hash([spendingKey, NULLIFIER_KEY_DOMAIN]), owner: hash([spendingKey]) }
 }
 
 export function createNote(keys, chainId, amount, blindingLabel) {

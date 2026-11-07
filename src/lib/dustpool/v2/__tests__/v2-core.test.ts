@@ -4,7 +4,8 @@ import { computeNoteCommitment, computeAssetId, computeOwnerPubKey, poseidonHash
 import { computeNullifier } from '../nullifier'
 import { BN254_FIELD_SIZE, MAX_AMOUNT, TREE_DEPTH } from '../constants'
 import { buildDepositInputs, buildWithdrawInputs, buildTransferInputs } from '../proof-inputs'
-import type { NoteCommitmentV2, V2Keys } from '../types'
+import type { NoteCommitmentV2 } from '../types'
+import { MOCK_KEYS } from './test-helpers'
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -197,11 +198,6 @@ describe('computeNullifier', () => {
 // ── Proof input builders ────────────────────────────────────────────────────
 
 const TEST_CHAIN_ID = 11155111
-
-const MOCK_KEYS: V2Keys = {
-  spendingKey: 12345n,
-  nullifierKey: 67890n,
-}
 
 async function mockNote(amount: bigint, chainId: number = 1): Promise<NoteCommitmentV2> {
   const ownerPubKey = await computeOwnerPubKey(MOCK_KEYS.spendingKey)

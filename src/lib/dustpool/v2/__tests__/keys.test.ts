@@ -1,6 +1,38 @@
 import { describe, it, expect } from 'vitest'
-import { deriveV2Keys } from '../keys'
-import { BN254_FIELD_SIZE } from '../constants'
+import { stringToHex } from 'viem'
+import { deriveNullifierKey, deriveV2Keys } from '../keys'
+import { poseidonHash } from '../commitment'
+import { BN254_FIELD_SIZE, NULLIFIER_KEY_DOMAIN } from '../constants'
+import { MOCK_KEYS } from './test-helpers'
+
+describe('NULLIFIER_KEY_DOMAIN', () => {
+  it('is ASCII "dust.v2.nk" read as a big-endian integer', () => {
+    // #when
+    const fromAscii = BigInt(stringToHex('dust.v2.nk'))
+
+    // #then — same literal as the circuits and the .mjs fixture scripts
+    expect(NULLIFIER_KEY_DOMAIN).toBe(fromAscii)
+    expect(NULLIFIER_KEY_DOMAIN).toBe(0x647573742e76322e6e6bn)
+  })
+})
+
+describe('deriveNullifierKey', () => {
+  it('matches the hardcoded MOCK_KEYS pair used across the V2 tests', async () => {
+    // #when
+    const nullifierKey = await deriveNullifierKey(MOCK_KEYS.spendingKey)
+
+    // #then
+    expect(nullifierKey).toBe(MOCK_KEYS.nullifierKey)
+  })
+
+  it('gives different nullifier keys for different spending keys', async () => {
+    // #when
+    const [nk1, nk2] = await Promise.all([deriveNullifierKey(1n), deriveNullifierKey(2n)])
+
+    // #then
+    expect(nk1).not.toBe(nk2)
+  })
+})
 
 // Simulated wallet signature (any non-empty string works for PBKDF2)
 const MOCK_SIGNATURE =
@@ -64,12 +96,12 @@ describe('deriveV2Keys', () => {
     expect(keys1.nullifierKey).not.toBe(keys2.nullifierKey)
   })
 
-  it('spendingKey and nullifierKey are independent', async () => {
+  it('derives nullifierKey as Poseidon(spendingKey, NULLIFIER_KEY_DOMAIN)', async () => {
     // #when
     const keys = await deriveV2Keys(MOCK_SIGNATURE, MOCK_PIN)
 
-    // #then — derived from different PBKDF2 salts, so always different
-    expect(keys.spendingKey).not.toBe(keys.nullifierKey)
+    // #then — the circuits reject any other nullifierKey for this spendingKey
+    expect(keys.nullifierKey).toBe(await poseidonHash([keys.spendingKey, NULLIFIER_KEY_DOMAIN]))
   })
 
   it('handles a very short PIN (single digit)', async () => {

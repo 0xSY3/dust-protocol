@@ -39,6 +39,9 @@ const VKEY_PATH = resolve(ROOT, 'contracts/dustpool/circuits/v2/build/verificati
 
 const BN254_FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
 const TREE_DEPTH = 20
+// ASCII "dust.v2.nk": nullifierKey = Poseidon(spendingKey, NULLIFIER_KEY_DOMAIN), enforced by DustV2Transaction.circom
+// and matching src/lib/dustpool/v2/constants.ts.
+const NULLIFIER_KEY_DOMAIN = 0x647573742e76322e6e6bn
 
 const THANOS_RPC = 'https://rpc.thanos-sepolia.tokamak.network'
 const DUST_POOL_V2 = '0x6987FE79057D83BefD19B80822Decb52235A5a67'
@@ -112,7 +115,7 @@ async function phase1_setup() {
   await initPoseidon()
 
   const spendingKey = randomField()
-  const nullifierKey = randomField()
+  const nullifierKey = ph([spendingKey, NULLIFIER_KEY_DOMAIN])
   const ownerPubKey = ph([spendingKey])
 
   console.log(`  Spending key: ${spendingKey.toString(16).slice(0, 16)}...`)

@@ -45,6 +45,15 @@ declare module 'snarkjs' {
     ): Promise<string>;
   }
 
+  export namespace wtns {
+    /** Rejects with "Assert Failed. Error in template <name> line: <n>" when an input breaks a constraint. */
+    function calculate(
+      input: Record<string, string | string[] | string[][]>,
+      wasmFile: string,
+      wtnsFile: string | { type: 'mem' },
+    ): Promise<void>;
+  }
+
   interface FflonkProof {
     polynomials: {
       C1: string[];

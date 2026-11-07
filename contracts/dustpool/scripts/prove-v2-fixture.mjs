@@ -3,18 +3,24 @@
 //   { "proof": [24 x bytes32 hex], "publicSignals": [9 x decimal string] }
 // The proof is checked against the verification key before it is written.
 //
-// Usage: node contracts/dustpool/scripts/prove-v2-fixture.mjs <input.json> <out.json>
+// Usage: node contracts/dustpool/scripts/prove-v2-fixture.mjs <input.json> <out.json> [extra.json]
 //   artifacts: contracts/dustpool/build/v2/DustV2Transaction (scripts/build-v2-circuits.sh)
+//   extra.json: an object whose keys are copied into the fixture beside proof and publicSignals
+//               (v2-proof-fixtures.mjs writes one for the deposit fixtures)
 
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { fflonk } from 'snarkjs'
 
-const [inputPath, outPath] = process.argv.slice(2)
+const [inputPath, outPath, extraPath] = process.argv.slice(2)
 if (!inputPath || !outPath) {
-  console.error('usage: prove-v2-fixture.mjs <input.json> <out.json>')
+  console.error('usage: prove-v2-fixture.mjs <input.json> <out.json> [extra.json]')
   process.exit(1)
+}
+const extra = extraPath ? JSON.parse(readFileSync(extraPath, 'utf8')) : {}
+for (const key of ['proof', 'publicSignals']) {
+  if (key in extra) throw new Error(`${extraPath}: "${key}" is written by the prover`)
 }
 
 const artifacts = resolve(dirname(fileURLToPath(import.meta.url)), '../build/v2/DustV2Transaction')
@@ -31,6 +37,6 @@ const words = (await fflonk.exportSolidityCallData(publicSignals, proof)).match(
 if (!words || words.length < 24) throw new Error('unexpected FFLONK calldata layout')
 
 mkdirSync(dirname(resolve(outPath)), { recursive: true })
-writeFileSync(outPath, `${JSON.stringify({ proof: words.slice(0, 24), publicSignals }, null, 1)}\n`)
+writeFileSync(outPath, `${JSON.stringify({ proof: words.slice(0, 24), publicSignals, ...extra }, null, 1)}\n`)
 console.log(`${outPath}: ${publicSignals.length} public signals`)
 process.exit(0)

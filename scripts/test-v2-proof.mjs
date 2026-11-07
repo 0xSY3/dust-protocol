@@ -20,6 +20,9 @@ const VKEY_PATH = resolve(ROOT, 'contracts/dustpool/circuits/v2/build/verificati
 
 const BN254_FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
 const TREE_DEPTH = 20
+// ASCII "dust.v2.nk": nullifierKey = Poseidon(spendingKey, NULLIFIER_KEY_DOMAIN), enforced by DustV2Transaction.circom
+// and matching src/lib/dustpool/v2/constants.ts.
+const NULLIFIER_KEY_DOMAIN = 0x647573742e76322e6e6bn
 
 // ─── Poseidon Setup ──────────────────────────────────────────────────────────
 
@@ -59,7 +62,7 @@ async function testDepositProof() {
 
   // Generate keys
   const spendingKey = randomFieldElement()
-  const nullifierKey = randomFieldElement()
+  const nullifierKey = poseidonHash([spendingKey, NULLIFIER_KEY_DOMAIN])
   const ownerPubKey = poseidonHash([spendingKey])
   console.log(`[OK] Keys generated (owner: ${ownerPubKey.toString(16).slice(0, 16)}...)`)
 

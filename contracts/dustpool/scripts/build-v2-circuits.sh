@@ -186,7 +186,7 @@ main() {
   fi
 
   echo ""
-  echo "Done. Upload the zkeys to R2 (and bump the ?v= cache key in src/lib/dustpool/v2) before the app uses the new verifiers."
+  echo "Done. Upload the zkeys to R2 under a new dated path (v2/<yyyymmdd>/, v2-split/<yyyymmdd>/) and point src/lib/dustpool/v2 at it before the app uses the new verifiers; keep the old keys for notes in pools on the old verifiers."
 }
 
 main "$@"

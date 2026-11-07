@@ -51,6 +51,7 @@ template MerkleProofVerifier(levels) {
 // Note commitment = Poseidon(owner, amount, asset, chainId, blinding)
 // Nullifier      = Poseidon(nullifierKey, commitment, leafIndex)
 // Owner pubkey   = Poseidon(spendingKey)
+// Nullifier key  = Poseidon(spendingKey, NULLIFIER_KEY_DOMAIN), NULLIFIER_KEY_DOMAIN = ASCII "dust.v2.nk"
 template DustV2Transaction(TREE_DEPTH) {
     // ---- Public signals ----
     signal input merkleRoot;
@@ -91,6 +92,16 @@ template DustV2Transaction(TREE_DEPTH) {
     // ================================================================
     component ownerPubKey = Poseidon(1);
     ownerPubKey.inputs[0] <== spendingKey;
+
+    // Bind the nullifier key to the spending key. A note commits only to Poseidon(spendingKey), so a free
+    // nullifierKey let the owner prove the same note under any key, each time with a fresh nullifier: an
+    // unbounded double spend, the same class as the Hinkal drain
+    // (https://blocksec.com/blog/web3-security-hinkal-double-spend).
+    var NULLIFIER_KEY_DOMAIN = 0x647573742e76322e6e6b; // ASCII "dust.v2.nk"
+    component nullifierKeyDerivation = Poseidon(2);
+    nullifierKeyDerivation.inputs[0] <== spendingKey;
+    nullifierKeyDerivation.inputs[1] <== NULLIFIER_KEY_DOMAIN;
+    nullifierKey === nullifierKeyDerivation.out;
 
     // ================================================================
     // Step 2: Process each input note
@@ -220,20 +231,10 @@ template DustV2Transaction(TREE_DEPTH) {
     // ================================================================
     // Step 5: I1 fix — Bind recipient to proof (prevent relay-time substitution)
     // ================================================================
-    // Compute a binding hash: Poseidon(recipient, publicAsset, publicAmount)
-    // This forces the verifier to accept only the exact (recipient, asset, amount)
-    // triple that the prover committed to. Any change invalidates the proof.
-    component recipientBinding = Poseidon(3);
-    recipientBinding.inputs[0] <== recipient;
-    recipientBinding.inputs[1] <== publicAsset;
-    recipientBinding.inputs[2] <== publicAmount;
-
-    // Constrain that this hash is non-trivially computed (not optimized away).
-    // The binding hash is derived from public signals, so the verifier enforces
-    // that the prover's chosen (recipient, publicAsset, publicAmount) matches
-    // exactly what was used in proof generation.
-    signal recipientBindingCheck;
-    recipientBindingCheck <== recipientBinding.out;
+    // Keeps `recipient` in a constraint. Public signals are bound by the verification equation itself; the square
+    // only guards against a prover setup that drops an unconstrained public input (Tornado Cash's pattern)
+    signal recipientSquare;
+    recipientSquare <== recipient * recipient;
 }
 
 component main {public [merkleRoot, nullifier0, nullifier1, outputCommitment0, outputCommitment1, publicAmount, publicAsset, recipient, chainId]} = DustV2Transaction(20);

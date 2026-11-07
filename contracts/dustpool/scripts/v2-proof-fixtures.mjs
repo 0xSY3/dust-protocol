@@ -6,10 +6,19 @@
 //   input-c1-slot<i>.json  same notes and Merkle paths, but input i claims leafIndex + 1 and carries the
 //                          nullifier derived from that index: the nullifier-unbinding double spend.
 //                          Every other constraint still holds, so the C1 binding is the only one it can trip.
-// plus two satisfiable inputs that DustPoolV2 itself must reject (duplicate-nullifier, unbacked-deposit).
+//   input-nk-forged-<k>.json  same spends, but nullifierKey and the nullifiers come from a key other than
+//                          Poseidon(spendingKey, NULLIFIER_KEY_DOMAIN): one note, a fresh nullifier per key.
+//                          Every other constraint still holds, so the nullifier key binding is the only one it can trip.
+// plus two satisfiable inputs that DustPoolV2 itself must reject (duplicate-nullifier, unbacked-deposit),
+// and three it must accept:
+//   deposit-eth, deposit-erc20  deposit proofs in the layout DustPoolV2._verifyDepositProof checks, with an
+//                          extra.json holding the note's { ownerPubKey, blinding, token } for depositNote
+//   deposit-withdraw       spends deposit-eth's note as leaf 0 of an otherwise empty tree
+// prove-v2-fixture.mjs copies extra.json into the Foundry fixture.
 //
 // Input layout mirrors src/lib/dustpool/v2/proof-inputs.ts (buildWithdrawInputs, buildSplitInputs) and
-// the tree mirrors src/MerkleTree.sol (empty leaf 0, zeros[i + 1] = Poseidon(zeros[i], zeros[i])).
+// the tree mirrors src/MerkleTree.sol and relayer/v2/src/tree/global-tree.ts (empty leaf 0,
+// zeros[i + 1] = Poseidon(zeros[i], zeros[i])).
 //
 // Usage: node contracts/dustpool/scripts/v2-proof-fixtures.mjs [outDir]
 //   default outDir: contracts/dustpool/build/v2/fixtures
@@ -27,6 +36,13 @@ const CHAIN_ID = 11155111n
 const NATIVE_TOKEN = 0n
 const ETHER = 10n ** 18n
 const RECIPIENT = 0xa11ce00000000000000000000000000000000001n
+// ASCII "dust.v2.nk": nullifierKey = Poseidon(spendingKey, NULLIFIER_KEY_DOMAIN), enforced by both circuits and
+// matching src/lib/dustpool/v2/constants.ts.
+const NULLIFIER_KEY_DOMAIN = 0x647573742e76322e6e6bn
+// DustPoolV2.DUMMY_COMMITMENT: the all-zero note's commitment, which a deposit proof's second output must be
+const DUMMY_COMMITMENT = 0x2066be41bebe6caf7e079360abe14fbf9118c62eabc42e2fe75e342b160a95bcn
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+const ERC20_TOKEN = '0x000000000000000000000000000000000000E20C'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const outDir = resolve(process.argv[2] ?? resolve(scriptDir, '../build/v2/fixtures'))
@@ -41,7 +57,7 @@ function fieldFromLabel(label) {
 }
 
 const spendingKey = fieldFromLabel('spendingKey')
-const nullifierKey = fieldFromLabel('nullifierKey')
+const nullifierKey = hash([spendingKey, NULLIFIER_KEY_DOMAIN])
 const owner = hash([spendingKey])
 const asset = hash([CHAIN_ID, NATIVE_TOKEN])
 const DUMMY_NOTE = { owner: 0n, amount: 0n, asset: 0n, chainId: 0n, blinding: 0n }
@@ -50,9 +66,16 @@ const DUMMY_PATH = {
   pathIndices: new Array(TREE_DEPTH).fill(0),
 }
 
-const createNote = (amount, label) => ({ owner, amount, asset, chainId: CHAIN_ID, blinding: fieldFromLabel(label) })
+const createNote = (amount, label, noteAsset = asset) => ({
+  owner,
+  amount,
+  asset: noteAsset,
+  chainId: CHAIN_ID,
+  blinding: fieldFromLabel(label),
+})
 const commitmentOf = (note) => hash([note.owner, note.amount, note.asset, note.chainId, note.blinding])
-const nullifierOf = (commitment, leafIndex) => hash([nullifierKey, commitment, BigInt(leafIndex)])
+if (commitmentOf(DUMMY_NOTE) !== DUMMY_COMMITMENT) throw new Error('the all-zero note no longer hashes to DUMMY_COMMITMENT')
+const nullifierOf = (commitment, leafIndex, key = nullifierKey) => hash([key, commitment, BigInt(leafIndex)])
 
 function buildMerkleTree(leavesByIndex) {
   const zeros = [0n]
@@ -229,12 +252,73 @@ function buildUnbackedDepositFixture() {
   return { spent, signalsFor }
 }
 
+// Deposits DustPoolV2 accepts: both inputs dummy, so the Merkle root plays no part. _verifyDepositProof rebuilds
+// the public signals as [0, 0, 0, commitment, DUMMY_COMMITMENT, amount, asset, 0, chainId].
+function buildDepositFixture(note) {
+  const spent = [DUMMY_SPEND, DUMMY_SPEND]
+  const outputs = [note, DUMMY_NOTE]
+
+  const signalsFor = (spends) => ({
+    merkleRoot: 0n,
+    nullifier0: spends[0].nullifier,
+    nullifier1: spends[1].nullifier,
+    outputCommitment0: commitmentOf(outputs[0]),
+    outputCommitment1: commitmentOf(outputs[1]),
+    publicAmount: note.amount,
+    publicAsset: note.asset,
+    recipient: 0n,
+    chainId: CHAIN_ID,
+    spendingKey,
+    nullifierKey,
+    ...inputNoteSignals(spends),
+    ...outputNoteSignals(outputs),
+  })
+
+  return { spent, signalsFor }
+}
+
+// deposit-withdraw: the deposited note as the only leaf (index 0); withdraw 0.4 ETH to RECIPIENT, 0.6 ETH change.
+function buildDepositWithdrawFixture(depositedNote) {
+  const tree = buildMerkleTree(new Map([[0, commitmentOf(depositedNote)]]))
+  const spent = [spendInTree(tree, depositedNote, 0), DUMMY_SPEND]
+
+  const withdrawAmount = (4n * ETHER) / 10n
+  const outputs = [createNote(depositedNote.amount - withdrawAmount, 'deposit-withdraw-change'), DUMMY_NOTE]
+
+  const signalsFor = (spends) => ({
+    merkleRoot: tree.root,
+    nullifier0: spends[0].nullifier,
+    nullifier1: spends[1].nullifier,
+    outputCommitment0: commitmentOf(outputs[0]),
+    outputCommitment1: commitmentOf(outputs[1]),
+    publicAmount: BN254_FIELD_SIZE - withdrawAmount,
+    publicAsset: asset,
+    recipient: RECIPIENT,
+    chainId: CHAIN_ID,
+    spendingKey,
+    nullifierKey,
+    ...inputNoteSignals(spends),
+    ...outputNoteSignals(outputs),
+  })
+
+  return { spent, signalsFor }
+}
+
+// What depositNote / depositERC20Note take to rebuild the note on-chain
+const depositNoteArgs = (note, token) => ({
+  note: { ownerPubKey: note.owner.toString(), blinding: note.blinding.toString(), token },
+})
+
 function withShiftedLeafIndex(spent, slot) {
   return spent.map((s, i) => {
     if (i !== slot) return s
     const forgedIndex = s.leafIndex + 1
     return { ...s, leafIndex: forgedIndex, nullifier: nullifierOf(s.commitment, forgedIndex) }
   })
+}
+
+function underNullifierKey(spent, key) {
+  return spent.map((s) => (s.note.amount === 0n ? s : { ...s, nullifier: nullifierOf(s.commitment, s.leafIndex, key) }))
 }
 
 const toDecimalStrings = (value) =>
@@ -246,7 +330,11 @@ function writeInput(dir, name, signals) {
   console.log(`  ${resolve(dir, name)}`)
 }
 
-function writeFixture(circuitDirName, { spent, signalsFor }, forgedSlots) {
+function writeFixture(
+  circuitDirName,
+  { spent, signalsFor },
+  { forgedSlots = [], forgedNullifierKeys = [], extra } = {}
+) {
   const dir = resolve(outDir, circuitDirName)
   mkdirSync(dir, { recursive: true })
   console.log(`${circuitDirName}: leafIndex = [${spent.map((s) => s.leafIndex).join(', ')}]`)
@@ -254,9 +342,25 @@ function writeFixture(circuitDirName, { spent, signalsFor }, forgedSlots) {
   for (const slot of forgedSlots) {
     writeInput(dir, `input-c1-slot${slot}.json`, signalsFor(withShiftedLeafIndex(spent, slot)))
   }
+  forgedNullifierKeys.forEach((key, k) => {
+    writeInput(dir, `input-nk-forged-${k}.json`, { ...signalsFor(underNullifierKey(spent, key)), nullifierKey: key })
+  })
+  if (extra) {
+    writeFileSync(resolve(dir, 'extra.json'), `${JSON.stringify(extra, null, 1)}\n`)
+    console.log(`  ${resolve(dir, 'extra.json')}`)
+  }
 }
 
-writeFixture('transaction', buildTransactionFixture(), [0, 1])
-writeFixture('split', buildSplitFixture(), [0])
-writeFixture('duplicate-nullifier', buildDuplicateNullifierFixture(), [])
-writeFixture('unbacked-deposit', buildUnbackedDepositFixture(), [])
+const FORGED_NULLIFIER_KEYS = [fieldFromLabel('forged-nullifier-key-0'), fieldFromLabel('forged-nullifier-key-1')]
+const depositEthNote = createNote(ETHER, 'deposit-eth-note')
+const depositErc20Note = createNote(1_000_000_000n, 'deposit-erc20-note', hash([CHAIN_ID, BigInt(ERC20_TOKEN)]))
+
+writeFixture('transaction', buildTransactionFixture(), { forgedSlots: [0, 1], forgedNullifierKeys: FORGED_NULLIFIER_KEYS })
+writeFixture('split', buildSplitFixture(), { forgedSlots: [0], forgedNullifierKeys: FORGED_NULLIFIER_KEYS })
+writeFixture('duplicate-nullifier', buildDuplicateNullifierFixture())
+writeFixture('unbacked-deposit', buildUnbackedDepositFixture())
+writeFixture('deposit-eth', buildDepositFixture(depositEthNote), { extra: depositNoteArgs(depositEthNote, ZERO_ADDRESS) })
+writeFixture('deposit-erc20', buildDepositFixture(depositErc20Note), {
+  extra: depositNoteArgs(depositErc20Note, ERC20_TOKEN),
+})
+writeFixture('deposit-withdraw', buildDepositWithdrawFixture(depositEthNote))

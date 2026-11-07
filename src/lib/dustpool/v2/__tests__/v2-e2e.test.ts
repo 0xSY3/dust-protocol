@@ -4,6 +4,7 @@ import { computeNoteCommitment, computeAssetId, computeOwnerPubKey, poseidonHash
 import { computeNullifier } from '../nullifier'
 import { buildDepositInputs, buildWithdrawInputs, buildTransferInputs } from '../proof-inputs'
 import { BN254_FIELD_SIZE, TREE_DEPTH } from '../constants'
+import { deriveNullifierKey } from '../keys'
 import type { NoteCommitmentV2, V2Keys } from '../types'
 
 // ── Mini Poseidon Merkle tree (mirrors relayer GlobalTree logic) ────────────
@@ -93,7 +94,7 @@ let assetId: bigint
 let tree: TestTree
 
 beforeAll(async () => {
-  keys = { spendingKey: 42069n, nullifierKey: 13371337n }
+  keys = { spendingKey: 42069n, nullifierKey: await deriveNullifierKey(42069n) }
   ownerPubKey = await computeOwnerPubKey(keys.spendingKey)
   assetId = await computeAssetId(CHAIN_ID, ETH_ADDRESS)
   tree = new TestTree()

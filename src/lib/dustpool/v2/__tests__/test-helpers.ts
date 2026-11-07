@@ -10,9 +10,10 @@ import type { NoteCommitmentV2, V2Keys } from '../types'
 export const TEST_CHAIN_ID = 11155111
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
+// nullifierKey = Poseidon(12345, NULLIFIER_KEY_DOMAIN), the pair the circuits accept; keys.test.ts checks it.
 export const MOCK_KEYS: V2Keys = {
   spendingKey: 12345n,
-  nullifierKey: 67890n,
+  nullifierKey: 18765577851128962953981823622346261435115820405345967019978515885000658273020n,
 }
 
 export async function mockNote(
