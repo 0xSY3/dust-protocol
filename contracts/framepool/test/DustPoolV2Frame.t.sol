@@ -48,7 +48,7 @@ contract DustPoolV2FrameTest is FrameOpcodeMocks {
         pool.setRelayer(relayer, true);
         vm.deal(depositor, 5 ether);
         vm.prank(depositor);
-        pool.deposit{value: 2 ether}(bytes32(uint256(0xd0)));
+        pool.depositNote{value: 2 ether}(0xd0, 0);
         vm.prank(relayer);
         pool.updateRoot(w.merkleRoot);
 

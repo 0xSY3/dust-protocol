@@ -31,7 +31,7 @@ contract DustPoolV2SoundnessTest is Test {
 
         vm.deal(victim, 10 ether);
         vm.prank(victim);
-        pool.deposit{value: 3 ether}(bytes32(uint256(0xdead)));
+        pool.depositNote{value: 3 ether}(0xdead, 0);
     }
 
     /// One 0.5 ETH note in both input slots: same nullifier twice, counted twice by the circuit.
@@ -39,7 +39,7 @@ contract DustPoolV2SoundnessTest is Test {
         Fixture memory f = _load("duplicate-nullifier");
         assertEq(f.signals[1], f.signals[2], "fixture spends one note twice");
         vm.deal(address(this), 0.5 ether);
-        pool.deposit{value: 0.5 ether}(bytes32(uint256(0xbeef)));
+        pool.depositNote{value: 0.5 ether}(0xbeef, 0);
 
         vm.prank(relayer);
         pool.updateRoot(bytes32(f.signals[0]));

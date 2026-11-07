@@ -64,7 +64,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId, hasKeys: has
   const { data: walletBalance } = useBalance({ address });
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
-  const { deposit, isPending, txHash, error, clearError } = useV2Deposit(keysRef, chainId);
+  const { deposit, isPending, status: depositStatus, txHash, error, clearError } = useV2Deposit(keysRef, chainId);
   const { screenAddress, screeningResult, isScreening, clearScreening } = useV2Compliance(chainId);
   const ext = useExternalDeposit(keysRef, chainId);
 
@@ -142,7 +142,7 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId, hasKeys: has
   const canExternalDeposit = parsedAmount !== null && ext.status === "idle" && ext.hasInjectedWallet;
   const canGenerateLink = parsedAmount !== null && ext.status === "idle";
 
-  const isBusy = isPending || isApproving || ext.status === "connecting-wallet" || ext.status === "awaiting-tx" || ext.status === "confirming" || ext.status === "polling-relayer" || ext.status === "generating-note";
+  const isBusy = isPending || isApproving || ext.status === "connecting-wallet" || ext.status === "awaiting-tx" || ext.status === "confirming" || ext.status === "polling-relayer" || ext.status === "generating-note" || ext.status === "generating-proof";
 
   const handleDeposit = async () => {
     if (!parsedAmount) return;
@@ -508,7 +508,9 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId, hasKeys: has
                 <div className="flex flex-col items-center gap-4 py-6">
                   <div className="w-8 h-8 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
                   <p className="text-sm font-semibold text-white font-mono">Depositing {tokenSymbol} to V2 pool...</p>
-                  <p className="text-xs text-[rgba(255,255,255,0.4)] text-center font-mono">Confirm the transaction in your wallet</p>
+                  {depositStatus && (
+                    <p className="text-xs text-[rgba(255,255,255,0.4)] text-center font-mono">{depositStatus}</p>
+                  )}
                 </div>
               )}
 
@@ -631,11 +633,13 @@ export function V2DepositModal({ isOpen, onClose, keysRef, chainId, hasKeys: has
                 </div>
               )}
 
-              {/* External — generating note */}
-              {depositMode === "external" && ext.status === "generating-note" && (
+              {/* External — generating note + proof */}
+              {depositMode === "external" && (ext.status === "generating-note" || ext.status === "generating-proof") && (
                 <div className="flex flex-col items-center gap-4 py-6">
                   <div className="w-8 h-8 border-2 border-[#00FF41] border-t-transparent rounded-full animate-spin" />
-                  <p className="text-sm font-semibold text-white font-mono">Generating commitment...</p>
+                  <p className="text-sm font-semibold text-white font-mono">
+                    {ext.status === "generating-note" ? "Generating commitment..." : "Generating ZK proof..."}
+                  </p>
                 </div>
               )}
 

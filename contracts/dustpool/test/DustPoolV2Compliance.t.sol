@@ -83,6 +83,10 @@ contract DustPoolV2ComplianceTest is Test {
         vm.deal(blockedUser, 100 ether);
     }
 
+    function _dummyProof() internal pure returns (bytes memory) {
+        return new bytes(768);
+    }
+
     // ========== 1. Deposit succeeds when oracle is address(0) (disabled) ==========
 
     function testDepositSucceedsWhenOracleDisabled() public {
@@ -91,7 +95,7 @@ contract DustPoolV2ComplianceTest is Test {
         DustPoolV2 poolNoOracle = new DustPoolV2(address(mockVerifier), address(mockVerifier), address(0));
 
         vm.prank(alice);
-        poolNoOracle.deposit{value: 1 ether}(bytes32(uint256(0x1)));
+        poolNoOracle.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0x1)));
         assertEq(poolNoOracle.depositQueueTail(), 1);
     }
 
@@ -99,7 +103,7 @@ contract DustPoolV2ComplianceTest is Test {
 
     function testDepositSucceedsWhenNotBlocked() public {
         vm.prank(alice);
-        pool.deposit{value: 1 ether}(bytes32(uint256(0x2)));
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0x2)));
         assertEq(pool.depositQueueTail(), 1);
     }
 
@@ -108,7 +112,7 @@ contract DustPoolV2ComplianceTest is Test {
     function testDepositRevertsWhenBlocked() public {
         vm.prank(blockedUser);
         vm.expectRevert(DustPoolV2.DepositBlocked.selector);
-        pool.deposit{value: 1 ether}(bytes32(uint256(0x3)));
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0x3)));
     }
 
     // ========== 4. ERC20 deposit reverts when blocked ==========
@@ -120,7 +124,7 @@ contract DustPoolV2ComplianceTest is Test {
 
         vm.prank(blockedUser);
         vm.expectRevert(DustPoolV2.DepositBlocked.selector);
-        pool.depositERC20(bytes32(uint256(0x4)), address(mockToken), 1e18);
+        pool.depositERC20WithProof(_dummyProof(), bytes32(uint256(0x4)), address(mockToken), 1e18);
     }
 
     // ========== 5. setComplianceOracle only callable by owner ==========
@@ -150,7 +154,7 @@ contract DustPoolV2ComplianceTest is Test {
         // blockedUser can't deposit with oracle active
         vm.prank(blockedUser);
         vm.expectRevert(DustPoolV2.DepositBlocked.selector);
-        pool.deposit{value: 1 ether}(bytes32(uint256(0x7a)));
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0x7a)));
 
         // Owner disables oracle
         vm.prank(deployer);
@@ -158,7 +162,7 @@ contract DustPoolV2ComplianceTest is Test {
 
         // Now blockedUser can deposit
         vm.prank(blockedUser);
-        pool.deposit{value: 1 ether}(bytes32(uint256(0x7b)));
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0x7b)));
         assertEq(pool.depositQueueTail(), 1);
     }
 
@@ -169,7 +173,7 @@ contract DustPoolV2ComplianceTest is Test {
 
         vm.warp(1000);
         vm.prank(alice);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), commitment);
 
         assertEq(pool.depositTimestamp(commitment), 1000);
         assertEq(pool.depositOriginator(commitment), alice);
@@ -182,7 +186,7 @@ contract DustPoolV2ComplianceTest is Test {
 
         vm.warp(2000);
         vm.prank(alice);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), commitment);
 
         (bool inCooldown, address originator) = pool.getCooldownStatus(commitment);
         assertTrue(inCooldown);
@@ -196,7 +200,7 @@ contract DustPoolV2ComplianceTest is Test {
 
         vm.warp(3000);
         vm.prank(alice);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), commitment);
 
         // Advance past cooldown (1 hour)
         vm.warp(3000 + 1 hours + 1);
@@ -220,7 +224,7 @@ contract DustPoolV2ComplianceTest is Test {
         vm.prank(alice);
         vm.expectEmit(true, false, false, true);
         emit DepositScreened(alice, true);
-        pool.deposit{value: 1 ether}(bytes32(uint256(0xc)));
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0xc)));
     }
 
     // ========== 13. DepositScreened event emitted on blocked deposit (before revert) ==========
@@ -230,40 +234,28 @@ contract DustPoolV2ComplianceTest is Test {
         // the event won't persist on-chain. We test the screening flow via revert.
         vm.prank(blockedUser);
         vm.expectRevert(DustPoolV2.DepositBlocked.selector);
-        pool.deposit{value: 1 ether}(bytes32(uint256(0xd)));
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0xd)));
     }
 
-    // ========== 14. batchDeposit blocked when user is sanctioned ==========
+    // ========== 14. depositNote blocked when user is sanctioned ==========
 
-    function testBatchDepositBlockedWhenSanctioned() public {
-        bytes32[] memory commitments = new bytes32[](2);
-        commitments[0] = bytes32(uint256(0xe1));
-        commitments[1] = bytes32(uint256(0xe2));
-
+    function testDepositNoteBlockedWhenSanctioned() public {
         vm.prank(blockedUser);
         vm.expectRevert(DustPoolV2.DepositBlocked.selector);
-        pool.batchDeposit{value: 2 ether}(commitments);
+        pool.depositNote{value: 1 ether}(0xe1, 0xe2);
     }
 
-    // ========== 15. batchDeposit records cooldown for all commitments ==========
+    // ========== 15. depositNote records cooldown for its commitment ==========
 
-    function testBatchDepositRecordsCooldownForAll() public {
-        bytes32[] memory commitments = new bytes32[](3);
-        commitments[0] = bytes32(uint256(0xf1));
-        commitments[1] = bytes32(uint256(0xf2));
-        commitments[2] = bytes32(uint256(0xf3));
-
+    function testDepositNoteRecordsCooldown() public {
         vm.warp(5000);
         vm.prank(alice);
-        pool.batchDeposit{value: 3 ether}(commitments);
+        bytes32 commitment = pool.depositNote{value: 1 ether}(0xf1, 0xf2);
 
-        for (uint256 i = 0; i < 3; i++) {
-            assertEq(pool.depositTimestamp(commitments[i]), 5000);
-            assertEq(pool.depositOriginator(commitments[i]), alice);
-
-            (bool inCooldown,) = pool.getCooldownStatus(commitments[i]);
-            assertTrue(inCooldown);
-        }
+        assertEq(pool.depositTimestamp(commitment), 5000);
+        assertEq(pool.depositOriginator(commitment), alice);
+        (bool inCooldown,) = pool.getCooldownStatus(commitment);
+        assertTrue(inCooldown);
     }
 
     // ========== 16. ERC20 deposit records timestamp and originator ==========
@@ -278,7 +270,7 @@ contract DustPoolV2ComplianceTest is Test {
 
         vm.warp(6000);
         vm.prank(alice);
-        pool.depositERC20(commitment, address(mockToken), amount);
+        pool.depositERC20WithProof(_dummyProof(), commitment, address(mockToken), amount);
 
         assertEq(pool.depositTimestamp(commitment), 6000);
         assertEq(pool.depositOriginator(commitment), alice);

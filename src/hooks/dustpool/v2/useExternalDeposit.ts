@@ -12,6 +12,8 @@ import { computeOwnerPubKey, computeAssetId, computeNoteCommitment } from '@/lib
 import { createNote } from '@/lib/dustpool/v2/note'
 import { MAX_AMOUNT } from '@/lib/dustpool/v2/constants'
 import { getDustPoolV2Config, DUST_POOL_V2_ABI } from '@/lib/dustpool/v2/contracts'
+import { buildDepositInputs } from '@/lib/dustpool/v2/proof-inputs'
+import { generateV2Proof, verifyV2ProofLocally } from '@/lib/dustpool/v2/proof'
 import { openV2Database, saveNoteV2, bigintToHex, type StoredNoteV2 } from '@/lib/dustpool/v2/storage'
 import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
@@ -22,6 +24,7 @@ import type { V2Keys } from '@/lib/dustpool/v2/types'
 export type ExternalDepositStatus =
   | 'idle'
   | 'generating-note'
+  | 'generating-proof'
   | 'connecting-wallet'
   | 'awaiting-tx'
   | 'confirming'
@@ -51,7 +54,7 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
 
   const contractConfig = getDustPoolV2Config(chainId)
 
-  /** Generate commitment + pre-save note. Returns the commitment for both paths. */
+  /** Generate commitment + deposit proof, then pre-save the note. Both paths submit the returned proof and commitment. */
   const prepareDeposit = useCallback(async (amount: bigint, asset: Address = zeroAddress) => {
     const keys = keysRef.current
     if (!keys) throw new Error('Keys not available — verify PIN first')
@@ -68,6 +71,14 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
     const commitment = await computeNoteCommitment(note)
     const commitmentBytes = `0x${commitment.toString(16).padStart(64, '0')}` as `0x${string}`
     const hexId = bigintToHex(commitment)
+
+    // Prove before saving: a failed proof must not leave a pending note that no deposit can confirm
+    setStatus('generating-proof')
+    const proofInputs = await buildDepositInputs(note, keys, chainId)
+    const { proof, publicSignals, proofCalldata } = await generateV2Proof(proofInputs)
+    const isValid = await verifyV2ProofLocally(proof, publicSignals)
+    if (!isValid) throw new Error('Generated proof failed local verification')
+    const proofBytes = proofCalldata as `0x${string}`
 
     const stored: StoredNoteV2 = {
       id: hexId,
@@ -90,9 +101,10 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
     await saveNoteV2(db, privyAddress, stored, encKey)
     pendingNoteRef.current = stored
 
-    const calldata = buildDepositCalldata(commitmentBytes)
+    const calldata = buildDepositCalldata(proofBytes, commitmentBytes)
     const link = buildDepositLink({
       poolAddress: contractConfig.address,
+      proof: proofBytes,
       commitment: commitmentBytes,
       amount,
       chainId,
@@ -102,7 +114,7 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
     setDepositCalldata(calldata)
     setDepositLink(link)
 
-    return { commitmentBytes, stored, calldata }
+    return { commitmentBytes, proofBytes, stored, calldata }
   }, [keysRef, privyAddress, chainId, contractConfig])
 
   /** Poll relayer and update note to confirmed */
@@ -153,7 +165,7 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
     setTxHash(null)
 
     try {
-      const { commitmentBytes } = await prepareDeposit(amount, asset)
+      const { commitmentBytes, proofBytes } = await prepareDeposit(amount, asset)
 
       if (!window.ethereum) throw new Error('No browser wallet detected')
       if (!contractConfig) throw new Error('Contract config unavailable')
@@ -187,8 +199,8 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
         hash = await externalWallet.writeContract({
           address: contractConfig.address,
           abi: DUST_POOL_V2_ABI,
-          functionName: 'deposit',
-          args: [commitmentBytes],
+          functionName: 'depositWithProof',
+          args: [proofBytes, commitmentBytes],
           value: amount,
         })
       } else {
@@ -223,8 +235,8 @@ export function useExternalDeposit(keysRef: RefObject<V2Keys | null>, chainIdOve
         hash = await externalWallet.writeContract({
           address: contractConfig.address,
           abi: DUST_POOL_V2_ABI,
-          functionName: 'depositERC20',
-          args: [commitmentBytes, asset, amount],
+          functionName: 'depositERC20WithProof',
+          args: [proofBytes, commitmentBytes, asset, amount],
         })
       }
 

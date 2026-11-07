@@ -1,8 +1,9 @@
 // Runs DustPoolV2Frame on the ERC-8421 alternative-mempool devnet (chain 1337: ethrex with EIP-8141 frame
 // transactions behind a skandha sidecar), end to end:
 //
-//   deploy                    PoseidonT3, both verifiers and the pool; the key's address becomes relayer; stakes the pool
-//   deposit <eth>             deposits a fresh note (its secrets go to .devnet-state.json) and posts the new root
+//   deploy                    the Poseidon libraries, both verifiers and the pool; the key's address becomes relayer;
+//                             stakes the pool
+//   deposit <eth>             proves and deposits a fresh note (its secrets go to .devnet-state.json), posts the new root
 //   root                      posts the root over every queued commitment, e.g. after a withdrawal queued its change
 //   withdraw <recipient> <eth> [--fee-cap <eth>] [--show-canonical-rejection]
 //                             proves a spend of the newest unspent note and sends it to the alternative mempool as a
@@ -20,6 +21,7 @@ import { getProfile } from '@forshtat/hegota-support/profiles'
 import { RpcError, rpc, toWire } from '@forshtat/hegota-support/rpc'
 import { encodeTx, frame, newTx, txHash } from '@forshtat/hegota-support/tx'
 import {
+  concat,
   decodeErrorResult,
   decodeEventLog,
   decodeFunctionResult,
@@ -37,6 +39,7 @@ import { privateKeyToAccount } from 'viem/accounts'
 import {
   commitmentOf,
   createNote,
+  depositInput,
   deriveKeys,
   frameCalldata,
   frameRecipientSignal,
@@ -185,13 +188,14 @@ async function deploy() {
   }
 
   const poseidon = await deployContract(account, 'PoseidonT3.sol/PoseidonT3')
+  const poseidonT6 = await deployContract(account, 'PoseidonT6.sol/PoseidonT6')
   const verifier = await deployContract(account, 'FFLONKVerifier.sol/FflonkVerifier')
   const splitVerifier = await deployContract(account, 'FFLONKSplitVerifier.sol/FflonkSplitVerifier')
   const pool = await deployContract(
     account,
     'DustPoolV2Frame.sol/DustPoolV2Frame',
     [verifier.address, splitVerifier.address, zeroAddress, STAKING_REGISTRY],
-    { PoseidonT3: poseidon.address },
+    { PoseidonT3: poseidon.address, PoseidonT6: poseidonT6.address },
   )
   Object.assign(state, {
     pool: pool.address,
@@ -200,6 +204,7 @@ async function deploy() {
     verifier: verifier.address,
     splitVerifier: splitVerifier.address,
     poseidonT3: poseidon.address,
+    poseidonT6: poseidonT6.address,
   })
   saveState()
 
@@ -216,11 +221,16 @@ async function deposit(amountEth) {
   const amount = parseEther(amountEth)
   const seed = randomBytes(32).toString('hex')
   const blindingLabel = `${seed}:blinding`
-  const commitment = toBytes32(commitmentOf(createNote(deriveKeys(seed), CHAIN_ID, amount, blindingLabel)))
+  const keys = deriveKeys(seed)
+  const note = createNote(keys, CHAIN_ID, amount, blindingLabel)
+  const commitment = toBytes32(commitmentOf(note))
+  const started = Date.now()
+  const { proof } = await proveTransaction(depositInput({ keys, note }).input)
+  console.log(`proved the deposit in ${((Date.now() - started) / 1000).toFixed(1)}s`)
   const receipt = await sendLegacy(account, `deposit ${amountEth} ETH`, {
     to: pool,
     value: amount,
-    data: encodeFunctionData({ abi: POOL_ABI, functionName: 'deposit', args: [commitment] }),
+    data: encodeFunctionData({ abi: POOL_ABI, functionName: 'depositWithProof', args: [concat(proof), commitment] }),
   })
   const queued = poolEvents(receipt.logs, 'DepositQueued').find((q) => q.commitment === commitment)
   if (!queued) throw new Error(`deposit ${receipt.transactionHash} queued no ${commitment}`)

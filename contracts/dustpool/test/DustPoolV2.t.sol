@@ -4,6 +4,8 @@ pragma solidity 0.8.20;
 import "forge-std/Test.sol";
 import {DustPoolV2} from "../src/DustPoolV2.sol";
 import {IFFLONKVerifier} from "../src/IFFLONKVerifier.sol";
+import {PoseidonT3} from "poseidon-solidity/PoseidonT3.sol";
+import {PoseidonT6} from "poseidon-solidity/PoseidonT6.sol";
 
 contract MockFFLONKVerifier is IFFLONKVerifier {
     bool public shouldPass = true;
@@ -49,6 +51,11 @@ contract DustPoolV2Test is Test {
     MockFFLONKVerifier public mockVerifier;
     MockERC20 public mockToken;
 
+    // The circuits' asset ids, Poseidon(chainId, token). Computed in setUp: the hash is a library call, which
+    // would take a pending vm.prank or vm.expectRevert if it ran while a withdraw's arguments are evaluated
+    uint256 ethAsset;
+    uint256 tokenAsset;
+
     uint256 constant FIELD_SIZE =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
@@ -80,6 +87,8 @@ contract DustPoolV2Test is Test {
         vm.stopPrank();
 
         mockToken = new MockERC20();
+        ethAsset = _assetId(address(0));
+        tokenAsset = _assetId(address(mockToken));
 
         vm.deal(alice, 100 ether);
         vm.deal(bob, 100 ether);
@@ -95,6 +104,30 @@ contract DustPoolV2Test is Test {
         return FIELD_SIZE - amount;
     }
 
+    function _assetId(address token) internal view returns (uint256) {
+        return PoseidonT3.hash([block.chainid, uint256(uint160(token))]);
+    }
+
+    function _noteCommitment(uint256 ownerPubKey, uint256 amount, address token, uint256 blinding)
+        internal
+        view
+        returns (bytes32)
+    {
+        return bytes32(PoseidonT6.hash([ownerPubKey, amount, _assetId(token), block.chainid, blinding]));
+    }
+
+    function _depositSignals(bytes32 commitment, uint256 amount, uint256 asset)
+        internal
+        view
+        returns (uint256[9] memory signals)
+    {
+        signals[3] = uint256(commitment);
+        signals[4] = uint256(pool.DUMMY_COMMITMENT());
+        signals[5] = amount;
+        signals[6] = asset;
+        signals[8] = block.chainid;
+    }
+
     // ========== Deposit ETH ==========
 
     function testDeposit() public {
@@ -103,7 +136,7 @@ contract DustPoolV2Test is Test {
         vm.prank(alice);
         vm.expectEmit(true, false, false, true);
         emit DepositQueued(commitment, 0, 1 ether, address(0), block.timestamp);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), commitment);
 
         assertEq(pool.depositQueueTail(), 1);
         assertEq(pool.depositQueue(0), commitment);
@@ -122,7 +155,7 @@ contract DustPoolV2Test is Test {
         vm.prank(alice);
         vm.expectEmit(true, false, false, true);
         emit DepositQueued(commitment, 0, amount, address(mockToken), block.timestamp);
-        pool.depositERC20(commitment, address(mockToken), amount);
+        pool.depositERC20WithProof(_dummyProof(), commitment, address(mockToken), amount);
 
         assertEq(pool.depositQueueTail(), 1);
         assertEq(pool.depositQueue(0), commitment);
@@ -134,25 +167,159 @@ contract DustPoolV2Test is Test {
     function testDepositZeroCommitment() public {
         vm.prank(alice);
         vm.expectRevert(DustPoolV2.ZeroCommitment.selector);
-        pool.deposit{value: 1 ether}(bytes32(0));
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(0));
     }
 
     function testDepositZeroValue() public {
         vm.prank(alice);
         vm.expectRevert(DustPoolV2.ZeroValue.selector);
-        pool.deposit{value: 0}(bytes32(uint256(1)));
+        pool.depositWithProof{value: 0}(_dummyProof(), bytes32(uint256(1)));
     }
 
     function testDepositERC20ZeroCommitment() public {
         vm.prank(alice);
         vm.expectRevert(DustPoolV2.ZeroCommitment.selector);
-        pool.depositERC20(bytes32(0), address(mockToken), 100);
+        pool.depositERC20WithProof(_dummyProof(), bytes32(0), address(mockToken), 100);
     }
 
     function testDepositERC20ZeroAmount() public {
         vm.prank(alice);
         vm.expectRevert(DustPoolV2.ZeroValue.selector);
-        pool.depositERC20(bytes32(uint256(1)), address(mockToken), 0);
+        pool.depositERC20WithProof(_dummyProof(), bytes32(uint256(1)), address(mockToken), 0);
+    }
+
+    function testDepositRejectedProof() public {
+        mockVerifier.setResult(false);
+
+        vm.prank(alice);
+        vm.expectRevert(DustPoolV2.InvalidProof.selector);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0xdead)));
+    }
+
+    function testDepositInvalidProofLength() public {
+        vm.prank(alice);
+        vm.expectRevert(DustPoolV2.InvalidProofLength.selector);
+        pool.depositWithProof{value: 1 ether}(new bytes(767), bytes32(uint256(0xdead)));
+    }
+
+    function testDepositDummyCommitment() public {
+        bytes32 dummy = pool.DUMMY_COMMITMENT();
+
+        vm.prank(alice);
+        vm.expectRevert(DustPoolV2.ZeroCommitment.selector);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), dummy);
+    }
+
+    function testDepositCommitmentOutsideField() public {
+        vm.prank(alice);
+        vm.expectRevert(DustPoolV2.InvalidFieldElement.selector);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(FIELD_SIZE));
+    }
+
+    function testDepositERC20TokenWithoutCode() public {
+        // address(0) is native ETH's asset, and transferFrom on an address without code moves nothing
+        vm.startPrank(alice);
+        vm.expectRevert(DustPoolV2.InvalidToken.selector);
+        pool.depositERC20WithProof(_dummyProof(), bytes32(uint256(0xbeef)), address(0), 1e18);
+        vm.expectRevert(DustPoolV2.InvalidToken.selector);
+        pool.depositERC20WithProof(_dummyProof(), bytes32(uint256(0xbeef)), bob, 1e18);
+        vm.stopPrank();
+    }
+
+    // ========== Deposit proof public signals ==========
+
+    function testDepositProofBindsCommitmentToMsgValue() public {
+        bytes32 commitment = bytes32(uint256(0xdead));
+        bytes32[24] memory proofWords;
+        vm.expectCall(
+            address(mockVerifier),
+            abi.encodeCall(
+                IFFLONKVerifier.verifyProof, (proofWords, _depositSignals(commitment, 1 ether, _assetId(address(0))))
+            )
+        );
+
+        vm.prank(alice);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), commitment);
+    }
+
+    function testDepositERC20ProofBindsCommitmentToAmountAndToken() public {
+        bytes32 commitment = bytes32(uint256(0xbeef));
+        mockToken.mint(alice, 1e18);
+        vm.prank(alice);
+        mockToken.approve(address(pool), 1e18);
+        bytes32[24] memory proofWords;
+        vm.expectCall(
+            address(mockVerifier),
+            abi.encodeCall(
+                IFFLONKVerifier.verifyProof,
+                (proofWords, _depositSignals(commitment, 1e18, _assetId(address(mockToken))))
+            )
+        );
+
+        vm.prank(alice);
+        pool.depositERC20WithProof(_dummyProof(), commitment, address(mockToken), 1e18);
+    }
+
+    // ========== Deposit a note the pool builds ==========
+
+    function testDepositNoteQueuesCommitmentOfMsgValue() public {
+        bytes32 expected = _noteCommitment(0x1234, 1 ether, address(0), 0x5678);
+
+        vm.prank(alice);
+        vm.expectEmit(true, false, false, true);
+        emit DepositQueued(expected, 0, 1 ether, address(0), block.timestamp);
+        bytes32 commitment = pool.depositNote{value: 1 ether}(0x1234, 0x5678);
+
+        assertEq(commitment, expected);
+        assertEq(pool.depositQueue(0), expected);
+        assertEq(pool.totalDeposited(address(0)), 1 ether);
+        assertEq(pool.depositOriginator(expected), alice);
+    }
+
+    function testDepositERC20NoteQueuesCommitmentOfAmount() public {
+        bytes32 expected = _noteCommitment(0x1234, 1e18, address(mockToken), 0x5678);
+        mockToken.mint(alice, 1e18);
+        vm.prank(alice);
+        mockToken.approve(address(pool), 1e18);
+
+        vm.prank(alice);
+        vm.expectEmit(true, false, false, true);
+        emit DepositQueued(expected, 0, 1e18, address(mockToken), block.timestamp);
+        bytes32 commitment = pool.depositERC20Note(0x1234, 0x5678, address(mockToken), 1e18);
+
+        assertEq(commitment, expected);
+        assertEq(mockToken.balanceOf(address(pool)), 1e18);
+        assertEq(pool.totalDeposited(address(mockToken)), 1e18);
+    }
+
+    function testDepositNoteSameNoteTwiceReverts() public {
+        vm.startPrank(alice);
+        pool.depositNote{value: 1 ether}(0x1234, 0x5678);
+        vm.expectRevert(DustPoolV2.DuplicateCommitment.selector);
+        pool.depositNote{value: 1 ether}(0x1234, 0x5678);
+        vm.stopPrank();
+    }
+
+    function testDepositNoteRejects() public {
+        mockToken.mint(alice, 1e18);
+        vm.startPrank(alice);
+        mockToken.approve(address(pool), 1e18);
+
+        vm.expectRevert(DustPoolV2.ZeroValue.selector);
+        pool.depositNote{value: 0}(0x1234, 0x5678);
+        vm.expectRevert(DustPoolV2.DepositTooLarge.selector);
+        pool.depositERC20Note(0x1234, 0x5678, address(mockToken), 1 << 64);
+        vm.expectRevert(DustPoolV2.InvalidFieldElement.selector);
+        pool.depositNote{value: 1 ether}(FIELD_SIZE, 0x5678);
+        vm.expectRevert(DustPoolV2.InvalidFieldElement.selector);
+        pool.depositNote{value: 1 ether}(0x1234, FIELD_SIZE);
+        vm.expectRevert(DustPoolV2.InvalidToken.selector);
+        pool.depositERC20Note(0x1234, 0x5678, address(0), 1e18);
+        vm.stopPrank();
+    }
+
+    function testDummyCommitmentIsTheZeroNote() public view {
+        assertEq(pool.DUMMY_COMMITMENT(), bytes32(PoseidonT6.hash([uint256(0), 0, 0, 0, 0])));
     }
 
     // ========== Update Root ==========
@@ -214,7 +381,7 @@ contract DustPoolV2Test is Test {
             outCommitment0,
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -232,7 +399,7 @@ contract DustPoolV2Test is Test {
             bytes32(uint256(0xddd)),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -253,7 +420,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -272,7 +439,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -284,7 +451,7 @@ contract DustPoolV2Test is Test {
         // Seed pool with a real deposit so totalDeposited is tracked
         bytes32 seedCommitment = bytes32(uint256(0xa0));
         vm.prank(alice);
-        pool.deposit{value: 5 ether}(seedCommitment);
+        pool.depositWithProof{value: 5 ether}(_dummyProof(), seedCommitment);
 
         bytes32 root = bytes32(uint256(0xa1));
         bytes32 nullifier0 = bytes32(uint256(0xb1));
@@ -307,7 +474,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             publicAmount,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -336,7 +503,7 @@ contract DustPoolV2Test is Test {
             out0,
             out1,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -414,7 +581,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -438,7 +605,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -462,7 +629,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             address(0),
             address(0)
         );
@@ -481,18 +648,18 @@ contract DustPoolV2Test is Test {
         bytes32 c2 = bytes32(uint256(0x222));
 
         vm.prank(alice);
-        pool.deposit{value: 2 ether}(c1);
+        pool.depositWithProof{value: 2 ether}(_dummyProof(), c1);
         assertEq(pool.totalDeposited(address(0)), 2 ether);
 
         vm.prank(bob);
-        pool.deposit{value: 3 ether}(c2);
+        pool.depositWithProof{value: 3 ether}(_dummyProof(), c2);
         assertEq(pool.totalDeposited(address(0)), 5 ether);
     }
 
     function testWithdrawExceedingTotalDeposits() public {
         bytes32 c1 = bytes32(uint256(0x333));
         vm.prank(alice);
-        pool.deposit{value: 1 ether}(c1);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), c1);
 
         bytes32 root = bytes32(uint256(0xf1));
         vm.prank(relayer);
@@ -511,7 +678,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             publicAmount,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -520,7 +687,7 @@ contract DustPoolV2Test is Test {
     function testWithdrawDecrementsDeposits() public {
         bytes32 c1 = bytes32(uint256(0x444));
         vm.prank(alice);
-        pool.deposit{value: 5 ether}(c1);
+        pool.depositWithProof{value: 5 ether}(_dummyProof(), c1);
 
         bytes32 root = bytes32(uint256(0xf3));
         vm.prank(relayer);
@@ -537,7 +704,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             publicAmount,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -563,7 +730,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -581,7 +748,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             alice,
             address(0)
         );
@@ -593,11 +760,11 @@ contract DustPoolV2Test is Test {
         bytes32 commitment = bytes32(uint256(0x555));
 
         vm.prank(alice);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), commitment);
 
         vm.prank(bob);
         vm.expectRevert(DustPoolV2.DuplicateCommitment.selector);
-        pool.deposit{value: 1 ether}(commitment);
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), commitment);
     }
 
     function testDuplicateCommitmentERC20Reverts() public {
@@ -608,11 +775,11 @@ contract DustPoolV2Test is Test {
         mockToken.approve(address(pool), 2e18);
 
         vm.prank(alice);
-        pool.depositERC20(commitment, address(mockToken), 1e18);
+        pool.depositERC20WithProof(_dummyProof(), commitment, address(mockToken), 1e18);
 
         vm.prank(alice);
         vm.expectRevert(DustPoolV2.DuplicateCommitment.selector);
-        pool.depositERC20(commitment, address(mockToken), 1e18);
+        pool.depositERC20WithProof(_dummyProof(), commitment, address(mockToken), 1e18);
     }
 
     // ========== M3: Deposit amount cap ==========
@@ -624,7 +791,7 @@ contract DustPoolV2Test is Test {
         vm.deal(alice, tooMuch + 1 ether);
         vm.prank(alice);
         vm.expectRevert(DustPoolV2.DepositTooLarge.selector);
-        pool.deposit{value: tooMuch}(commitment);
+        pool.depositWithProof{value: tooMuch}(_dummyProof(), commitment);
     }
 
     function testDepositERC20TooLarge() public {
@@ -637,7 +804,7 @@ contract DustPoolV2Test is Test {
 
         vm.prank(alice);
         vm.expectRevert(DustPoolV2.DepositTooLarge.selector);
-        pool.depositERC20(commitment, address(mockToken), tooMuch);
+        pool.depositERC20WithProof(_dummyProof(), commitment, address(mockToken), tooMuch);
     }
 
     function testDepositMaxAmount() public {
@@ -646,7 +813,7 @@ contract DustPoolV2Test is Test {
 
         vm.deal(alice, maxAmount + 1 ether);
         vm.prank(alice);
-        pool.deposit{value: maxAmount}(commitment);
+        pool.depositWithProof{value: maxAmount}(_dummyProof(), commitment);
 
         assertEq(pool.totalDeposited(address(0)), maxAmount);
     }
@@ -660,7 +827,7 @@ contract DustPoolV2Test is Test {
         mockToken.approve(address(pool), 1e18);
 
         vm.prank(alice);
-        pool.depositERC20(c1, address(mockToken), 1e18);
+        pool.depositERC20WithProof(_dummyProof(), c1, address(mockToken), 1e18);
 
         assertEq(pool.totalDeposited(address(mockToken)), 1e18);
     }
@@ -685,7 +852,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -708,7 +875,7 @@ contract DustPoolV2Test is Test {
             overflowCommitment,
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -733,7 +900,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -791,7 +958,7 @@ contract DustPoolV2Test is Test {
 
         vm.prank(alice);
         vm.expectRevert(DustPoolV2.ContractPaused.selector);
-        pool.deposit{value: 1 ether}(bytes32(uint256(0xdead)));
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0xdead)));
     }
 
     function test_depositERC20_reverts_when_paused() public {
@@ -804,7 +971,7 @@ contract DustPoolV2Test is Test {
 
         vm.prank(alice);
         vm.expectRevert(DustPoolV2.ContractPaused.selector);
-        pool.depositERC20(bytes32(uint256(0xbeef)), address(mockToken), 1e18);
+        pool.depositERC20WithProof(_dummyProof(), bytes32(uint256(0xbeef)), address(mockToken), 1e18);
     }
 
     function test_withdraw_reverts_when_paused() public {
@@ -825,7 +992,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -839,7 +1006,7 @@ contract DustPoolV2Test is Test {
         pool.unpause();
 
         vm.prank(alice);
-        pool.deposit{value: 1 ether}(bytes32(uint256(0xfeed)));
+        pool.depositWithProof{value: 1 ether}(_dummyProof(), bytes32(uint256(0xfeed)));
         assertEq(pool.depositQueueTail(), 1);
     }
 
@@ -932,10 +1099,11 @@ contract DustPoolV2Test is Test {
         vm.prank(relayer);
         pool.updateRoot(root);
 
-        uint256 overflowAsset = FIELD_SIZE;
+        // Congruent to the ETH asset id mod FIELD_SIZE, so the verifier would read it as the same signal
+        uint256 overflowAsset = _assetId(address(0)) + FIELD_SIZE;
 
         vm.prank(relayer);
-        vm.expectRevert(DustPoolV2.InvalidFieldElement.selector);
+        vm.expectRevert(DustPoolV2.AssetMismatch.selector);
         pool.withdraw(
             _dummyProof(),
             root,
@@ -950,6 +1118,37 @@ contract DustPoolV2Test is Test {
         );
     }
 
+    // ========== Asset binding ==========
+
+    function testWithdrawRejectsAssetOfAnotherToken() public {
+        // An ETH note's proof carries publicAsset = Poseidon(chainId, 0). Paid out in another token, notes of the
+        // cheapest asset would drain the most valuable one
+        mockToken.mint(alice, 5e18);
+        vm.prank(alice);
+        mockToken.approve(address(pool), 5e18);
+        vm.prank(alice);
+        pool.depositERC20WithProof(_dummyProof(), bytes32(uint256(0xe20)), address(mockToken), 5e18);
+
+        bytes32 root = bytes32(uint256(0xe21));
+        vm.prank(relayer);
+        pool.updateRoot(root);
+
+        vm.prank(relayer);
+        vm.expectRevert(DustPoolV2.AssetMismatch.selector);
+        pool.withdraw(
+            _dummyProof(),
+            root,
+            bytes32(uint256(0xe22)),
+            bytes32(0),
+            bytes32(0),
+            bytes32(0),
+            _encodeWithdrawal(1e18),
+            ethAsset,
+            bob,
+            address(mockToken)
+        );
+    }
+
     // ========== L3: ERC20 withdrawal path ==========
 
     function testWithdrawERC20() public {
@@ -961,7 +1160,7 @@ contract DustPoolV2Test is Test {
         mockToken.approve(address(pool), depositAmount);
 
         vm.prank(alice);
-        pool.depositERC20(c1, address(mockToken), depositAmount);
+        pool.depositERC20WithProof(_dummyProof(), c1, address(mockToken), depositAmount);
 
         bytes32 root = bytes32(uint256(0xef1));
         vm.prank(relayer);
@@ -983,7 +1182,7 @@ contract DustPoolV2Test is Test {
             bytes32(0),
             bytes32(0),
             publicAmount,
-            0,
+            tokenAsset,
             bob,
             address(mockToken)
         );

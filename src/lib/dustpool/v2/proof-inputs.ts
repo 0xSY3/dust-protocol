@@ -52,6 +52,11 @@ function addressToBigInt(address: string): bigint {
  * - Output 0 is the real note being created; output 1 is dummy.
  * - publicAmount = deposit amount (positive, added to the pool).
  * - No Merkle proof needed (inputs are dummy).
+ *
+ * The public signals are the ones DustPoolV2.depositWithProof verifies:
+ *   [0, 0, 0, commitment, DUMMY_COMMITMENT, amount, asset, 0, chainId]
+ * The pool recomputes asset as Poseidon(chainId, token) for the token it receives, so note.asset
+ * must be computeAssetId(chainId, token) for that same token.
  */
 export async function buildDepositInputs(
   note: NoteV2,

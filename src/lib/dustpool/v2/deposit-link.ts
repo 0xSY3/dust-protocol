@@ -3,6 +3,7 @@ import { DUST_POOL_V2_ABI } from './contracts'
 
 interface DepositLinkParams {
   poolAddress: string
+  proof: `0x${string}`
   commitment: `0x${string}`
   amount: bigint
   chainId: number
@@ -15,12 +16,15 @@ interface ParsedDepositLink {
   calldata: `0x${string}`
 }
 
-/** Encode deposit(bytes32) calldata */
-export function buildDepositCalldata(commitment: `0x${string}`): `0x${string}` {
+/**
+ * Encode depositWithProof(bytes,bytes32) calldata. The proof fixes the note's amount, so the
+ * transaction must send exactly the amount the proof was generated for.
+ */
+export function buildDepositCalldata(proof: `0x${string}`, commitment: `0x${string}`): `0x${string}` {
   return encodeFunctionData({
     abi: DUST_POOL_V2_ABI,
-    functionName: 'deposit',
-    args: [commitment],
+    functionName: 'depositWithProof',
+    args: [proof, commitment],
   })
 }
 
@@ -32,8 +36,8 @@ export function buildDepositCalldata(commitment: `0x${string}`): `0x${string}` {
  * encode raw calldata for copy-paste usage.
  */
 export function buildDepositLink(params: DepositLinkParams): string {
-  const { poolAddress, commitment, amount, chainId } = params
-  const calldata = buildDepositCalldata(commitment)
+  const { poolAddress, proof, commitment, amount, chainId } = params
+  const calldata = buildDepositCalldata(proof, commitment)
   const valueHex = amount.toString(16)
   return `ethereum:${poolAddress}@${chainId}?value=${valueHex}&data=${calldata}`
 }

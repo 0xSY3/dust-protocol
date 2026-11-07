@@ -8,25 +8,63 @@ import { getChainConfig, isChainSupported } from '@/config/chains'
 // ─── DustPoolV2 ABI ─────────────────────────────────────────────────────────────
 
 export const DUST_POOL_V2_ABI = [
-  // deposit(bytes32 commitment) payable
+  // depositWithProof(bytes proof, bytes32 commitment) payable — the proof binds the note to msg.value
   {
-    name: 'deposit',
+    name: 'depositWithProof',
     type: 'function',
     stateMutability: 'payable',
-    inputs: [{ name: 'commitment', type: 'bytes32' }],
+    inputs: [
+      { name: 'proof', type: 'bytes' },
+      { name: 'commitment', type: 'bytes32' },
+    ],
     outputs: [],
   },
-  // depositERC20(bytes32 commitment, address token, uint256 amount)
+  // depositERC20WithProof(bytes proof, bytes32 commitment, address token, uint256 amount)
   {
-    name: 'depositERC20',
+    name: 'depositERC20WithProof',
     type: 'function',
     stateMutability: 'nonpayable',
     inputs: [
+      { name: 'proof', type: 'bytes' },
       { name: 'commitment', type: 'bytes32' },
       { name: 'token', type: 'address' },
       { name: 'amount', type: 'uint256' },
     ],
     outputs: [],
+  },
+  // depositNote(uint256 ownerPubKey, uint256 blinding) payable returns (bytes32 commitment)
+  // The pool hashes the note on-chain, which makes the owner key public and links that owner's deposits.
+  // For callers that reveal it anyway (DustSwapAdapterV2); app deposits use depositWithProof.
+  {
+    name: 'depositNote',
+    type: 'function',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'ownerPubKey', type: 'uint256' },
+      { name: 'blinding', type: 'uint256' },
+    ],
+    outputs: [{ name: 'commitment', type: 'bytes32' }],
+  },
+  // depositERC20Note(uint256 ownerPubKey, uint256 blinding, address token, uint256 amount) returns (bytes32 commitment)
+  {
+    name: 'depositERC20Note',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'ownerPubKey', type: 'uint256' },
+      { name: 'blinding', type: 'uint256' },
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    outputs: [{ name: 'commitment', type: 'bytes32' }],
+  },
+  // DUMMY_COMMITMENT() view returns (bytes32) — Poseidon(0, 0, 0, 0, 0), the second output of every deposit proof
+  {
+    name: 'DUMMY_COMMITMENT',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'bytes32' }],
   },
   // isKnownRoot(bytes32 root) view returns (bool)
   {
@@ -79,14 +117,6 @@ export const DUST_POOL_V2_ABI = [
       { name: 'recipient', type: 'address' },
       { name: 'tokenAddress', type: 'address' },
     ],
-    outputs: [],
-  },
-  // batchDeposit — deposit multiple commitments in a single transaction
-  {
-    name: 'batchDeposit',
-    type: 'function',
-    stateMutability: 'payable',
-    inputs: [{ name: 'commitments', type: 'bytes32[]' }],
     outputs: [],
   },
   // updateRoot — relayer posts new Merkle root after processing deposits
@@ -340,6 +370,21 @@ export const DUST_POOL_V2_ABI = [
     inputs: [{ name: 'newOwner', type: 'address' }],
     outputs: [],
   },
+  // Errors
+  // withdraw/withdrawSplit: publicAsset != Poseidon(chainId, tokenAddress)
+  { name: 'AssetMismatch', type: 'error', inputs: [] },
+  // ERC20 deposits: the token address has no code
+  { name: 'InvalidToken', type: 'error', inputs: [] },
+  // Deposits and spends: the proof or a value it covers is rejected
+  { name: 'InvalidProof', type: 'error', inputs: [] },
+  { name: 'InvalidProofLength', type: 'error', inputs: [] },
+  { name: 'InvalidFieldElement', type: 'error', inputs: [] },
+  { name: 'ZeroCommitment', type: 'error', inputs: [] },
+  { name: 'ZeroValue', type: 'error', inputs: [] },
+  { name: 'DuplicateCommitment', type: 'error', inputs: [] },
+  { name: 'DepositTooLarge', type: 'error', inputs: [] },
+  { name: 'DepositBlocked', type: 'error', inputs: [] },
+  { name: 'ContractPaused', type: 'error', inputs: [] },
 ] as const
 
 // ─── Address Resolution ─────────────────────────────────────────────────────────

@@ -5,6 +5,8 @@ import { computeOwnerPubKey, computeAssetId, computeNoteCommitment } from '@/lib
 import { createNote } from '@/lib/dustpool/v2/note'
 import { MAX_AMOUNT } from '@/lib/dustpool/v2/constants'
 import { getDustPoolV2Config, DUST_POOL_V2_ABI } from '@/lib/dustpool/v2/contracts'
+import { buildDepositInputs } from '@/lib/dustpool/v2/proof-inputs'
+import { generateV2Proof, verifyV2ProofLocally } from '@/lib/dustpool/v2/proof'
 import { openV2Database, saveNoteV2, bigintToHex } from '@/lib/dustpool/v2/storage'
 import { createRelayerClient } from '@/lib/dustpool/v2/relayer-client'
 import { deriveStorageKey } from '@/lib/dustpool/v2/storage-crypto'
@@ -23,6 +25,7 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
   const { data: walletClient } = useWalletClient()
 
   const [isPending, setIsPending] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const depositingRef = useRef(false)
@@ -60,24 +63,35 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
       const commitment = await computeNoteCommitment(note)
       const commitmentBytes32 = `0x${commitment.toString(16).padStart(64, '0')}` as `0x${string}`
 
+      setStatus('Generating ZK proof...')
+      const proofInputs = await buildDepositInputs(note, keys, chainId)
+      const { proof, publicSignals, proofCalldata } = await generateV2Proof(proofInputs)
+      const isValid = await verifyV2ProofLocally(proof, publicSignals)
+      if (!isValid) {
+        throw new Error('Generated proof failed local verification')
+      }
+      const proofBytes = proofCalldata as `0x${string}`
+
+      setStatus('Confirm the transaction in your wallet')
       let hash: `0x${string}`
       if (asset === zeroAddress) {
         hash = await walletClient.writeContract({
           address: contractConfig.address,
           abi: DUST_POOL_V2_ABI,
-          functionName: 'deposit',
-          args: [commitmentBytes32],
+          functionName: 'depositWithProof',
+          args: [proofBytes, commitmentBytes32],
           value: amount,
         })
       } else {
         hash = await walletClient.writeContract({
           address: contractConfig.address,
           abi: DUST_POOL_V2_ABI,
-          functionName: 'depositERC20',
-          args: [commitmentBytes32, asset, amount],
+          functionName: 'depositERC20WithProof',
+          args: [proofBytes, commitmentBytes32, asset, amount],
         })
       }
 
+      setStatus('Confirming on-chain...')
       // Wait for on-chain confirmation via wallet's transport
       const walletPublic = walletClient.extend(publicActions)
       const receipt = await walletPublic.waitForTransactionReceipt({ hash })
@@ -87,6 +101,7 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
 
       setTxHash(hash)
 
+      setStatus('Waiting for relayer...')
       // Poll relayer for leaf index assignment
       const relayer = createRelayerClient()
       const commitmentHex = bigintToHex(commitment)
@@ -141,6 +156,7 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
       }
     } finally {
       setIsPending(false)
+      setStatus(null)
       depositingRef.current = false
     }
   }, [isConnected, address, publicClient, walletClient, chainId])
@@ -148,7 +164,8 @@ export function useV2Deposit(keysRef: RefObject<V2Keys | null>, chainIdOverride?
   const clearError = useCallback(() => {
     setError(null)
     setTxHash(null)
+    setStatus(null)
   }, [])
 
-  return useMemo(() => ({ deposit, isPending, txHash, error, clearError }), [deposit, isPending, txHash, error, clearError])
+  return useMemo(() => ({ deposit, isPending, status, txHash, error, clearError }), [deposit, isPending, status, txHash, error, clearError])
 }

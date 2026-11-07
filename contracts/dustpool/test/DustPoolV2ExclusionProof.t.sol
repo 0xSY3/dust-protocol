@@ -6,6 +6,7 @@ import {DustPoolV2} from "../src/DustPoolV2.sol";
 import {IFFLONKVerifier} from "../src/IFFLONKVerifier.sol";
 import {IFFLONKSplitVerifier} from "../src/IFFLONKSplitVerifier.sol";
 import {IFFLONKComplianceVerifier} from "../src/IFFLONKComplianceVerifier.sol";
+import {PoseidonT3} from "poseidon-solidity/PoseidonT3.sol";
 
 contract MockTxVerifier is IFFLONKVerifier {
     function verifyProof(bytes32[24] calldata, uint256[9] calldata) external pure returns (bool) {
@@ -37,6 +38,10 @@ contract DustPoolV2ExclusionProofTest is Test {
     MockSplitVerifier public splitVerifier;
     MockComplianceVerifier public complianceVerifier;
 
+    // The circuits' ETH asset id, Poseidon(chainId, 0). Computed in setUp: the hash is a library call, which
+    // would take a pending vm.prank or vm.expectRevert if it ran while a withdraw's arguments are evaluated
+    uint256 ethAsset;
+
     uint256 constant FIELD_SIZE =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
@@ -61,6 +66,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         pool = new DustPoolV2(address(txVerifier), address(splitVerifier), address(0));
         pool.setRelayer(relayer, true);
         vm.stopPrank();
+        ethAsset = PoseidonT3.hash([block.chainid, uint256(0)]);
 
         vm.deal(alice, 100 ether);
         vm.deal(address(pool), 100 ether);
@@ -216,7 +222,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.prank(relayer);
         pool.withdraw(
             _dummyProof(), root, NULLIFIER_A, bytes32(0),
-            bytes32(0), bytes32(0), 0, 0, bob, address(0)
+            bytes32(0), bytes32(0), 0, ethAsset, bob, address(0)
         );
 
         assertTrue(pool.nullifiers(NULLIFIER_A));
@@ -234,7 +240,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.expectRevert(DustPoolV2.ComplianceRequired.selector);
         pool.withdraw(
             _dummyProof(), root, NULLIFIER_A, bytes32(0),
-            bytes32(0), bytes32(0), 0, 0, bob, address(0)
+            bytes32(0), bytes32(0), 0, ethAsset, bob, address(0)
         );
     }
 
@@ -253,7 +259,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.prank(relayer);
         pool.withdraw(
             _dummyProof(), root, NULLIFIER_A, bytes32(0),
-            bytes32(0), bytes32(0), 0, 0, bob, address(0)
+            bytes32(0), bytes32(0), 0, ethAsset, bob, address(0)
         );
 
         assertTrue(pool.nullifiers(NULLIFIER_A));
@@ -275,7 +281,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.prank(relayer);
         pool.withdraw(
             _dummyProof(), root, NULLIFIER_A, bytes32(0),
-            bytes32(0), bytes32(0), 0, 0, bob, address(0)
+            bytes32(0), bytes32(0), 0, ethAsset, bob, address(0)
         );
 
         // Flag consumed after withdraw
@@ -298,7 +304,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.expectRevert(DustPoolV2.ComplianceRequired.selector);
         pool.withdraw(
             _dummyProof(), root, NULLIFIER_A, NULLIFIER_B,
-            bytes32(0), bytes32(0), 0, 0, bob, address(0)
+            bytes32(0), bytes32(0), 0, ethAsset, bob, address(0)
         );
 
         // Now verify B too
@@ -309,7 +315,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.prank(relayer);
         pool.withdraw(
             _dummyProof(), root, NULLIFIER_A, NULLIFIER_B,
-            bytes32(0), bytes32(0), 0, 0, bob, address(0)
+            bytes32(0), bytes32(0), 0, ethAsset, bob, address(0)
         );
 
         assertTrue(pool.nullifiers(NULLIFIER_A));
@@ -330,7 +336,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.prank(relayer);
         pool.withdraw(
             _dummyProof(), root, NULLIFIER_A, bytes32(0),
-            bytes32(0), bytes32(0), 0, 0, bob, address(0)
+            bytes32(0), bytes32(0), 0, ethAsset, bob, address(0)
         );
 
         assertTrue(pool.nullifiers(NULLIFIER_A));
@@ -351,7 +357,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.expectRevert(DustPoolV2.ComplianceRequired.selector);
         pool.withdrawSplit(
             _dummyProof(), root, NULLIFIER_A, bytes32(0),
-            outCommitments, 0, 0, bob, address(0)
+            outCommitments, 0, ethAsset, bob, address(0)
         );
     }
 
@@ -371,7 +377,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.prank(relayer);
         pool.withdrawSplit(
             _dummyProof(), root, NULLIFIER_A, bytes32(0),
-            outCommitments, 0, 0, bob, address(0)
+            outCommitments, 0, ethAsset, bob, address(0)
         );
 
         assertTrue(pool.nullifiers(NULLIFIER_A));
@@ -460,7 +466,7 @@ contract DustPoolV2ExclusionProofTest is Test {
         vm.prank(relayer);
         pool.withdraw(
             _dummyProof(), root, NULLIFIER_A, bytes32(0),
-            bytes32(0), bytes32(0), 0, 0, bob, address(0)
+            bytes32(0), bytes32(0), 0, ethAsset, bob, address(0)
         );
 
         assertTrue(pool.nullifiers(NULLIFIER_A));

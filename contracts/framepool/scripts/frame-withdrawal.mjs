@@ -23,6 +23,8 @@ const poseidon = await buildPoseidon()
 const hash = (inputs) => poseidon.F.toObject(poseidon(inputs))
 
 export const DUMMY_NOTE = { owner: 0n, amount: 0n, asset: 0n, chainId: 0n, blinding: 0n }
+const ZERO_PATH = { pathElements: new Array(TREE_DEPTH).fill(0n), pathIndices: new Array(TREE_DEPTH).fill(0) }
+const DUMMY_INPUT = { note: DUMMY_NOTE, path: ZERO_PATH, leafIndex: 0n }
 
 export function fieldFromLabel(label) {
   return BigInt(`0x${createHash('sha256').update(`dust-frame:${label}`).digest('hex')}`) % FIELD_SIZE
@@ -87,22 +89,40 @@ export function frameWithdrawalInput({ keys, note, leafIndex, tree, amount, reci
   const nullifier = hash([keys.nullifierKey, commitmentOf(note), BigInt(leafIndex)])
   const change = note.amount === amount ? DUMMY_NOTE : { ...note, amount: note.amount - amount, blinding: fieldFromLabel(changeLabel) }
   const outputs = [change, DUMMY_NOTE]
-  const path = tree.pathTo(leafIndex)
-  const zeroPath = { pathElements: new Array(TREE_DEPTH).fill(0n), pathIndices: new Array(TREE_DEPTH).fill(0) }
-  const inputs = [
-    { note, path, leafIndex: BigInt(leafIndex) },
-    { note: DUMMY_NOTE, path: zeroPath, leafIndex: 0n },
-  ]
-  const signals = {
+  const inputs = [{ note, path: tree.pathTo(leafIndex), leafIndex: BigInt(leafIndex) }, DUMMY_INPUT]
+  return transactionInput(keys, inputs, outputs, {
     merkleRoot: tree.root,
     nullifier0: nullifier,
     nullifier1: 0n,
-    outputCommitment0: commitmentOf(outputs[0]),
-    outputCommitment1: commitmentOf(outputs[1]),
     publicAmount: FIELD_SIZE - amount,
     publicAsset: note.asset,
     recipient: recipientSignal,
     chainId: note.chainId,
+  })
+}
+
+/**
+ * Circuit input for depositing `note` with DustPoolV2.depositWithProof. Both inputs are dummies, so no value comes
+ * from the tree, and output 1 is the dummy note, so the whole publicAmount (msg.value) goes into `note`. Merkle
+ * root and recipient are 0, the layout the pool checks.
+ */
+export function depositInput({ keys, note }) {
+  return transactionInput(keys, [DUMMY_INPUT, DUMMY_INPUT], [note, DUMMY_NOTE], {
+    merkleRoot: 0n,
+    nullifier0: 0n,
+    nullifier1: 0n,
+    publicAmount: note.amount,
+    publicAsset: note.asset,
+    recipient: 0n,
+    chainId: note.chainId,
+  })
+}
+
+function transactionInput(keys, inputs, outputs, publicInputs) {
+  const signals = {
+    ...publicInputs,
+    outputCommitment0: commitmentOf(outputs[0]),
+    outputCommitment1: commitmentOf(outputs[1]),
     spendingKey: keys.spendingKey,
     nullifierKey: keys.nullifierKey,
     inOwner: inputs.map((i) => i.note.owner),

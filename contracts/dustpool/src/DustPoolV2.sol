@@ -5,6 +5,8 @@ import {IFFLONKVerifier} from "./IFFLONKVerifier.sol";
 import {IFFLONKSplitVerifier} from "./IFFLONKSplitVerifier.sol";
 import {IFFLONKComplianceVerifier} from "./IFFLONKComplianceVerifier.sol";
 import {IComplianceOracle} from "./IComplianceOracle.sol";
+import {PoseidonT3} from "poseidon-solidity/PoseidonT3.sol";
+import {PoseidonT6} from "poseidon-solidity/PoseidonT6.sol";
 
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
@@ -45,7 +47,9 @@ contract DustPoolV2 {
     uint256 public constant ROOT_HISTORY_SIZE = 100;
     /// @dev Max deposit per tx: 2^64 - 1 (matches circuit range proof width)
     uint256 public constant MAX_DEPOSIT_AMOUNT = (1 << 64) - 1;
-    uint256 public constant MAX_BATCH_SIZE = 8;
+    /// @dev Commitment of the circuits' dummy note, Poseidon(0, 0, 0, 0, 0). Another preimage would be a Poseidon
+    ///      collision, so an output with this commitment carries no value.
+    bytes32 public constant DUMMY_COMMITMENT = 0x2066be41bebe6caf7e079360abe14fbf9118c62eabc42e2fe75e342b160a95bc;
     /// @dev Post-deposit standby — depositor can only withdraw to self during cooldown
     uint256 public constant COOLDOWN_PERIOD = 1 hours;
 
@@ -141,8 +145,8 @@ contract DustPoolV2 {
     error NotPendingOwner();
     error ReentrantCall();
     error ContractPaused();
-    error BatchTooLarge();
-    error EmptyBatch();
+    error AssetMismatch();
+    error InvalidToken();
     error DepositBlocked();
     error CooldownActive();
     error InvalidComplianceProof();
@@ -183,82 +187,85 @@ contract DustPoolV2 {
         owner = msg.sender;
     }
 
-    /// @notice Deposit native tokens into the pool
-    /// @param commitment Poseidon commitment for the UTXO
-    function deposit(bytes32 commitment) external payable whenNotPaused {
-        if (commitment == bytes32(0)) revert ZeroCommitment();
+    /// @notice Deposit native ETH as one note worth exactly msg.value
+    /// @dev A commitment hides its amount, so the pool cannot check a bare commitment against what was paid, and
+    ///      the relayer indexes every queued commitment: a 1 wei deposit of a commitment to a large note would be
+    ///      spendable for the large amount. The proof closes that (see _verifyDepositProof).
+    /// @param proof FFLONK transaction proof (24 * 32 = 768 bytes)
+    /// @param commitment Poseidon commitment of the new note
+    function depositWithProof(bytes calldata proof, bytes32 commitment) external payable nonReentrant whenNotPaused {
         if (msg.value == 0) revert ZeroValue();
         if (msg.value > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
-        if (commitmentUsed[commitment]) revert DuplicateCommitment();
+        _verifyDepositProof(_proofWords(proof), commitment, msg.value, _assetId(address(0)));
         _screenDepositor(msg.sender);
 
-        commitmentUsed[commitment] = true;
-        totalDeposited[address(0)] += msg.value;
-        depositTimestamp[commitment] = block.timestamp;
-        depositOriginator[commitment] = msg.sender;
-
-        uint256 index = depositQueueTail;
-        depositQueue[index] = commitment;
-        depositQueueTail = index + 1;
-
-        emit DepositQueued(commitment, index, msg.value, address(0), block.timestamp);
+        _queueDeposit(commitment, msg.value, address(0));
     }
 
-    /// @notice Deposit ERC20 tokens into the pool
-    /// @param commitment Poseidon commitment for the UTXO
+    /// @notice Deposit an ERC20 token as one note worth exactly `amount`
+    /// @param proof FFLONK transaction proof (24 * 32 = 768 bytes)
+    /// @param commitment Poseidon commitment of the new note
     /// @param token ERC20 token address
     /// @param amount Token amount to deposit
-    function depositERC20(bytes32 commitment, address token, uint256 amount) external nonReentrant whenNotPaused {
-        if (commitment == bytes32(0)) revert ZeroCommitment();
+    function depositERC20WithProof(bytes calldata proof, bytes32 commitment, address token, uint256 amount)
+        external
+        nonReentrant
+        whenNotPaused
+    {
+        // A transfer from an address without code succeeds and moves nothing; address(0) is native ETH's asset
+        if (token.code.length == 0) revert InvalidToken();
         if (amount == 0) revert ZeroValue();
         if (amount > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
-        if (commitmentUsed[commitment]) revert DuplicateCommitment();
+        _verifyDepositProof(_proofWords(proof), commitment, amount, _assetId(token));
         _screenDepositor(msg.sender);
 
-        // Effects before interactions (CEI pattern)
-        commitmentUsed[commitment] = true;
-        totalDeposited[token] += amount;
-        depositTimestamp[commitment] = block.timestamp;
-        depositOriginator[commitment] = msg.sender;
-
-        uint256 index = depositQueueTail;
-        depositQueue[index] = commitment;
-        depositQueueTail = index + 1;
-
-        // Interaction — external call last
+        _queueDeposit(commitment, amount, token);
         token.safeTransferFrom(msg.sender, address(this), amount);
-
-        emit DepositQueued(commitment, index, amount, token, block.timestamp);
     }
 
-    /// @notice Batch-deposit native tokens into the pool, creating multiple UTXOs in one tx
-    /// @param commitments Array of Poseidon commitments (max 8)
-    function batchDeposit(bytes32[] calldata commitments) external payable whenNotPaused {
-        uint256 len = commitments.length;
-        if (len == 0) revert EmptyBatch();
-        if (len > MAX_BATCH_SIZE) revert BatchTooLarge();
+    /// @notice Deposit native ETH as one note the pool builds from msg.value, so no proof is needed
+    /// @dev The owner key and blinding become public, which links deposits to the same owner. Spends stay
+    ///      unlinkable: a nullifier needs the nullifier key. For callers that reveal both anyway, such as
+    ///      DustSwapAdapterV2; depositWithProof keeps the owner hidden.
+    /// @param ownerPubKey Poseidon(spendingKey) of the note's owner
+    /// @param blinding Blinding factor of the note
+    /// @return commitment The new note's commitment
+    function depositNote(uint256 ownerPubKey, uint256 blinding)
+        external
+        payable
+        nonReentrant
+        whenNotPaused
+        returns (bytes32 commitment)
+    {
         if (msg.value == 0) revert ZeroValue();
         if (msg.value > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
+        commitment = _noteCommitment(ownerPubKey, msg.value, address(0), blinding);
         _screenDepositor(msg.sender);
 
-        uint256 amountPerCommitment = msg.value / len;
-        totalDeposited[address(0)] += msg.value;
+        _queueDeposit(commitment, msg.value, address(0));
+    }
 
-        for (uint256 i = 0; i < len; i++) {
-            bytes32 c = commitments[i];
-            if (c == bytes32(0)) revert ZeroCommitment();
-            if (commitmentUsed[c]) revert DuplicateCommitment();
+    /// @notice Deposit an ERC20 token as one note the pool builds from `amount`, so no proof is needed
+    /// @dev Reveals the owner key and blinding, as depositNote does
+    /// @param ownerPubKey Poseidon(spendingKey) of the note's owner
+    /// @param blinding Blinding factor of the note
+    /// @param token ERC20 token address
+    /// @param amount Token amount to deposit
+    /// @return commitment The new note's commitment
+    function depositERC20Note(uint256 ownerPubKey, uint256 blinding, address token, uint256 amount)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (bytes32 commitment)
+    {
+        if (token.code.length == 0) revert InvalidToken();
+        if (amount == 0) revert ZeroValue();
+        if (amount > MAX_DEPOSIT_AMOUNT) revert DepositTooLarge();
+        commitment = _noteCommitment(ownerPubKey, amount, token, blinding);
+        _screenDepositor(msg.sender);
 
-            commitmentUsed[c] = true;
-            depositTimestamp[c] = block.timestamp;
-            depositOriginator[c] = msg.sender;
-
-            uint256 idx = depositQueueTail;
-            depositQueue[idx] = c;
-            depositQueueTail = idx + 1;
-
-            emit DepositQueued(c, idx, amountPerCommitment, address(0), block.timestamp);
-        }
+        _queueDeposit(commitment, amount, token);
+        token.safeTransferFrom(msg.sender, address(this), amount);
     }
 
     /// @notice Withdraw funds by proving UTXO ownership with an FFLONK proof
@@ -285,6 +292,9 @@ contract DustPoolV2 {
         address tokenAddress
     ) external onlyRelayer nonReentrant whenNotPaused {
         if (recipient == address(0)) revert ZeroRecipient();
+        // The circuit binds the notes to publicAsset only: without this, a note of any token could be paid out
+        // in another
+        if (publicAsset != _assetId(tokenAddress)) revert AssetMismatch();
         _verifyTransactionProof(
             _proofWords(proof),
             merkleRoot,
@@ -372,6 +382,55 @@ contract DustPoolV2 {
         }
     }
 
+    /// @dev A deposit is a transaction-circuit proof with public signals
+    ///      [0, 0, 0, commitment, DUMMY_COMMITMENT, amount, asset, 0, chainId]. Zero nullifiers force both inputs to
+    ///      be dummy notes, so no value comes from the tree; the second output is the dummy note, so the balance
+    ///      equation puts exactly `amount` of `asset` into `commitment`. Merkle root and recipient play no part.
+    function _verifyDepositProof(bytes32[24] memory proofData, bytes32 commitment, uint256 amount, uint256 asset)
+        internal
+        view
+    {
+        if (commitment == bytes32(0) || commitment == DUMMY_COMMITMENT) revert ZeroCommitment();
+        if (uint256(commitment) >= FIELD_SIZE) revert InvalidFieldElement();
+
+        uint256[9] memory pubSignals;
+        pubSignals[3] = uint256(commitment);
+        pubSignals[4] = uint256(DUMMY_COMMITMENT);
+        pubSignals[5] = amount;
+        pubSignals[6] = asset;
+        pubSignals[8] = block.chainid;
+        if (!VERIFIER.verifyProof(proofData, pubSignals)) revert InvalidProof();
+    }
+
+    function _queueDeposit(bytes32 commitment, uint256 amount, address asset) internal {
+        if (commitmentUsed[commitment]) revert DuplicateCommitment();
+        commitmentUsed[commitment] = true;
+        totalDeposited[asset] += amount;
+        depositTimestamp[commitment] = block.timestamp;
+        depositOriginator[commitment] = msg.sender;
+
+        uint256 index = depositQueueTail;
+        depositQueue[index] = commitment;
+        depositQueueTail = index + 1;
+
+        emit DepositQueued(commitment, index, amount, asset, block.timestamp);
+    }
+
+    /// @dev The circuits' note commitment, Poseidon(owner, amount, asset, chainId, blinding)
+    function _noteCommitment(uint256 ownerPubKey, uint256 amount, address token, uint256 blinding)
+        internal
+        view
+        returns (bytes32)
+    {
+        if (ownerPubKey >= FIELD_SIZE || blinding >= FIELD_SIZE) revert InvalidFieldElement();
+        return bytes32(PoseidonT6.hash([ownerPubKey, amount, _assetId(token), block.chainid, blinding]));
+    }
+
+    /// @dev The circuits' asset id: Poseidon(chainId, token), with token address(0) for native ETH
+    function _assetId(address token) internal view returns (uint256) {
+        return PoseidonT3.hash([block.chainid, uint256(uint160(token))]);
+    }
+
     /// @dev Effects of a verified transaction-circuit spend: mark nullifiers spent (skipping the zero
     ///      slot used by dummy inputs), queue output commitments and emit events so chain-watchers find them.
     function _spendAndQueueOutputs(
@@ -445,6 +504,7 @@ contract DustPoolV2 {
         address tokenAddress
     ) external onlyRelayer nonReentrant whenNotPaused {
         if (recipient == address(0)) revert ZeroRecipient();
+        if (publicAsset != _assetId(tokenAddress)) revert AssetMismatch();
         if (!isKnownRoot(merkleRoot)) revert UnknownRoot();
 
         if (uint256(merkleRoot) >= FIELD_SIZE) revert InvalidFieldElement();

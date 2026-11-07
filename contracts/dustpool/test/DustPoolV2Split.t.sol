@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {DustPoolV2} from "../src/DustPoolV2.sol";
 import {IFFLONKVerifier} from "../src/IFFLONKVerifier.sol";
 import {IFFLONKSplitVerifier} from "../src/IFFLONKSplitVerifier.sol";
+import {PoseidonT3} from "poseidon-solidity/PoseidonT3.sol";
 
 contract MockFFLONKVerifier9 is IFFLONKVerifier {
     bool public shouldPass = true;
@@ -35,6 +36,10 @@ contract DustPoolV2SplitTest is Test {
     MockFFLONKVerifier9 public mockVerifier;
     MockFFLONKSplitVerifier public mockSplitVerifier;
 
+    // The circuits' ETH asset id, Poseidon(chainId, 0). Computed in setUp: the hash is a library call, which
+    // would take a pending vm.prank or vm.expectRevert if it ran while a withdraw's arguments are evaluated
+    uint256 ethAsset;
+
     uint256 constant FIELD_SIZE =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
@@ -64,6 +69,7 @@ contract DustPoolV2SplitTest is Test {
         pool = new DustPoolV2(address(mockVerifier), address(mockSplitVerifier), address(0));
         pool.setRelayer(relayer, true);
         vm.stopPrank();
+        ethAsset = PoseidonT3.hash([block.chainid, uint256(0)]);
 
         vm.deal(alice, 100 ether);
         vm.deal(bob, 100 ether);
@@ -76,104 +82,6 @@ contract DustPoolV2SplitTest is Test {
 
     function _encodeWithdrawal(uint256 amount) internal pure returns (uint256) {
         return FIELD_SIZE - amount;
-    }
-
-    // ========== batchDeposit ==========
-
-    function testBatchDeposit3Commitments() public {
-        bytes32[] memory commitments = new bytes32[](3);
-        commitments[0] = bytes32(uint256(0x10));
-        commitments[1] = bytes32(uint256(0x20));
-        commitments[2] = bytes32(uint256(0x30));
-
-        uint256 totalValue = 3 ether;
-
-        vm.prank(alice);
-        pool.batchDeposit{value: totalValue}(commitments);
-
-        assertEq(pool.depositQueueTail(), 3);
-        assertEq(pool.depositQueue(0), commitments[0]);
-        assertEq(pool.depositQueue(1), commitments[1]);
-        assertEq(pool.depositQueue(2), commitments[2]);
-        assertEq(pool.totalDeposited(address(0)), totalValue);
-
-        assertTrue(pool.commitmentUsed(commitments[0]));
-        assertTrue(pool.commitmentUsed(commitments[1]));
-        assertTrue(pool.commitmentUsed(commitments[2]));
-    }
-
-    function testBatchDepositRejectsZeroCommitment() public {
-        bytes32[] memory commitments = new bytes32[](2);
-        commitments[0] = bytes32(uint256(0x40));
-        commitments[1] = bytes32(0);
-
-        vm.prank(alice);
-        vm.expectRevert(DustPoolV2.ZeroCommitment.selector);
-        pool.batchDeposit{value: 2 ether}(commitments);
-    }
-
-    function testBatchDepositRejectsDuplicateCommitment() public {
-        bytes32[] memory commitments = new bytes32[](2);
-        commitments[0] = bytes32(uint256(0x50));
-        commitments[1] = bytes32(uint256(0x50));
-
-        vm.prank(alice);
-        vm.expectRevert(DustPoolV2.DuplicateCommitment.selector);
-        pool.batchDeposit{value: 2 ether}(commitments);
-    }
-
-    function testBatchDepositRejectsEmptyArray() public {
-        bytes32[] memory commitments = new bytes32[](0);
-
-        vm.prank(alice);
-        vm.expectRevert(DustPoolV2.EmptyBatch.selector);
-        pool.batchDeposit{value: 1 ether}(commitments);
-    }
-
-    function testBatchDepositRejectsTooLarge() public {
-        bytes32[] memory commitments = new bytes32[](9);
-        for (uint256 i = 0; i < 9; i++) {
-            commitments[i] = bytes32(uint256(0x60 + i));
-        }
-
-        vm.prank(alice);
-        vm.expectRevert(DustPoolV2.BatchTooLarge.selector);
-        pool.batchDeposit{value: 9 ether}(commitments);
-    }
-
-    function testBatchDepositRejectsZeroValue() public {
-        bytes32[] memory commitments = new bytes32[](1);
-        commitments[0] = bytes32(uint256(0x70));
-
-        vm.prank(alice);
-        vm.expectRevert(DustPoolV2.ZeroValue.selector);
-        pool.batchDeposit{value: 0}(commitments);
-    }
-
-    function testBatchDepositRejectsWhenPaused() public {
-        vm.prank(deployer);
-        pool.pause();
-
-        bytes32[] memory commitments = new bytes32[](1);
-        commitments[0] = bytes32(uint256(0x80));
-
-        vm.prank(alice);
-        vm.expectRevert(DustPoolV2.ContractPaused.selector);
-        pool.batchDeposit{value: 1 ether}(commitments);
-    }
-
-    function testBatchDepositDuplicateWithPriorDeposit() public {
-        bytes32 commitment = bytes32(uint256(0x90));
-
-        vm.prank(alice);
-        pool.deposit{value: 1 ether}(commitment);
-
-        bytes32[] memory commitments = new bytes32[](1);
-        commitments[0] = commitment;
-
-        vm.prank(alice);
-        vm.expectRevert(DustPoolV2.DuplicateCommitment.selector);
-        pool.batchDeposit{value: 1 ether}(commitments);
     }
 
     // ========== withdrawSplit ==========
@@ -198,7 +106,7 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             outCommitments,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -234,7 +142,7 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             outCommitments,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -265,7 +173,7 @@ contract DustPoolV2SplitTest is Test {
             n1,
             outCommitments,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -278,7 +186,7 @@ contract DustPoolV2SplitTest is Test {
         // Seed pool with deposit for solvency
         bytes32 seedCommitment = bytes32(uint256(0xb0));
         vm.prank(alice);
-        pool.deposit{value: 5 ether}(seedCommitment);
+        pool.depositWithProof{value: 5 ether}(_dummyProof(), seedCommitment);
 
         bytes32 root = bytes32(uint256(0xa4));
         vm.prank(relayer);
@@ -300,13 +208,36 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             outCommitments,
             publicAmount,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
 
         assertEq(bob.balance, bobBefore + withdrawAmount);
         assertEq(pool.totalDeposited(address(0)), 3 ether);
+    }
+
+    function testWithdrawSplitRejectsAssetOfAnotherToken() public {
+        bytes32 root = bytes32(uint256(0xa9));
+        vm.prank(relayer);
+        pool.updateRoot(root);
+
+        bytes32[8] memory outCommitments;
+        address token = makeAddr("token");
+
+        vm.prank(relayer);
+        vm.expectRevert(DustPoolV2.AssetMismatch.selector);
+        pool.withdrawSplit(
+            _dummyProof(),
+            root,
+            bytes32(uint256(0xd9)),
+            bytes32(0),
+            outCommitments,
+            _encodeWithdrawal(1 ether),
+            ethAsset,
+            bob,
+            token
+        );
     }
 
     function testWithdrawSplitRejectsNotRelayer() public {
@@ -321,7 +252,7 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             outCommitments,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -345,7 +276,7 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             outCommitments,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -368,7 +299,7 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             outCommitments,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -385,7 +316,7 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             outCommitments2,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -410,7 +341,7 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             outCommitments,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -434,7 +365,7 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             bytes32(0),
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
@@ -452,7 +383,7 @@ contract DustPoolV2SplitTest is Test {
             bytes32(0),
             outCommitments,
             0,
-            0,
+            ethAsset,
             bob,
             address(0)
         );
