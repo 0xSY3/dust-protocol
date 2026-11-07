@@ -11,6 +11,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useV2Keys, useV2Balance } from "@/hooks/dustpool/v2";
 import { useV2Swap, type SwapStatus } from "@/hooks/swap/v2/useV2Swap";
 import { useV2DenomSwap, type DenomSwapStatus } from "@/hooks/swap/v2/useV2DenomSwap";
+import { useV2SwapToStealth, type StealthSwapStatus } from "@/hooks/swap/v2/useV2SwapToStealth";
+import { classifyRecipientInput, parseInvoiceIdInput } from "@/lib/swap/stealth-recipient";
 import { useSwapQuote } from "@/hooks/swap";
 import { computeAssetId } from "@/lib/dustpool/v2/commitment";
 import { prefetchProofAssets } from "@/lib/dustpool/v2/proof";
@@ -77,6 +79,29 @@ export const DENOM_STATUS_LABELS: Record<DenomSwapStatus, string> = {
   error: "Denomination swap failed",
 };
 
+export const STEALTH_STATUS_STEPS: StealthSwapStatus[] = [
+  "resolving-recipient",
+  "selecting-note",
+  "proving-compliance",
+  "generating-proof",
+  "submitting",
+  "confirming",
+  "saving-note",
+];
+
+export const STEALTH_STATUS_LABELS: Record<StealthSwapStatus, string> = {
+  idle: "",
+  "resolving-recipient": "Generating recipient's stealth address...",
+  "selecting-note": "Selecting optimal note...",
+  "proving-compliance": "Proving compliance...",
+  "generating-proof": "Generating ZK proof...",
+  submitting: "Submitting to relayer...",
+  confirming: "Confirming on-chain...",
+  "saving-note": "Updating your notes...",
+  done: "Sent to recipient!",
+  error: "Swap failed",
+};
+
 export function formatExchangeRate(rate: number): string {
   if (rate <= 0) return '\u2014';
   if (rate >= 1) return rate.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -108,7 +133,20 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
   const [showFromTokenDropdown, setShowFromTokenDropdown] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
 
+  // Optional direct payout: empty keeps today's behaviour (output re-deposited as a shielded note)
+  const [recipientInput, setRecipientInput] = useState("");
+  const [invoiceInput, setInvoiceInput] = useState("");
+
   const { swap, isPending, status, txHash, error: swapError, outputNote, clearError } = useV2Swap(keysRef, activeChainId);
+  const {
+    swapToStealth,
+    isPending: isStealthPending,
+    status: stealthStatus,
+    txHash: stealthTxHash,
+    error: stealthError,
+    delivery: stealthDelivery,
+    clearError: clearStealthError,
+  } = useV2SwapToStealth(keysRef, activeChainId);
   const {
     denomSwap,
     isPending: isDenomPending,
@@ -236,12 +274,28 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     }
   }, [amountInWei, amountValid, denomChunks.length, fromToken.symbol]);
 
-  const shouldUseDenomSwap = useDenomSwap && denomChunks.length > 1;
+  const recipient = classifyRecipientInput(recipientInput);
+  const sendsToRecipient = recipient.kind !== "none";
+  const outputIsErc20 = toToken.address !== zeroAddress;
+  const invoice = parseInvoiceIdInput(invoiceInput);
+  // The adapter only carries invoice ids in ERC-20 metadata, so the field is hidden and ignored for ETH output
+  const invoiceApplies = sendsToRecipient && outputIsErc20;
+  const invoiceIdToSend = invoiceApplies && invoice.kind === "valid" ? invoice.invoiceId : undefined;
+  const recipientProblem = recipient.kind === "invalid"
+    ? recipient.reason
+    : invoiceApplies && invoice.kind === "invalid"
+    ? invoice.reason
+    : null;
 
-  const activeStatus = shouldUseDenomSwap ? denomStatus : status;
-  const activeIsPending = shouldUseDenomSwap ? isDenomPending : isPending;
-  const activeError = shouldUseDenomSwap ? denomError : swapError;
-  const activeTxHash = shouldUseDenomSwap
+  // A direct payout is a single swap: denomination chunks would each need their own stealth payment
+  const shouldUseDenomSwap = useDenomSwap && denomChunks.length > 1 && !sendsToRecipient;
+
+  const activeStatus = sendsToRecipient ? stealthStatus : shouldUseDenomSwap ? denomStatus : status;
+  const activeIsPending = sendsToRecipient ? isStealthPending : shouldUseDenomSwap ? isDenomPending : isPending;
+  const activeError = sendsToRecipient ? stealthError : shouldUseDenomSwap ? denomError : swapError;
+  const activeTxHash = sendsToRecipient
+    ? stealthTxHash
+    : shouldUseDenomSwap
     ? (denomTxHashes.length > 0 ? denomTxHashes[0] : null)
     : txHash;
 
@@ -258,7 +312,8 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     activeStatus === "idle" &&
     !activeIsPending &&
     !isQuoteLoading &&
-    swapSupported;
+    swapSupported &&
+    !recipientProblem;
 
   const canAttemptSwap =
     isConnected &&
@@ -267,7 +322,8 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     activeStatus === "idle" &&
     !activeIsPending &&
     !isQuoteLoading &&
-    swapSupported;
+    swapSupported &&
+    !recipientProblem;
 
   const handleFlipTokens = useCallback(() => {
     setFromToken(toToken);
@@ -277,7 +333,17 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
 
   const handleSwap = useCallback(async () => {
     if (!canSwap) return;
-    if (shouldUseDenomSwap) {
+    if (sendsToRecipient) {
+      await swapToStealth({
+        amountIn: amountInWei,
+        tokenIn: fromToken.address,
+        tokenOut: toToken.address,
+        minAmountOut,
+        recipient: recipientInput,
+        invoiceId: invoiceIdToSend,
+        relayerFeeBps: RELAYER_FEE_BPS,
+      });
+    } else if (shouldUseDenomSwap) {
       await denomSwap(
         amountInWei,
         fromToken.address,
@@ -295,14 +361,15 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
         RELAYER_FEE_BPS
       );
     }
-  }, [canSwap, shouldUseDenomSwap, denomSwap, swap, amountInWei, fromToken.address, toToken.address, minAmountOut, slippageBps]);
+  }, [canSwap, sendsToRecipient, swapToStealth, recipientInput, invoiceIdToSend, shouldUseDenomSwap, denomSwap, swap, amountInWei, fromToken.address, toToken.address, minAmountOut, slippageBps]);
 
   const handleReset = useCallback(() => {
     clearError();
     clearDenomError();
+    clearStealthError();
     setAmountStr("");
     refreshBalances();
-  }, [clearError, clearDenomError, refreshBalances]);
+  }, [clearError, clearDenomError, clearStealthError, refreshBalances]);
 
   const handlePinSubmit = async () => {
     try {
@@ -394,6 +461,7 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     if (!swapSupported) return "Swaps Not Available";
     if (isQuoteLoading && amountValid) return "Getting Quote...";
     if (activeIsPending) {
+      if (sendsToRecipient) return STEALTH_STATUS_LABELS[stealthStatus] || "Processing...";
       if (shouldUseDenomSwap) {
         const label = DENOM_STATUS_LABELS[denomStatus] || "Processing...";
         return denomProgress.total > 0
@@ -402,14 +470,16 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
       }
       return STATUS_LABELS[status] || "Processing...";
     }
-    if (activeStatus === "done") return "Swap Complete!";
+    if (activeStatus === "done") return sendsToRecipient ? "Sent!" : "Swap Complete!";
     if (activeStatus === "error") return "Try Again";
     if (!amountStr || !amountValid) return "Enter Amount";
     if (quoteError?.includes('liquidity') || quoteError === 'Pool not available') return "No Liquidity";
     if (quotedAmountOut <= 0n && amountValid && !isQuoteLoading) return quoteError ? "Quote Unavailable" : "No Liquidity";
+    if (recipientProblem) return "Check Recipient";
     if (!hasKeys) return "Enter PIN Above";
     if (balanceLoading) return "Loading Balances...";
     if (insufficientBalance) return "Insufficient Balance";
+    if (sendsToRecipient) return "Swap & Send";
     return shouldUseDenomSwap && denomChunks.length > 1 ? `Swap (${denomChunks.length} chunks)` : "Swap";
   };
 
@@ -417,11 +487,17 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
     ? false
     : hasKeys ? !canSwap : !canAttemptSwap;
 
-  const currentStepIndex = shouldUseDenomSwap
+  const currentStepIndex = sendsToRecipient
+    ? STEALTH_STATUS_STEPS.indexOf(stealthStatus)
+    : shouldUseDenomSwap
     ? DENOM_STATUS_STEPS.indexOf(denomStatus as DenomSwapStatus)
     : STATUS_STEPS.indexOf(status);
-  const activeSteps = shouldUseDenomSwap ? DENOM_STATUS_STEPS : STATUS_STEPS;
-  const activeLabels = shouldUseDenomSwap ? DENOM_STATUS_LABELS : STATUS_LABELS;
+  const activeSteps: readonly string[] = sendsToRecipient
+    ? STEALTH_STATUS_STEPS
+    : shouldUseDenomSwap ? DENOM_STATUS_STEPS : STATUS_STEPS;
+  const activeLabels = sendsToRecipient
+    ? STEALTH_STATUS_LABELS
+    : shouldUseDenomSwap ? DENOM_STATUS_LABELS : STATUS_LABELS;
 
   return (
     <div className="w-full max-w-[620px]">
@@ -745,8 +821,47 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
             </div>
           </div>
 
+          {/* ── Optional direct payout to a stealth recipient ──── */}
+          <div className="mt-4">
+            <span className="text-[9px] text-[rgba(255,255,255,0.4)] uppercase tracking-widest font-mono block mb-2">
+              SEND OUTPUT TO (OPTIONAL)
+            </span>
+            <input
+              type="text"
+              value={recipientInput}
+              onChange={(e) => setRecipientInput(e.target.value)}
+              placeholder="alice.dust or st:eth:0x…"
+              disabled={isProcessing}
+              spellCheck={false}
+              autoComplete="off"
+              aria-invalid={recipient.kind === "invalid"}
+              className="w-full px-3 py-2.5 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] text-[12px] font-mono text-white placeholder-[rgba(255,255,255,0.2)] focus:outline-none focus:border-[rgba(0,255,65,0.3)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            />
+            {invoiceApplies && (
+              <input
+                type="text"
+                value={invoiceInput}
+                onChange={(e) => setInvoiceInput(e.target.value)}
+                placeholder="Invoice ID (optional, 0x + 32 hex)"
+                disabled={isProcessing}
+                spellCheck={false}
+                autoComplete="off"
+                aria-invalid={invoice.kind === "invalid"}
+                className="w-full mt-2 px-3 py-2 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)] text-[11px] font-mono text-white placeholder-[rgba(255,255,255,0.2)] focus:outline-none focus:border-[rgba(0,255,65,0.3)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              />
+            )}
+            <span className={`text-[10px] font-mono mt-1.5 block leading-relaxed ${
+              recipientProblem ? "text-[rgba(239,68,68,0.8)]" : "text-[rgba(255,255,255,0.3)]"
+            }`}>
+              {recipientProblem
+                ?? (sendsToRecipient
+                  ? `Swapped ${toToken.symbol} goes to a one-time stealth address only ${recipient.kind === "name" ? recipient.name : "the recipient"} can find. Sent as a single swap.`
+                  : "Leave empty to keep the output as a shielded note in your balance.")}
+            </span>
+          </div>
+
           {/* ── Denomination Privacy ─────────────────────────────── */}
-          {amountValid && denomChunks.length > 0 && !isProcessing && (
+          {amountValid && denomChunks.length > 0 && !isProcessing && !sendsToRecipient && (
             <div className="mt-4 p-3 rounded-sm bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.06)]">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
@@ -939,7 +1054,15 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
                 <span className="text-[13px] font-bold text-[#22C55E] font-mono">SWAP_COMPLETE</span>
               </div>
 
-              {(outputNote || denomTxHashes.length > 0) && (
+              {sendsToRecipient && stealthDelivery && (
+                <div className="text-[11px] text-[rgba(255,255,255,0.5)] font-mono mb-2 break-all">
+                  Sent {parseFloat(formatUnits(stealthDelivery.outputAmount, toToken.decimals)).toFixed(toToken.decimals > 6 ? 6 : 2)}{" "}
+                  {toToken.symbol} to {stealthDelivery.recipient} at one-time address{" "}
+                  {stealthDelivery.stealthAddress.slice(0, 10)}...{stealthDelivery.stealthAddress.slice(-8)}
+                </div>
+              )}
+
+              {!sendsToRecipient && (outputNote || denomTxHashes.length > 0) && (
                 <div className="text-[11px] text-[rgba(255,255,255,0.5)] font-mono mb-2">
                   Received {(() => {
                     if (outputNote) {
@@ -954,7 +1077,7 @@ export function SwapV2Card({ onPoolChange, oraclePrice }: { onPoolChange?: () =>
                 </div>
               )}
 
-              {(() => {
+              {!sendsToRecipient && (() => {
                 const humanAmt = parseFloat(formatUnits(amountInWei, fromToken.decimals));
                 const usd = fromToken.symbol === 'ETH' ? humanAmt * (oraclePrice ?? 0) : humanAmt;
                 return usd >= COMPLIANCE_COOLDOWN_THRESHOLD_USD;

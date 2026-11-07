@@ -4,8 +4,9 @@ pragma solidity 0.8.26;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {PoseidonT3} from "poseidon-solidity/PoseidonT3.sol";
-import {PoseidonT6} from "poseidon-solidity/PoseidonT6.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 // ─── Minimal Interfaces ─────────────────────────────────────────────────────
 
@@ -35,8 +36,10 @@ interface IDustPoolV2 {
         address tokenAddress
     ) external;
 
-    function deposit(bytes32 commitment) external payable;
-    function depositERC20(bytes32 commitment, address token, uint256 amount) external;
+    function depositNote(uint256 ownerPubKey, uint256 blinding) external payable returns (bytes32 commitment);
+    function depositERC20Note(uint256 ownerPubKey, uint256 blinding, address token, uint256 amount)
+        external
+        returns (bytes32 commitment);
     function paused() external view returns (bool);
 }
 
@@ -47,6 +50,16 @@ interface IPoolManagerAdapter {
     function settle() external payable returns (uint256 paid);
     function sync(address currency) external;
     function take(address currency, address to, uint256 amount) external;
+}
+
+/// @dev Canonical ERC-5564 announcer (contracts/core/src/ERC5564Announcer.sol)
+interface IERC5564Announcer {
+    function announce(
+        uint256 schemeId,
+        address stealthAddress,
+        bytes calldata ephemeralPubKey,
+        bytes calldata metadata
+    ) external;
 }
 
 interface IHooksAdapter {}
@@ -70,12 +83,14 @@ struct SwapParams {
 // ─── Contract ────────────────────────────────────────────────────────────────
 
 /// @title DustSwapAdapterV2 — Atomic withdraw-swap-deposit adapter for DustPoolV2 + Uniswap V4
-/// @notice Withdraws from DustPoolV2 (ZK proof), swaps via Uniswap V4 PoolManager,
-///         then deposits the output back into DustPoolV2 as a new UTXO commitment.
-///         The swap output never touches a user wallet — it flows adapter → pool atomically.
+/// @notice Withdraws from DustPoolV2 (ZK proof), swaps via Uniswap V4 PoolManager, then either
+///         deposits the output back into DustPoolV2 as a new UTXO commitment (executeSwap) or pays it
+///         to a recipient's one-time ERC-5564 stealth address (executeSwapToStealth).
+///         The swap output never touches the payer's wallet — it flows adapter → pool/stealth atomically.
 /// @dev Implements IUnlockCallback pattern for Uniswap V4 PoolManager.
 ///      Adapter must be whitelisted as a relayer on DustPoolV2.
 contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
+    using SafeERC20 for IERC20;
 
     // ─── Constants ───────────────────────────────────────────────────────────
 
@@ -89,10 +104,27 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
     /// @dev Chainlink oracle price staleness threshold (1 hour)
     uint256 private constant ORACLE_STALE_THRESHOLD = 3600;
 
+    /// @notice ERC-5564 scheme 1 (secp256k1 with view tags) — the only scheme Dust's scanner queries
+    uint256 public constant STEALTH_SCHEME_ID = 1;
+
+    /// @dev ASCII 'T': Dust's marker that an announcement carries ERC20 token metadata
+    bytes1 private constant TOKEN_METADATA_MARKER = 0x54;
+
+    /// @dev ASCII 'I': Dust's marker for the optional invoice id that follows the token amount, which
+    ///      lets a merchant's scanner match the payment to the invoice it was issued for
+    bytes1 private constant INVOICE_METADATA_MARKER = 0x49;
+
+    /// @dev SEC1 compressed secp256k1 point: 0x02/0x03 parity prefix + 32-byte x coordinate
+    uint256 private constant COMPRESSED_PUBKEY_LENGTH = 33;
+
     // ─── Immutables ──────────────────────────────────────────────────────────
 
     IPoolManagerAdapter public immutable POOL_MANAGER;
     IDustPoolV2 public immutable DUST_POOL_V2;
+
+    /// @notice Announcer whose events Dust's scanner indexes. Immutable so the owner cannot silently
+    ///         redirect announcements and strand stealth payments where recipients never look.
+    IERC5564Announcer public immutable ANNOUNCER;
 
     // ─── State ───────────────────────────────────────────────────────────────
 
@@ -125,6 +157,15 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
         uint256 relayerFeeBps
     );
 
+    event PrivateSwapToStealthExecuted(
+        bytes32 indexed nullifier,
+        address indexed stealthAddress,
+        address tokenIn,
+        address tokenOut,
+        uint256 outputAmount,
+        uint256 relayerFeeBps
+    );
+
     event RelayerUpdated(address indexed relayer, bool allowed);
     event OracleUpdated(address indexed oracle);
     event MaxDeviationUpdated(uint256 bps);
@@ -143,6 +184,10 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
     error OracleDeviationExceeded(uint256 oraclePrice, uint256 executionPrice);
     error OracleStale(uint256 updatedAt);
     error DeviationBpsTooHigh();
+    error AnnouncerNotContract();
+    error InvalidStealthAddress();
+    error InvalidEphemeralPubKey();
+    error PoolKeyMismatch();
 
     // ─── Modifiers ───────────────────────────────────────────────────────────
 
@@ -156,10 +201,16 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
     /// @notice Deploy the swap adapter
     /// @param poolManager_ Uniswap V4 PoolManager address
     /// @param dustPoolV2_ DustPoolV2 privacy pool address
-    constructor(address poolManager_, address dustPoolV2_) Ownable(msg.sender) {
-        if (poolManager_ == address(0) || dustPoolV2_ == address(0)) revert ZeroAddress();
+    /// @param announcer_ ERC-5564 announcer indexed by Dust's scanner
+    constructor(address poolManager_, address dustPoolV2_, address announcer_) Ownable(msg.sender) {
+        if (poolManager_ == address(0) || dustPoolV2_ == address(0) || announcer_ == address(0)) {
+            revert ZeroAddress();
+        }
+        // ANNOUNCER can never be corrected after deployment, so reject an EOA/undeployed address up front
+        if (announcer_.code.length == 0) revert AnnouncerNotContract();
         POOL_MANAGER = IPoolManagerAdapter(poolManager_);
         DUST_POOL_V2 = IDustPoolV2(dustPoolV2_);
+        ANNOUNCER = IERC5564Announcer(announcer_);
     }
 
     // ─── External: Atomic Private Swap ───────────────────────────────────────
@@ -172,7 +223,8 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
     /// @param outCommitment0 First change UTXO commitment (from the withdraw proof)
     /// @param outCommitment1 Second change UTXO commitment (from the withdraw proof)
     /// @param publicAmount Net public amount field element for the withdraw proof
-    /// @param publicAsset Poseidon(chainId, tokenIn) — must match withdraw circuit signal
+    /// @param publicAsset Poseidon(chainId, tokenIn) — must match withdraw circuit signal; DustPoolV2 reverts
+    ///        with AssetMismatch for any other value
     /// @param tokenIn Input token address (address(0) = ETH)
     /// @param poolKey Uniswap V4 pool key for the swap
     /// @param zeroForOne Swap direction: true = currency0→currency1, false = currency1→currency0
@@ -202,61 +254,24 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
         uint256 relayerFeeBps
     ) external nonReentrant onlyRelayer {
         // ── Checks ──────────────────────────────────────────────────────────
-        if (minAmountOut == 0) revert ZeroMinAmount();
-        if (relayerFeeBps > MAX_RELAYER_FEE_BPS) revert RelayerFeeTooHigh();
-        if (DUST_POOL_V2.paused()) revert PoolPaused();
+        _checkSwapLimits(minAmountOut, relayerFeeBps);
 
-        // ── Withdraw from DustPoolV2 ────────────────────────────────────────
-        // Track balance delta to determine exact amount received
-        uint256 balanceBefore = _tokenBalance(tokenIn);
-
-        DUST_POOL_V2.withdraw(
-            proof, merkleRoot, nullifier0, nullifier1,
-            outCommitment0, outCommitment1,
-            publicAmount, publicAsset,
-            address(this), tokenIn
+        // ── Withdraw → swap → fee split, slippage, oracle bound ──────────────
+        uint256 inputAmount = _withdrawToSelf(
+            proof, merkleRoot, nullifier0, nullifier1, outCommitment0, outCommitment1, publicAmount, publicAsset, tokenIn
         );
-
-        uint256 inputAmount = _tokenBalance(tokenIn) - balanceBefore;
-        if (inputAmount == 0) revert SwapFailed();
-
-        // ── Execute swap via PoolManager.unlock() ───────────────────────────
-        SwapParams memory params = SwapParams({
-            zeroForOne: zeroForOne,
-            amountSpecified: -int256(inputAmount),
-            sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_PRICE + 1 : MAX_SQRT_PRICE - 1
-        });
-
-        bytes memory result = POOL_MANAGER.unlock(
-            abi.encode(CallbackData({
-                key: poolKey,
-                params: params,
-                inputCurrency: tokenIn,
-                inputAmount: inputAmount
-            }))
-        );
-
-        uint256 outputAmount = abi.decode(result, (uint256));
-        if (outputAmount == 0) revert SwapFailed();
-
-        // ── Fee split ───────────────────────────────────────────────────────
-        uint256 fee = (outputAmount * relayerFeeBps) / 10_000;
-        uint256 userAmount = outputAmount - fee;
-        if (userAmount < minAmountOut) revert SlippageExceeded();
-
-        // ── Oracle price bound check (anti-sandwich) ────────────────────────
-        _checkOracleBound(inputAmount, outputAmount, tokenIn, tokenOut);
-
-        // ── Compute output commitment ───────────────────────────────────────
-        uint256 assetId = PoseidonT3.hash([block.chainid, uint256(uint160(tokenOut))]);
-        uint256 commitment = PoseidonT6.hash([ownerPubKey, userAmount, assetId, block.chainid, blinding]);
+        uint256 outputAmount = _swapExactInput(poolKey, zeroForOne, tokenIn, inputAmount);
+        (uint256 userAmount, uint256 fee) =
+            _applyFeeAndPriceChecks(inputAmount, outputAmount, tokenIn, tokenOut, minAmountOut, relayerFeeBps);
 
         // ── Deposit output to DustPoolV2 ────────────────────────────────────
+        // The pool builds the note from the amount it receives, so the commitment can't claim more than that
+        bytes32 commitment;
         if (tokenOut == address(0)) {
-            DUST_POOL_V2.deposit{value: userAmount}(bytes32(commitment));
+            commitment = DUST_POOL_V2.depositNote{value: userAmount}(ownerPubKey, blinding);
         } else {
             IERC20Adapter(tokenOut).approve(address(DUST_POOL_V2), userAmount);
-            DUST_POOL_V2.depositERC20(bytes32(commitment), tokenOut, userAmount);
+            commitment = DUST_POOL_V2.depositERC20Note(ownerPubKey, blinding, tokenOut, userAmount);
         }
 
         // ── Pay relayer fee ─────────────────────────────────────────────────
@@ -271,8 +286,85 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
         }
 
         emit PrivateSwapExecuted(
-            nullifier0, bytes32(commitment), tokenIn, tokenOut, userAmount, relayerFeeBps
+            nullifier0, commitment, tokenIn, tokenOut, userAmount, relayerFeeBps
         );
+    }
+
+    // ─── External: Atomic Private Swap-and-Pay to Stealth Address ────────────
+
+    /// @notice Atomically withdraw from DustPoolV2, swap on Uniswap V4, pay the output to a recipient's
+    ///         one-time stealth address, and announce it via ERC-5564 so the recipient's scanner finds it
+    /// @dev Trust model (same as executeSwap): DustPoolV2 verifies only the withdraw proof inputs.
+    ///      stealthAddress, ephemeralPubKey, viewTag and invoiceId come from the authorized relayer and are
+    ///      NOT bound to the proof, so a malicious relayer can redirect or mis-announce the output.
+    ///      minAmountOut and the oracle bound limit how much value the swap itself can lose.
+    /// @param proof FFLONK proof bytes (768 bytes) for DustPoolV2 withdraw
+    /// @param merkleRoot Merkle root the proof was generated against
+    /// @param nullifier0 First input UTXO nullifier
+    /// @param nullifier1 Second input UTXO nullifier (bytes32(0) for single-input)
+    /// @param outCommitment0 First change UTXO commitment (from the withdraw proof)
+    /// @param outCommitment1 Second change UTXO commitment (from the withdraw proof)
+    /// @param publicAmount Net public amount field element for the withdraw proof
+    /// @param publicAsset Poseidon(chainId, tokenIn) — must match withdraw circuit signal; DustPoolV2 reverts
+    ///        with AssetMismatch for any other value
+    /// @param tokenIn Input token address (address(0) = ETH); must be the pool key's input currency
+    /// @param poolKey Uniswap V4 pool key for the swap
+    /// @param zeroForOne Swap direction: true = currency0→currency1, false = currency1→currency0
+    /// @param minAmountOut Minimum amount the stealth address must receive after the relayer fee
+    /// @param stealthAddress Recipient's one-time stealth address (EOA or counterfactual smart account)
+    /// @param ephemeralPubKey Payer's compressed secp256k1 ephemeral public key (33 bytes)
+    /// @param viewTag First byte of keccak256(sharedSecret), the ERC-5564 scheme 1 view tag
+    /// @param invoiceId Random 16-byte invoice reference announced with ERC20 outputs; bytes16(0) = none.
+    ///        Ignored for ETH outputs because Dust's scanner only reads invoice ids from token metadata.
+    /// @param tokenOut Output token address (address(0) = ETH); must be the pool key's output currency
+    /// @param relayer Address to receive the relayer fee
+    /// @param relayerFeeBps Relayer fee in basis points (max 500 = 5%)
+    function executeSwapToStealth(
+        bytes calldata proof,
+        bytes32 merkleRoot,
+        bytes32 nullifier0,
+        bytes32 nullifier1,
+        bytes32 outCommitment0,
+        bytes32 outCommitment1,
+        uint256 publicAmount,
+        uint256 publicAsset,
+        address tokenIn,
+        PoolKey calldata poolKey,
+        bool zeroForOne,
+        uint256 minAmountOut,
+        address stealthAddress,
+        bytes calldata ephemeralPubKey,
+        bytes1 viewTag,
+        bytes16 invoiceId,
+        address tokenOut,
+        address relayer,
+        uint256 relayerFeeBps
+    ) external nonReentrant onlyRelayer {
+        // ── Checks ──────────────────────────────────────────────────────────
+        _checkStealthRecipient(stealthAddress, ephemeralPubKey);
+        _checkSwapDirection(poolKey, zeroForOne, tokenIn, tokenOut);
+        _checkSwapLimits(minAmountOut, relayerFeeBps);
+
+        // ── Withdraw → swap → fee split, slippage, oracle bound ──────────────
+        uint256 inputAmount = _withdrawToSelf(
+            proof, merkleRoot, nullifier0, nullifier1, outCommitment0, outCommitment1, publicAmount, publicAsset, tokenIn
+        );
+        uint256 outputAmount = _swapExactInput(poolKey, zeroForOne, tokenIn, inputAmount);
+        (uint256 userAmount, uint256 fee) =
+            _applyFeeAndPriceChecks(inputAmount, outputAmount, tokenIn, tokenOut, minAmountOut, relayerFeeBps);
+
+        // ── Pay stealth address + relayer, then announce ────────────────────
+        _transferOut(tokenOut, stealthAddress, userAmount);
+        if (fee > 0) _transferOut(tokenOut, relayer, fee);
+
+        ANNOUNCER.announce(
+            STEALTH_SCHEME_ID,
+            stealthAddress,
+            ephemeralPubKey,
+            _stealthMetadata(viewTag, tokenOut, userAmount, invoiceId)
+        );
+
+        emit PrivateSwapToStealthExecuted(nullifier0, stealthAddress, tokenIn, tokenOut, userAmount, relayerFeeBps);
     }
 
     // ─── Unlock Callback ─────────────────────────────────────────────────────
@@ -359,6 +451,145 @@ contract DustSwapAdapterV2 is Ownable2Step, ReentrancyGuard {
             bool ok = IERC20Adapter(token).transfer(owner(), bal);
             if (!ok) revert TransferFailed();
         }
+    }
+
+    // ─── Internal: Shared Swap Pipeline ──────────────────────────────────────
+
+    /// @dev Input bounds common to every swap path
+    function _checkSwapLimits(uint256 minAmountOut, uint256 relayerFeeBps) internal view {
+        if (minAmountOut == 0) revert ZeroMinAmount();
+        if (relayerFeeBps > MAX_RELAYER_FEE_BPS) revert RelayerFeeTooHigh();
+        if (DUST_POOL_V2.paused()) revert PoolPaused();
+    }
+
+    /// @dev Spend the proven notes to this contract. The balance delta, not publicAmount, is used as the
+    ///      swap input because it is what the pool actually transferred.
+    /// @return inputAmount Exact amount of tokenIn received from DustPoolV2
+    function _withdrawToSelf(
+        bytes calldata proof,
+        bytes32 merkleRoot,
+        bytes32 nullifier0,
+        bytes32 nullifier1,
+        bytes32 outCommitment0,
+        bytes32 outCommitment1,
+        uint256 publicAmount,
+        uint256 publicAsset,
+        address tokenIn
+    ) internal returns (uint256 inputAmount) {
+        uint256 balanceBefore = _tokenBalance(tokenIn);
+
+        DUST_POOL_V2.withdraw(
+            proof, merkleRoot, nullifier0, nullifier1,
+            outCommitment0, outCommitment1,
+            publicAmount, publicAsset,
+            address(this), tokenIn
+        );
+
+        inputAmount = _tokenBalance(tokenIn) - balanceBefore;
+        if (inputAmount == 0) revert SwapFailed();
+    }
+
+    /// @dev Exact-input swap through PoolManager.unlock() → unlockCallback(); output lands on this contract
+    /// @return outputAmount Amount of the output currency taken from the PoolManager
+    function _swapExactInput(PoolKey calldata poolKey, bool zeroForOne, address tokenIn, uint256 inputAmount)
+        internal
+        returns (uint256 outputAmount)
+    {
+        SwapParams memory params = SwapParams({
+            zeroForOne: zeroForOne,
+            amountSpecified: -int256(inputAmount),
+            sqrtPriceLimitX96: zeroForOne ? MIN_SQRT_PRICE + 1 : MAX_SQRT_PRICE - 1
+        });
+
+        bytes memory result = POOL_MANAGER.unlock(
+            abi.encode(CallbackData({
+                key: poolKey,
+                params: params,
+                inputCurrency: tokenIn,
+                inputAmount: inputAmount
+            }))
+        );
+
+        outputAmount = abi.decode(result, (uint256));
+        if (outputAmount == 0) revert SwapFailed();
+    }
+
+    /// @dev Split the relayer fee off the swap output, then enforce slippage and the oracle bound
+    ///      (anti-sandwich). The oracle compares the gross output, before the fee is taken.
+    /// @return userAmount Output owed to the user after the relayer fee
+    /// @return fee Relayer fee in output-token units
+    function _applyFeeAndPriceChecks(
+        uint256 inputAmount,
+        uint256 outputAmount,
+        address tokenIn,
+        address tokenOut,
+        uint256 minAmountOut,
+        uint256 relayerFeeBps
+    ) internal view returns (uint256 userAmount, uint256 fee) {
+        fee = (outputAmount * relayerFeeBps) / 10_000;
+        userAmount = outputAmount - fee;
+        if (userAmount < minAmountOut) revert SlippageExceeded();
+
+        _checkOracleBound(inputAmount, outputAmount, tokenIn, tokenOut);
+    }
+
+    // ─── Internal: Stealth Payout ────────────────────────────────────────────
+
+    /// @dev A payout to address(0) burns funds and one to this contract strands them. ERC-5564 scheme 1
+    ///      uses compressed ephemeral keys; any other encoding is undetectable by the recipient's scanner
+    ///      and would leave the payment unfound at the stealth address.
+    function _checkStealthRecipient(address stealthAddress, bytes calldata ephemeralPubKey) internal view {
+        if (stealthAddress == address(0) || stealthAddress == address(this)) revert InvalidStealthAddress();
+        if (
+            ephemeralPubKey.length != COMPRESSED_PUBKEY_LENGTH
+                || (ephemeralPubKey[0] != 0x02 && ephemeralPubKey[0] != 0x03)
+        ) revert InvalidEphemeralPubKey();
+    }
+
+    /// @dev unlockCallback settles and takes whichever currencies the swap delta names, so a tokenIn or
+    ///      tokenOut that disagrees with the key's direction would pay the stealth address in the wrong
+    ///      token, drawn from whatever balance the adapter happens to hold.
+    function _checkSwapDirection(PoolKey calldata poolKey, bool zeroForOne, address tokenIn, address tokenOut)
+        internal
+        pure
+    {
+        (address expectedIn, address expectedOut) =
+            zeroForOne ? (poolKey.currency0, poolKey.currency1) : (poolKey.currency1, poolKey.currency0);
+        if (tokenIn != expectedIn || tokenOut != expectedOut) revert PoolKeyMismatch();
+    }
+
+    /// @dev SafeERC20 also accepts tokens whose transfer() returns no bool (USDT-style)
+    function _transferOut(address token, address to, uint256 amount) internal {
+        if (token == address(0)) {
+            (bool ok,) = to.call{value: amount}("");
+            if (!ok) revert TransferFailed();
+        } else {
+            IERC20(token).safeTransfer(to, amount);
+        }
+    }
+
+    /// @dev ERC-5564 announcement metadata. ERC-5564 requires byte 0 to be the view tag; the remainder
+    ///      mirrors Dust's frontend senders (src/hooks/stealth/useStealthSend.ts) byte-for-byte, which is
+    ///      what src/lib/stealth/scanner.ts decodes:
+    ///        ETH:   viewTag (1)
+    ///        ERC20: viewTag (1) | 'T' 0x54 (1) | chainId uint32 BE (4) | token (20) | amount uint256 BE (32)
+    ///               [ | 'I' 0x49 (1) | invoiceId (16) ]   only when invoiceId != 0
+    ///      This matches encodeTokenMetadata in src/lib/stealth/metadata.ts, where an absent invoice id adds
+    ///      no suffix. ETH metadata never carries the invoice id, because decodeTokenMetadata returns null
+    ///      for anything without the 'T' marker. Built on-chain because the delivered amount is only known
+    ///      after the swap. SafeCast reverts rather than truncating a chain id that does not fit the
+    ///      scanner's 4-byte field.
+    function _stealthMetadata(bytes1 viewTag, address tokenOut, uint256 amount, bytes16 invoiceId)
+        internal
+        view
+        returns (bytes memory)
+    {
+        if (tokenOut == address(0)) return abi.encodePacked(viewTag);
+        bytes memory tokenMetadata = abi.encodePacked(
+            viewTag, TOKEN_METADATA_MARKER, SafeCast.toUint32(block.chainid), tokenOut, amount
+        );
+        if (invoiceId == bytes16(0)) return tokenMetadata;
+        return abi.encodePacked(tokenMetadata, INVOICE_METADATA_MARKER, invoiceId);
     }
 
     // ─── Internal ────────────────────────────────────────────────────────────

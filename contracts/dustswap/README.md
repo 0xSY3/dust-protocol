@@ -40,7 +40,15 @@ You need a small amount of Sepolia ETH and USDC:
 ### 3. Install dependencies
 
 ```bash
-forge install
+# Pins: OpenZeppelin v5.5.0, Uniswap v4-core d153b04, v4-periphery 5da22e6.
+# --recursive is required: v4-core imports solmate from its own nested submodule.
+git submodule update --init --recursive
+
+# poseidon-solidity is an npm package (remapped from node_modules/)
+npm ci
+
+forge build
+forge test --match-path test/DustSwapAdapterV2.t.sol
 ```
 
 ### 4. Run the initialization script

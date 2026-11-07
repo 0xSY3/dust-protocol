@@ -58,6 +58,56 @@ export const DUST_SWAP_ADAPTER_V2_ABI = [
     type: 'event',
   },
   {
+    inputs: [
+      { name: 'proof', type: 'bytes' },
+      { name: 'merkleRoot', type: 'bytes32' },
+      { name: 'nullifier0', type: 'bytes32' },
+      { name: 'nullifier1', type: 'bytes32' },
+      { name: 'outCommitment0', type: 'bytes32' },
+      { name: 'outCommitment1', type: 'bytes32' },
+      { name: 'publicAmount', type: 'uint256' },
+      { name: 'publicAsset', type: 'uint256' },
+      { name: 'tokenIn', type: 'address' },
+      {
+        name: 'poolKey',
+        type: 'tuple',
+        components: [
+          { name: 'currency0', type: 'address' },
+          { name: 'currency1', type: 'address' },
+          { name: 'fee', type: 'uint24' },
+          { name: 'tickSpacing', type: 'int24' },
+          { name: 'hooks', type: 'address' },
+        ],
+      },
+      { name: 'zeroForOne', type: 'bool' },
+      { name: 'minAmountOut', type: 'uint256' },
+      { name: 'stealthAddress', type: 'address' },
+      { name: 'ephemeralPubKey', type: 'bytes' },
+      { name: 'viewTag', type: 'bytes1' },
+      { name: 'invoiceId', type: 'bytes16' },
+      { name: 'tokenOut', type: 'address' },
+      { name: 'relayer', type: 'address' },
+      { name: 'relayerFeeBps', type: 'uint256' },
+    ],
+    name: 'executeSwapToStealth',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'nullifier', type: 'bytes32' },
+      { indexed: true, name: 'stealthAddress', type: 'address' },
+      { indexed: false, name: 'tokenIn', type: 'address' },
+      { indexed: false, name: 'tokenOut', type: 'address' },
+      { indexed: false, name: 'outputAmount', type: 'uint256' },
+      { indexed: false, name: 'relayerFeeBps', type: 'uint256' },
+    ],
+    name: 'PrivateSwapToStealthExecuted',
+    type: 'event',
+  },
+  {
     anonymous: false,
     inputs: [
       { indexed: true, name: 'relayer', type: 'address' },
@@ -90,6 +140,9 @@ export const DUST_SWAP_ADAPTER_V2_ABI = [
   { inputs: [], name: 'SwapFailed', type: 'error' },
   { inputs: [], name: 'TransferFailed', type: 'error' },
   { inputs: [], name: 'PoolPaused', type: 'error' },
+  { inputs: [], name: 'InvalidStealthAddress', type: 'error' },
+  { inputs: [], name: 'InvalidEphemeralPubKey', type: 'error' },
+  { inputs: [], name: 'PoolKeyMismatch', type: 'error' },
 ] as const
 
 export function getDustSwapAdapterV2Config(chainId?: number) {
