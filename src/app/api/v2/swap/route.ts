@@ -276,6 +276,7 @@ export async function POST(req: Request) {
     else if (raw.includes('InvalidChainId')) message = 'Invalid chain ID in proof'
     else if (raw.includes('Sponsor not configured')) message = 'Relayer key not configured'
 
-    return NextResponse.json({ error: message, detail: raw.slice(0, 500) }, { status: 500, headers: NO_STORE })
+    // Only the mapped message goes back: ethers error text can carry the RPC URL and with it the provider API key
+    return NextResponse.json({ error: message }, { status: 500, headers: NO_STORE })
   }
 }

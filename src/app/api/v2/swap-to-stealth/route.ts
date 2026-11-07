@@ -185,9 +185,7 @@ export async function POST(req: Request) {
   } catch (e) {
     console.error('[V2/swap-to-stealth] Error:', e)
     const raw = e instanceof Error ? e.message : String(e)
-    return NextResponse.json(
-      { error: toClientMessage(raw), detail: raw.slice(0, 500) },
-      { status: 500, headers: NO_STORE },
-    )
+    // Only the mapped message goes back: ethers error text can carry the RPC URL and with it the provider API key
+    return NextResponse.json({ error: toClientMessage(raw) }, { status: 500, headers: NO_STORE })
   }
 }
