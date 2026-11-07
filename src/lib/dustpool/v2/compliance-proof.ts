@@ -6,7 +6,8 @@
 import { fflonk } from 'snarkjs'
 
 export const COMPLIANCE_WASM_PATH = '/circuits/v2-compliance/DustV2Compliance.wasm'
-export const COMPLIANCE_ZKEY_PATH = '/circuits/v2-compliance/DustV2Compliance.zkey'
+// The 80 MB proving key is gitignored under public/, so a deploy built from the repo has no copy to serve
+export const COMPLIANCE_ZKEY_PATH = process.env.NEXT_PUBLIC_V2_COMPLIANCE_ZKEY_URL || 'https://pub-79a49cd9d00544bdbf2c2dd393b47a1f.r2.dev/v2-compliance/DustV2Compliance.zkey'
 export const COMPLIANCE_VKEY_PATH = '/circuits/v2-compliance/verification_key.json'
 
 const SMT_LEVELS = 20
