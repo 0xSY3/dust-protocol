@@ -148,7 +148,7 @@ export function WalletV1V2ComparisonSnippet() {
             <div className="text-[10px] font-mono font-bold text-[#00FF41] tracking-wider mb-2">V2: UTXO POOL</div>
             <div className="flex flex-col gap-1.5 text-[10px] font-mono text-[rgba(255,255,255,0.5)]">
               <span>ZK proof withdrawal</span>
-              <span>Hidden amounts (Pedersen)</span>
+              <span>Hidden amounts (Poseidon)</span>
               <span>No fan-in problem</span>
             </div>
             <div className="mt-2.5 flex items-center gap-1.5">

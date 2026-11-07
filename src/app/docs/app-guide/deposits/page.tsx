@@ -64,9 +64,10 @@ export default function DepositsPage() {
           },
           {
             title: "On-chain transaction",
-            children: <>The deposit calls <code>DustPoolV2.deposit(commitment)</code> with the ETH value attached
-              (or <code>depositERC20(token, amount, commitment)</code> for tokens). The contract stores the
-              commitment and emits a <code>DepositV2</code> event. Your wallet will prompt you to confirm
+            children: <>Your browser proves the note is worth exactly what you send, then calls
+              <code>DustPoolV2.depositWithProof(proof, commitment)</code> with the ETH attached (or
+              <code>depositERC20WithProof(proof, commitment, token, amount)</code> for tokens). The contract checks the
+              proof against the amount, asset and chain, queues the commitment and emits a <code>DepositQueued</code> event. Your wallet will prompt you to confirm
               the transaction.</>,
           },
           {

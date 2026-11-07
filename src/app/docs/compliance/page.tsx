@@ -62,7 +62,8 @@ export default function CompliancePage() {
         <DocsStepList steps={[
           {
             title: "User initiates deposit",
-            children: <>When calling <code>DustPoolV2.deposit()</code> or <code>depositERC20()</code>, the contract
+            children: <>When calling any <code>DustPoolV2</code> deposit function (<code>depositWithProof</code>, <code>depositNote</code>
+              or their ERC-20 versions), the contract
               queries the Chainalysis sanctions oracle at <code>0x40C57923924B5c5c5455c48D93317139ADDaC8fb</code> via the
               <code> ChainalysisScreener</code> wrapper.</>,
           },

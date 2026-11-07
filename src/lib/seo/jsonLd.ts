@@ -233,7 +233,7 @@ export function definedTermSetJsonLd() {
         "@type": "DefinedTerm",
         name: "FFLONK",
         description:
-          "A zero-knowledge proof system used in Dust V2 that is 22% cheaper to verify on-chain than Groth16 with 8 public signals and requires no trusted setup ceremony.",
+          "A zero-knowledge proof system used in Dust V2 that is 22% cheaper to verify on-chain than Groth16 with 8 public signals and needs no per-circuit trusted setup ceremony.",
       },
       {
         "@type": "DefinedTerm",

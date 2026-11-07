@@ -166,7 +166,7 @@ export default function WalletGuidePage() {
                 ["Privacy", "Unlinkable addresses", "Hidden amounts + ZK proofs"],
                 ["Claiming", "Individual claim per address", "Withdraw with FFLONK proof"],
                 ["Fan-in", "Each address claimed separately", "Notes merged in-pool (no fan-in)"],
-                ["Amounts", "Visible on-chain", "Hidden via Pedersen commitments"],
+                ["Amounts", "Visible on-chain", "Hidden via Poseidon commitments"],
                 ["Gas", "One tx per claim", "Batched via relayer"],
               ].map(([label, v1, v2]) => (
                 <tr key={label} className="border-b border-[rgba(255,255,255,0.04)]">

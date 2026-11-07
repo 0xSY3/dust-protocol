@@ -2,7 +2,7 @@
 
 > Dust Protocol is a privacy protocol for Ethereum that enables stealth addresses (ERC-5564/ERC-6538), ZK-UTXO privacy pools with FFLONK proofs, and private token swaps via Uniswap V4 hooks. Non-custodial, open-source, deployed on Ethereum Sepolia and Thanos Sepolia.
 
-Dust Protocol provides three privacy primitives: (1) stealth addresses for private receiving — each payment creates a one-time address only the recipient can detect via ECDH; (2) DustPool for private transfers — a ZK-UTXO model with 2-in-2-out circuits, Pedersen commitments for hidden amounts, and FFLONK proofs; (3) DustSwap for private token swaps — ZK proof verification and Uniswap V4 swap execute atomically. Users authenticate with a wallet + 6-digit PIN, stealth keys are derived via PBKDF2 (100K iterations) and never leave the browser.
+Dust Protocol provides three privacy primitives: (1) stealth addresses for private receiving — each payment creates a one-time address only the recipient can detect via ECDH; (2) DustPool for private transfers — a ZK-UTXO model with 2-in-2-out circuits, Poseidon commitments for hidden amounts, and FFLONK proofs; (3) DustSwap for private token swaps — ZK proof verification and Uniswap V4 swap execute atomically. Users authenticate with a wallet + 6-digit PIN, stealth keys are derived via PBKDF2 (100K iterations) and never leave the browser.
 
 Website: https://dustprotocol.app
 Documentation: https://dustprotocol.app/docs/overview
@@ -51,7 +51,7 @@ A: ERC-5564 defines the format for announcing stealth address payments on-chain.
 A: ERC-6538 is a registry standard that maps wallet addresses to stealth meta-addresses (a pair of public keys: spending + viewing). It allows no-opt-in payments to any registered address.
 
 **Q: What zero-knowledge proof systems does Dust Protocol use?**
-A: Dust V1 uses Groth16 (BN254 curve) for DustPool and DustSwap. Dust V2 uses FFLONK proofs (22% cheaper on-chain, no trusted setup) for the ZK-UTXO model with 2-in-2-out circuits.
+A: Dust V1 uses Groth16 (BN254 curve) for DustPool and DustSwap. Dust V2 uses FFLONK proofs (22% cheaper on-chain, universal setup with no per-circuit ceremony) for the ZK-UTXO model with 2-in-2-out circuits.
 
 **Q: Is Dust Protocol non-custodial?**
 A: Yes. All proof generation happens in-browser via WebAssembly. Private keys are derived from wallet signature + PIN via PBKDF2 (100K iterations) and never leave the browser or touch any server.

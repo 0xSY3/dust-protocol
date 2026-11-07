@@ -26,7 +26,7 @@ const faqs = [
   },
   {
     q: "How long does ZK proof generation take?",
-    a: "DustPool V2 proofs use FFLONK (no trusted setup) and take approximately 2–3 seconds for the standard 2-in-2-out circuit. Split circuit proofs (2-in-8-out for denomination privacy) take 4–5 seconds. DustSwap proofs use Groth16 and take ~1–2 seconds. The proving key files (~50MB) are downloaded once and cached by the browser.",
+    a: "DustPool V2 proofs use FFLONK (universal setup) and take approximately 2–3 seconds for the standard 2-in-2-out circuit. Split circuit proofs (2-in-8-out for denomination privacy) take 4–5 seconds. DustSwap proofs use Groth16 and take ~1–2 seconds. The proving key files (~50MB) are downloaded once and cached by the browser.",
   },
   {
     q: "Is the ZK proof generated on my device?",
@@ -58,11 +58,11 @@ const faqs = [
   },
   {
     q: "What is the difference between DustPool V1 and V2?",
-    a: "V1 uses a simple mixer model with Groth16 proofs and a fixed commitment structure (Poseidon of nullifier, secret, and amount). V2 uses a ZK-UTXO model with FFLONK proofs (no trusted setup), arbitrary-amount deposits, a 2-in-2-out transaction circuit, and a 2-in-8-out split circuit for denomination privacy. V2 also adds compliance screening (Chainalysis oracle), deposit cooldowns, and encrypted note storage.",
+    a: "V1 uses a simple mixer model with Groth16 proofs and a fixed commitment structure (Poseidon of nullifier, secret, and amount). V2 uses a ZK-UTXO model with FFLONK proofs (universal setup), arbitrary-amount deposits, a 2-in-2-out transaction circuit, and a 2-in-8-out split circuit for denomination privacy. V2 also adds compliance screening (Chainalysis oracle), deposit cooldowns, and encrypted note storage.",
   },
   {
     q: "What is FFLONK?",
-    a: "FFLONK is a zero-knowledge proof system that requires no trusted setup ceremony (unlike Groth16). It is 22% cheaper to verify on-chain than Groth16 when there are 8+ public signals. DustPool V2 uses FFLONK for all pool proofs. DustSwap still uses Groth16.",
+    a: "FFLONK is a zero-knowledge proof system that reuses a universal powers-of-tau setup, so unlike Groth16 it needs no per-circuit ceremony. It is 22% cheaper to verify on-chain than Groth16 when there are 8+ public signals. DustPool V2 uses FFLONK for all pool proofs. DustSwap still uses Groth16.",
   },
   {
     q: "What is the deposit cooldown?",

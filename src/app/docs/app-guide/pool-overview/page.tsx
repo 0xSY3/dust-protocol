@@ -102,7 +102,7 @@ export default function PoolOverviewAppGuidePage() {
               <tr className="border-b border-[rgba(255,255,255,0.04)]">
                 <td className="py-2 pr-4">Proof system</td>
                 <td className="py-2 pr-4 text-white">FFLONK</td>
-                <td className="py-2">22% cheaper than Groth16, no trusted setup</td>
+                <td className="py-2">22% cheaper than Groth16, no per-circuit setup ceremony</td>
               </tr>
               <tr>
                 <td className="py-2 pr-4">Merkle tree depth</td>

@@ -102,8 +102,8 @@ export default function PrivacySwapsPage() {
                                           \u2502     \u2514\u2500 vanilla pool (no hooks)
                                           \u2502     \u2514\u2500 ETH \u2194 USDC at market rate
                                           \u2502
-                                          \u2514\u2500 (3) DustPoolV2.deposit(newCommitment)
-                                                \u2514\u2500 Poseidon commitment for output
+                                          \u2514\u2500 (3) DustPoolV2.depositNote(ownerPubKey, blinding)
+                                                \u2514\u2500 pool hashes the note from the output
                                                 \u2514\u2500 new UTXO note in pool`}
         </div>
       </section>

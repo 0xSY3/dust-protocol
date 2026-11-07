@@ -142,7 +142,7 @@ export default function HowItWorksPage() {
           },
           {
             title: "Generate a FFLONK ZK proof (in-browser)",
-            children: <>When withdrawing, the browser generates a <strong>FFLONK</strong> proof (no trusted setup required)
+            children: <>When withdrawing, the browser generates a <strong>FFLONK</strong> proof (universal setup, no per-circuit ceremony)
               using the 2-in-2-out transaction circuit (~12,400 constraints). Public inputs include:
               <code> merkleRoot, nullifier0, nullifier1, outCommitment0, outCommitment1, pubAmount, pubAsset, recipient, chainId</code>.
               For denomination privacy, use the <strong>2-in-8-out split circuit</strong> (~32,000 constraints) to break
@@ -230,7 +230,7 @@ export default function HowItWorksPage() {
                 ["ERC-4337", "Account abstraction — gasless stealth claims"],
                 ["EIP-7702", "EOA-as-smart-account support"],
                 ["Groth16 / snarkjs", "In-browser ZK proof generation (V1 pool)"],
-                ["FFLONK", "ZK proof system for DustPool V2 — no trusted setup, 22% cheaper than Groth16"],
+                ["FFLONK", "ZK proof system for DustPool V2 — universal setup, 22% cheaper than Groth16"],
                 ["Poseidon hash", "ZK-friendly hash in commitments and Merkle trees"],
                 ["Uniswap V4", "Vanilla liquidity pools for DustSwapAdapterV2 private swaps"],
                 ["Chainalysis Oracle", "On-chain sanctions screening for deposits"],

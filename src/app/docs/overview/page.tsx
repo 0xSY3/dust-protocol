@@ -104,7 +104,7 @@ export default function OverviewPage() {
         </p>
         <p className="text-sm text-[rgba(255,255,255,0.6)] leading-relaxed mt-4">
           <strong className="text-white">Dust V2</strong> introduces a ZK-UTXO model with arbitrary-amount deposits,
-          FFLONK proofs (no trusted setup), split withdrawals for denomination privacy, and built-in compliance
+          FFLONK proofs (universal setup), split withdrawals for denomination privacy, and built-in compliance
           screening — making it possible to prove legitimacy without sacrificing privacy.
         </p>
       </section>

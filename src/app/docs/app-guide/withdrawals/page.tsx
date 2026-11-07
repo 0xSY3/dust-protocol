@@ -49,7 +49,7 @@ export default function WithdrawalsPage() {
           {
             title: "Generate FFLONK proof in-browser",
             children: <>Your browser runs the 2-in-2-out transaction circuit (~12,400 constraints) via snarkjs + WASM.
-              The proof takes roughly 2&ndash;3 seconds to generate. No trusted setup is required.</>,
+              The proof takes roughly 2&ndash;3 seconds to generate. It needs no per-circuit setup ceremony.</>,
           },
           {
             title: "Submit proof to relayer",
@@ -102,7 +102,7 @@ export default function WithdrawalsPage() {
             <tbody className="divide-y divide-[rgba(255,255,255,0.04)]">
               {[
                 ["Constraints", "~12,400"],
-                ["Proof system", "FFLONK (no trusted setup)"],
+                ["Proof system", "FFLONK (universal setup)"],
                 ["Proving time", "~2\u20133 seconds (in-browser)"],
                 ["Public signals (9)", "merkleRoot, null0, null1, outC0, outC1, pubAmount, pubAsset, recipient, chainId"],
                 ["Verification gas", "~220,000"],
