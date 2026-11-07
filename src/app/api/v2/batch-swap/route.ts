@@ -1,6 +1,6 @@
 import { ethers } from 'ethers'
 import { NextResponse } from 'next/server'
-import { getServerSponsor } from '@/lib/server-provider'
+import { getPoolRelayer } from '@/lib/server-provider'
 import { DEFAULT_CHAIN_ID } from '@/config/chains'
 import { getDustSwapAdapterV2Config, getVanillaPoolKey, DUST_SWAP_ADAPTER_V2_ABI } from '@/lib/swap/contracts'
 import { syncAndPostRoot } from '@/lib/dustpool/v2/relayer-tree'
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
     // Sync tree once before the batch
     await syncAndPostRoot(chainId)
 
-    const sponsor = getServerSponsor(chainId)
+    const sponsor = getPoolRelayer(chainId)
     const adapter = new ethers.Contract(
       adapterConfig.address,
       DUST_SWAP_ADAPTER_V2_ABI as unknown as ethers.ContractInterface,

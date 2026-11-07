@@ -91,6 +91,23 @@ export function getServerSponsor(chainId?: number): ethers.Wallet {
   return sponsor;
 }
 
+// A redeployed DustPoolV2 and its swap adapter can take a relayer of their own, named per chain by
+// POOL_RELAYER_PRIVATE_KEY_<chainId>. The shared sponsor key keeps the roles it already holds on that chain,
+// such as signing for the paymaster, until those contracts are redeployed too
+const poolRelayerCache = new Map<number, ethers.Wallet>();
+
+export function getPoolRelayer(chainId?: number): ethers.Wallet {
+  const id = chainId ?? DEFAULT_CHAIN_ID;
+  const key = process.env[`POOL_RELAYER_PRIVATE_KEY_${id}`];
+  if (!key) return getServerSponsor(id);
+  let relayer = poolRelayerCache.get(id);
+  if (!relayer) {
+    relayer = new ethers.Wallet(key, getServerProvider(id));
+    poolRelayerCache.set(id, relayer);
+  }
+  return relayer;
+}
+
 export function parseChainId(body: Record<string, unknown>): number {
   const chainId = body.chainId;
   if (typeof chainId === 'number' && Number.isFinite(chainId)) return chainId;

@@ -134,6 +134,9 @@ npm run dev
 # Required — relayer key for gas sponsorship
 RELAYER_PRIVATE_KEY=<private-key>
 
+# Required on Ethereum Sepolia — relayer of the current DustPoolV2 and swap adapter there
+POOL_RELAYER_PRIVATE_KEY_11155111=<private-key>
+
 # Optional — Alchemy for higher rate limits on Sepolia
 NEXT_PUBLIC_ALCHEMY_SEPOLIA_RPC=https://eth-sepolia.g.alchemy.com/v2/<key>
 

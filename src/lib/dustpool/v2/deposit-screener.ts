@@ -134,8 +134,8 @@ export async function runDepositScreenerCycle(
   // Post updated exclusion root on-chain if new flags were added
   if (newFlagged > 0) {
     try {
-      const { getServerSponsor } = await import('@/lib/server-provider')
-      const sponsor = getServerSponsor(chainId)
+      const { getPoolRelayer } = await import('@/lib/server-provider')
+      const sponsor = getPoolRelayer(chainId)
       const poolWriter = new ethers.Contract(
         poolAddress,
         DUST_POOL_V2_ABI as unknown as ethers.ContractInterface,

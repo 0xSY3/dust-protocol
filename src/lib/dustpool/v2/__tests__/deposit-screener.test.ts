@@ -19,7 +19,7 @@ vi.mock('@/lib/server-provider', () => ({
   getServerProvider: vi.fn().mockReturnValue({
     getBlockNumber: vi.fn().mockResolvedValue(10000),
   }),
-  getServerSponsor: vi.fn(),
+  getPoolRelayer: vi.fn(),
 }))
 
 vi.mock('../contracts', () => ({

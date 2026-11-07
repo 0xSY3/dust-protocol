@@ -6,7 +6,7 @@
 
 import { ethers } from 'ethers'
 import { readFile, writeFile } from 'fs/promises'
-import { getServerProvider, getServerSponsor } from '@/lib/server-provider'
+import { getServerProvider, getPoolRelayer } from '@/lib/server-provider'
 import { getDustPoolV2Address, DUST_POOL_V2_ABI } from './contracts'
 import { MerkleTree } from '../merkle'
 import { toBytes32Hex } from '../poseidon'
@@ -195,7 +195,7 @@ export async function postRootIfNeeded(chainId: number): Promise<boolean> {
   const address = getDustPoolV2Address(chainId)
   if (!address) return false
 
-  const sponsor = getServerSponsor(chainId)
+  const sponsor = getPoolRelayer(chainId)
   const contract = new ethers.Contract(address, DUST_POOL_V2_ABI as unknown as ethers.ContractInterface, sponsor)
 
   const rootHex = toBytes32Hex(currentRoot)
