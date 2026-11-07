@@ -23,7 +23,7 @@ describe('Chain config: V1 fields removed', () => {
 describe('Chain config: V2 fields present', () => {
   it('Eth Sepolia has V2 swap adapter', () => {
     const config = getChainConfig(11155111)
-    expect(config.contracts.dustSwapAdapterV2).toBe('0xb91Afd19FeB4000E228243f40B8d98ea07127400')
+    expect(config.contracts.dustSwapAdapterV2).toBe('0xC429c349567efEA866E948E58234295CeD70fdBc')
   })
 
   it('Eth Sepolia has vanilla pool key', () => {

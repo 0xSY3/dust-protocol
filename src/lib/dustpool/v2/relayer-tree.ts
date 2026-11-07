@@ -15,7 +15,7 @@ import { toBytes32Hex } from '../poseidon'
 
 // Block to start scanning from per chain (safe lower bound — V2 deployed after V1)
 const V2_START_BLOCKS: Record<number, number> = {
-  11155111: 10311323,
+  11155111: 12080142,
   111551119090: 6482414,
 }
 
@@ -47,8 +47,11 @@ interface TreeCheckpoint {
   savedAt: number
 }
 
+// Keyed by pool as well as chain: after a redeploy, restoring the old pool's leaves into the new pool's tree
+// would let every old note, spent there or not, be spent again against the new pool's deposits
 function checkpointPath(chainId: number): string {
-  return `/tmp/dust-v2-tree-${chainId}.json`
+  const pool = getDustPoolV2Address(chainId)?.toLowerCase() ?? 'none'
+  return `/tmp/dust-v2-tree-${chainId}-${pool}.json`
 }
 
 async function loadCheckpoint(chainId: number): Promise<TreeCheckpoint | null> {

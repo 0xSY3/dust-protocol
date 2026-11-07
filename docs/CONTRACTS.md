@@ -93,22 +93,34 @@ Deployed with: Pausable, Ownable2Step, chainId, I1 recipient binding, 2-in-8-out
 
 ### Ethereum Sepolia (chain ID: 11155111)
 
+Deployed 2026-11-07 at block `12080142` with the soundness fixes listed in `contracts/framepool/README.md`: the
+nullifier key is bound to the spending key, deposits fix the note's value (`depositWithProof`, `depositNote`), and
+withdrawals check the proof's asset against the token paid out. Record:
+`contracts/dustpool/broadcast/DeployV2.s.sol/11155111/run-latest.json`.
+
 | Contract | Address |
 |----------|---------|
-| FflonkVerifier (9 signals) | `0xd4B52Fd4CDFCCA41E6F88f1a1AfA9A0B715290e7` |
-| FflonkSplitVerifier (15 signals) | `0x2c53Ea8983dCA7b2d4cA1aa4ECfBc6e513e0Fc6E` |
-| DustPoolV2 | `0x03D52fd442965cD6791Ce5AFab78C60671f9558A` |
-| DustSwapVerifierProduction | `0x629A2d1CDB1E4510b95a42c64aF2754Ac1dd6a7F` |
+| DustPoolV2 | `0x7c4BAfe3DFC50D4c8d84246e4067a0f5d24e360b` |
+| FflonkVerifier (9 signals) | `0xc6cA1820558AD0C29513402235FC5Ad6f6d3B4F0` |
+| FflonkSplitVerifier (15 signals) | `0x6ae4d606Fb23D7fB340A932c24ed37EE15034b61` |
+| FflonkComplianceVerifier | `0x2185C2b08f52287c7fec4BC04F765c25635f72d2` |
+| TestnetComplianceOracle | `0x82660De6F3D862aBb7B711467Bf19964Fb85499C` |
+| PoseidonT3 (library) | `0x6Fd9492D6B43207b66867632fE0baF65b43eBdbC` |
+| PoseidonT6 (library) | `0x47164699d0f96d62109B6349373fa930dA30d49F` |
 
-Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
+Owner/Relayer: `0xE07e1A78aa4f4BF7494B35dF3AbF112995c5D81A`, the app's `POOL_RELAYER_PRIVATE_KEY_11155111`
+
+The proving keys are `v2/20261107/DustV2Transaction.zkey` and `v2-split/20261107/DustV2Split.zkey` on the circuits
+bucket; the undated keys belong to the earlier pools.
 
 ### DustSwap V2 — Adapter (Ethereum Sepolia)
 
-Atomic private swaps: withdraw from DustPoolV2 → swap on Uniswap V4 → deposit output back.
+Atomic private swaps: withdraw from DustPoolV2 → swap on Uniswap V4 → deposit output back, or pay it to a stealth
+address (`executeSwapToStealth`).
 
 | Contract | Address |
 |----------|---------|
-| DustSwapAdapterV2 | `0xb91Afd19FeB4000E228243f40B8d98ea07127400` |
+| DustSwapAdapterV2 | `0xC429c349567efEA866E948E58234295CeD70fdBc` |
 | Chainlink ETH/USD Oracle | `0x694AA1769357215DE4FAC081bf1f309aDC325306` |
 | PoseidonT3 (library) | `0x203a488C06e9add25D4b51F7EDE8e56bCC4B1A1C` |
 | PoseidonT6 (library) | `0x666333F371685334CdD69bdDdaFBABc87CE7c7Db` |
@@ -116,12 +128,14 @@ Atomic private swaps: withdraw from DustPoolV2 → swap on Uniswap V4 → deposi
 
 Oracle: Chainlink ETH/USD, 10% max deviation, 1-hour stale threshold.
 
-Verified: [Blockscout](https://eth-sepolia.blockscout.com/address/0xb91afd19feb4000e228243f40b8d98ea07127400)
+Deployed 2026-11-07 at block `12080171` (tx `0x4110807e70a58067b38f5795904ce665aa06118c86e0d52dfce93a87bd384bd8`),
+relayer `0xE07e1A78aa4f4BF7494B35dF3AbF112995c5D81A`. Not yet verified on an explorer.
 
 #### Previous DustSwap V2 Adapter Deployments (deprecated)
 
 | Contract | Address | Note |
 |----------|---------|------|
+| DustSwapAdapterV2 | `0xb91Afd19FeB4000E228243f40B8d98ea07127400` | Pool `0x3cbf3459e7E0E9Fd2fd86a28c426CED2a60f023f`, before the soundness fixes |
 | DustSwapAdapterV2 | `0xe2bE4d7b5C1952B3DDB210499800A45aa0DD097C` | Pre-oracle, no Chainlink bound |
 
 ### Thanos Sepolia (chain ID: 111551119090)
@@ -136,8 +150,12 @@ Deployer/Relayer: `0x8d56E94a02F06320BDc68FAfE23DEc9Ad7463496`
 
 ### Previous V2 Deployments (deprecated)
 
+The pools in this table and the Thanos pool above predate the soundness fixes: anyone can drain them.
+
 | Chain | FflonkVerifier | DustPoolV2 |
 |-------|-------|-------|
+| Ethereum Sepolia (compliance oracle, 2026-02-24) | `0xd0f5aB15Ef3C882EB4341D38A3183Cc1FDcCFD8a` | `0x3cbf3459e7E0E9Fd2fd86a28c426CED2a60f023f` |
+| Ethereum Sepolia (split) | `0xd4B52Fd4CDFCCA41E6F88f1a1AfA9A0B715290e7` | `0x03D52fd442965cD6791Ce5AFab78C60671f9558A` |
 | Ethereum Sepolia (pre-split) | `0xC639C2594cf2841a7aC2E8298208fe33a98Dc98D` | `0x6f37E2Df430E1c516148157E6d42db6a3747eB8f` |
 | Thanos Sepolia (pre-split) | `0x301e16F08238e6414ff8Ea3B1F2A85387e9453Df` | `0x29f4822161bcf02687e02bDD48850C0385a5eEd2` |
 | Ethereum Sepolia (1st gen) | `0xD1D89bBAeD5b2e4453d6ED59c6e6fa78C13852A7` | `0x36ECE3c48558630372fa4d35B1C4293Fcc18F7B6` |
