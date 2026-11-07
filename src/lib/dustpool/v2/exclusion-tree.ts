@@ -11,6 +11,13 @@ import type { SMTInstance } from 'circomlibjs'
 
 const SMT_LEVELS = 20
 
+// An empty SMT has root 0, which DustPoolV2 refuses as an exclusion root (updateExclusionRoot reverts with
+// ZeroExclusionRoot and isKnownExclusionRoot(0) is false). With nothing flagged, no compliance proof could be
+// verified and every spend from a pool with a compliance verifier would revert with ComplianceRequired. So the
+// tree always holds this key, ASCII "dust.v2.exclusion": no Poseidon commitment equals it in practice, and it is
+// never reported as flagged
+export const EXCLUSION_SENTINEL = 0x647573742e76322e6578636c7573696f6en
+
 export interface ComplianceWitness {
   exclusionRoot: bigint
   smtSiblings: bigint[]
@@ -78,6 +85,7 @@ async function createTree(): Promise<SMTInstance> {
 async function initTree(chainId: number): Promise<SMTInstance> {
   const smt = await createTree()
   const flagged = new Set<string>()
+  await smt.insert(smt.F.e(EXCLUSION_SENTINEL), smt.F.e(1n))
 
   const checkpoint = await loadCheckpoint(chainId)
   if (checkpoint && checkpoint.flaggedCommitments.length > 0) {

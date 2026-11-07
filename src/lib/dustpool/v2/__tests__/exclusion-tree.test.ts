@@ -124,19 +124,19 @@ describe('exclusion-tree', () => {
   })
 
   describe('generateComplianceWitness', () => {
-    it('generates valid witness for unflagged commitment on empty tree', async () => {
+    it('generates valid witness for unflagged commitment when nothing is flagged', async () => {
       // #given
       const chainId = freshChainId()
-      const { generateComplianceWitness } = await getModule()
+      const { generateComplianceWitness, EXCLUSION_SENTINEL } = await getModule()
 
       // #when
       const witness = await generateComplianceWitness(chainId, 42n)
 
-      // #then
+      // #then — the path ends at the sentinel leaf, not an empty slot
       expect(witness.smtSiblings).toHaveLength(20)
-      expect(witness.smtIsOld0).toBe(1n) // empty tree = empty slot
-      expect(witness.smtOldKey).toBe(0n)
-      expect(witness.smtOldValue).toBe(0n)
+      expect(witness.smtIsOld0).toBe(0n)
+      expect(witness.smtOldKey).toBe(EXCLUSION_SENTINEL)
+      expect(witness.smtOldValue).toBe(1n)
     })
 
     it('generates valid witness for unflagged commitment on populated tree', async () => {
@@ -212,7 +212,7 @@ describe('exclusion-tree', () => {
   })
 
   describe('getExclusionRoot', () => {
-    it('returns 0 for empty tree', async () => {
+    it('is non-zero when nothing is flagged, because the pool refuses a zero exclusion root', async () => {
       // #given
       const chainId = freshChainId()
       const { getExclusionRoot } = await getModule()
@@ -221,7 +221,7 @@ describe('exclusion-tree', () => {
       const root = await getExclusionRoot(chainId)
 
       // #then
-      expect(root).toBe(0n)
+      expect(root).not.toBe(0n)
     })
   })
 
