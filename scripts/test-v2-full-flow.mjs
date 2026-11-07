@@ -45,7 +45,10 @@ const NULLIFIER_KEY_DOMAIN = 0x647573742e76322e6e6bn
 
 const THANOS_RPC = 'https://rpc.thanos-sepolia.tokamak.network'
 const DUST_POOL_V2 = '0x6987FE79057D83BefD19B80822Decb52235A5a67'
-const PRIVATE_KEY = '0xa596d50f8da618b4de7f9fab615f708966bcc51d3e5b183ae773eab00ea69f02'
+// A funded Thanos Sepolia test wallet. The key that used to be hardcoded here is public in git history: never
+// fund it again.
+const PRIVATE_KEY = process.env.TEST_WALLET_PRIVATE_KEY
+if (!PRIVATE_KEY) throw new Error('set TEST_WALLET_PRIVATE_KEY to a funded Thanos Sepolia test wallet key')
 const RELAYER_URL = 'http://localhost:3002'
 const CHAIN_ID = 111551119090
 
