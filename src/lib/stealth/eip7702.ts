@@ -4,6 +4,7 @@
 
 import { ethers } from 'ethers';
 import { getChainConfig } from '@/config/chains';
+import { isolationKeyForAddress } from '@/lib/anon-rpc/isolation';
 
 /**
  * Sign a drain message for EIP-7702 stealth sub-account.
@@ -61,7 +62,8 @@ export async function buildSignedAuthorization(
 
   // Dynamic import viem to avoid bundling it on chains that don't use 7702
   const { privateKeyToAccount } = await import('viem/accounts');
-  const { createWalletClient, http } = await import('viem');
+  const { createWalletClient } = await import('viem');
+  const { anonAwareTransport } = await import('@/lib/anon-rpc/viem');
 
   const key = stealthPrivateKey.startsWith('0x') ? stealthPrivateKey : `0x${stealthPrivateKey}`;
   const account = privateKeyToAccount(key as `0x${string}`);
@@ -69,7 +71,12 @@ export async function buildSignedAuthorization(
   const client = createWalletClient({
     account,
     chain: config.viemChain,
-    transport: http(config.rpcUrl),
+    // signAuthorization reads this stealth address's nonce over RPC.
+    transport: anonAwareTransport({
+      chainId,
+      directUrls: [config.rpcUrl],
+      isolationKey: isolationKeyForAddress(account.address),
+    }),
   });
 
   const authorization = await client.signAuthorization({

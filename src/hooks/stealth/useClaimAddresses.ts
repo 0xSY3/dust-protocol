@@ -8,6 +8,7 @@ import {
   CLAIM_ADDRESS_DERIVATION_MESSAGE, type DerivedClaimAddress,
 } from '@/lib/stealth';
 import { getChainProvider } from '@/lib/providers';
+import { isolationKeyForAddress } from '@/lib/anon-rpc/isolation';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface ClaimAddressWithBalance extends DerivedClaimAddress {
@@ -34,7 +35,7 @@ export function useClaimAddresses() {
 
   const fetchBalance = useCallback(async (addr: string): Promise<string> => {
     try {
-      const provider = getChainProvider(activeChainId);
+      const provider = getChainProvider(activeChainId, { isolationKey: isolationKeyForAddress(addr) });
       const bal = await provider.getBalance(addr);
       return ethers.utils.formatEther(bal);
     } catch {

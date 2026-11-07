@@ -18,6 +18,7 @@ import {
 import { getChainConfig, DEFAULT_CHAIN_ID, MIN_CLAIMABLE_BALANCE } from '@/config/chains';
 import { getTokensForChain } from '@/config/tokens';
 import { getChainProvider, getChainBatchProvider, rotateBatchProvider } from '@/lib/providers';
+import { isolationKeyForAddress } from '@/lib/anon-rpc/isolation';
 
 const ERC20_BALANCE_ABI = [
   'function balanceOf(address) view returns (uint256)',
@@ -82,7 +83,7 @@ async function autoClaimAccount(
     const accountAddress = payment.announcement.stealthAddress;
 
     // Check if account is already deployed
-    const provider = getChainProvider(chainId);
+    const provider = getChainProvider(chainId, { isolationKey: isolationKeyForAddress(accountAddress) });
     const code = await provider.getCode(accountAddress);
     const isDeployed = code !== '0x';
 
@@ -155,7 +156,7 @@ async function autoClaimLegacy(
       const stealthAddress = payment.announcement.stealthAddress;
 
       // Read current nonce from deployed wallet (may be >0 if prior drain was attempted)
-      const provider = getChainProvider(chainId);
+      const provider = getChainProvider(chainId, { isolationKey: isolationKeyForAddress(stealthAddress) });
       let walletNonce = 0;
       try {
         const code = await provider.getCode(stealthAddress);
@@ -221,7 +222,7 @@ async function autoClaim7702(
     const authorization = await buildSignedAuthorization(payment.stealthPrivateKey, chainId);
 
     // 2. Read current drain nonce from contract (may be >0 if prior drain failed/was replayed)
-    const provider = getChainProvider(chainId);
+    const provider = getChainProvider(chainId, { isolationKey: isolationKeyForAddress(stealthAddress) });
     let drainNonce = 0;
     try {
       const code = await provider.getCode(stealthAddress);
@@ -299,7 +300,7 @@ async function sweepTokensFromWallet(
     const stealthAddress = payment.announcement.stealthAddress;
 
     // Read current wallet nonce (wallet is already deployed for token sweeps)
-    const provider = getChainProvider(chainId);
+    const provider = getChainProvider(chainId, { isolationKey: isolationKeyForAddress(stealthAddress) });
     let walletNonce = 0;
     try {
       const walletContract = new ethers.Contract(stealthAddress, ['function nonce() view returns (uint256)'], provider);
@@ -379,7 +380,9 @@ async function claimToPoolDeposit(
       return null;
     }
 
-    const provider = getChainProvider(chainId);
+    const provider = getChainProvider(chainId, {
+      isolationKey: isolationKeyForAddress(payment.announcement.stealthAddress),
+    });
     const balance = await provider.getBalance(payment.announcement.stealthAddress);
     if (balance.isZero()) {
       if (process.env.NODE_ENV === 'development') console.log('[PoolDeposit] Zero balance, skipping');
@@ -773,8 +776,6 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
     const config = getChainConfig(chainId);
     // Use direct RPC provider for event scanning — more reliable than MetaMask
     const provider = getChainProvider(chainId);
-    // Use batch provider for balance queries — batches 2N calls into fewer HTTP requests
-    const batchProvider = getChainBatchProvider(chainId);
 
     if (!silent) {
       setError(null);
@@ -820,12 +821,15 @@ export function useStealthScanner(stealthKeys: StealthKeyPair | null, options?: 
       // H2: Check if this scan was superseded before starting balance queries
       if (currentScanIdRef.current !== scanId) return;
 
-      // Batch all balance queries via JsonRpcBatchProvider
+      // Batch balance queries — batches 2N calls into fewer HTTP requests. Through Anon-RPC
+      // each stealth address gets its own batch and isolation key: one shared batch would
+      // hand the RPC the full list of addresses this wallet owns in a single request.
       const tokens = getTokensForChain(chainId);
       const enriched: StealthPayment[] = await Promise.all(
         results.map(async (r) => {
           try {
             const addr = r.announcement.stealthAddress;
+            const batchProvider = getChainBatchProvider(chainId, { isolationKey: isolationKeyForAddress(addr) });
             const bal = await batchProvider.getBalance(addr);
             const balance = ethers.utils.formatEther(bal);
 

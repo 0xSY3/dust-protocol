@@ -8,6 +8,7 @@ import { SecuritySection } from "@/components/settings/SecuritySection";
 import { DisclosureSection } from "@/components/settings/DisclosureSection";
 import { ClaimAddressSection } from "@/components/settings/ClaimAddressSection";
 import { DangerZoneSection } from "@/components/settings/DangerZoneSection";
+import { PrivateReadsSection } from "@/components/settings/PrivateReadsSection";
 
 export default function SettingsPage() {
   const {
@@ -29,6 +30,7 @@ export default function SettingsPage() {
 
         <AccountSection address={address} ownedNames={ownedNames} isRegistered={isRegistered} />
         <SecuritySection metaAddress={metaAddress} viewingPublicKey={viewingPublicKey} />
+        <PrivateReadsSection />
         {hasKeys && <DisclosureSection keysRef={keysRef} chainId={chainId} />}
         <ClaimAddressSection claimAddresses={claimAddresses} claimAddressesInitialized={claimAddressesInitialized} />
         <DangerZoneSection clearKeys={clearKeys} clearPin={clearPin} />

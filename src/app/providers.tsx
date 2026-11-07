@@ -3,22 +3,19 @@
 import { PrivyProvider } from "@privy-io/react-auth";
 import { WagmiProvider, createConfig as createPrivyConfig } from "@privy-io/wagmi";
 import { createConfig as createWagmiConfig } from "wagmi";
-import { http, fallback } from "wagmi";
 import { injected, metaMask } from "wagmi/connectors";
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getSupportedChains } from "@/config/chains";
 import { PRIVY_APP_ID, PRIVY_CONFIG, isPrivyEnabled } from "@/config/privy";
+import { anonAwareTransport } from "@/lib/anon-rpc/viem";
 
 const supportedChains = getSupportedChains();
 const viemChains = supportedChains.map(c => c.viemChain);
+// Public-client reads go through Anon-RPC unless the user turned private reads off.
+// Wallet-signed transactions use the connector's EIP-1193 provider, not these transports.
 const transports = Object.fromEntries(
-  supportedChains.map(c => [
-    c.id,
-    c.rpcUrls.length > 1
-      ? fallback(c.rpcUrls.map(url => http(url)))
-      : http(c.rpcUrls[0])
-  ])
+  supportedChains.map(c => [c.id, anonAwareTransport({ chainId: c.id, directUrls: c.rpcUrls })])
 );
 
 // Privy-managed wagmi config (used when Privy is enabled)

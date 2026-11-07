@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { getChainProvider } from '@/lib/providers';
+import { isolationKeyForAddress } from '@/lib/anon-rpc/isolation';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -37,7 +38,7 @@ export function useBalancePoller(address: string | null, chainId?: number): Bala
     setBalance('0');
     setDepositAmount('0');
 
-    const provider = getChainProvider(chainId);
+    const provider = getChainProvider(chainId, { isolationKey: isolationKeyForAddress(address) });
 
     const poll = async () => {
       if (stoppedRef.current) return;

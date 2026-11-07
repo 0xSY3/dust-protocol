@@ -12,6 +12,7 @@ import { ChainIcon as ChainTokenIcon } from "@/components/stealth/icons";
 import { MenuIcon, XIcon, ChevronDownIcon, CopyIcon, LogOutIcon, CheckIcon } from "lucide-react";
 import { isPrivyEnabled } from "@/config/privy";
 import { useLogin, usePrivy, useLogout } from "@privy-io/react-auth";
+import { PrivateReadsBadge } from "@/components/anon-rpc/PrivateReadsBadge";
 
 const noop = () => {};
 const noopAsync = async () => {};
@@ -141,6 +142,7 @@ export function Navbar() {
 
         {/* Right — wallet button + hamburger */}
         <div className="flex-1 flex items-center justify-end gap-3 min-w-0">
+          <PrivateReadsBadge />
           <div className="relative shrink-0" ref={walletRef}>
             {displayName ? (
               <>
